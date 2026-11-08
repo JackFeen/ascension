@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node build.mjs",
     "test": "node test.mjs",
+    "dev-lock": "node scripts/dev-lock.mjs",
     "smoke": "node scripts/smoke.cjs",
     "check": "node test.mjs && node build.mjs && node scripts/smoke.cjs"
   },
