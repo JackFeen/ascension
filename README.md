@@ -1,0 +1,49 @@
+# Daily Ascent
+
+A daily word game. Seven categories, seven timed legs, and your score is your altitude on Everest.
+
+**Working on the code (or pointing an AI agent at it)? Start with [`CLAUDE.md`](CLAUDE.md)**: vision, architecture, file map, gotchas and roadmap. The original spec is in [`docs/product-spec.md`](docs/product-spec.md).
+
+Play it at **https://jackfeen.github.io/ascension/**.
+
+## Publishing changes
+
+GitHub Pages serves the root `index.html` from `main`. Edit files in `src/`, run `npm test && npm run build`, then commit `src/` together with the rebuilt `index.html` and push. The site updates in about a minute. The share card picks up the github.io link automatically.
+
+Moving to your own domain later: add a `CNAME` file in GitHub Pages settings. To force a specific link in the share card, add `<script>window.DA_SHARE_URL = "https://yourdomain.com"</script>` before the other scripts.
+
+## Project layout
+
+| File | What it is |
+| --- | --- |
+| `src/engine.js` | Config, normalization, matching (exact → alias → fuzzy), scoring, daily deal, judge prompt. No DOM. |
+| `src/data-*.js` | The answer bank: 49 categories plus a practice one, about 12,700 answers in six rarity tiers. |
+| `src/app.js` | Canvas mountain, sound, answer checking, game flow, results, stats. |
+| `src/shell.html` | Markup and styles. |
+| `build.mjs` | `node build.mjs` writes `index.html` (the playable page, committed for GitHub Pages) and `dist/game.html` (Claude artifact body, git-ignored). |
+| `test.mjs` | `npm test` checks every answer and alias, matching edge cases, scoring, 120 days of deals, and a calibration simulation. |
+| `scripts/smoke.cjs` | `npm run smoke` plays a full climb in headless Chromium inside a sandboxed iframe (needs `npm install && npx playwright install chromium`). |
+
+## Tuning
+
+Every number lives in `CONFIG` at the top of `src/engine.js`: leg timers and multipliers, tier gains, chain bonus, leg cap, penalties, judge thresholds. Change, run `node test.mjs` to see the simulated altitude distribution, then `node build.mjs`.
+
+## Adding categories
+
+Add an object to one of the `src/data-*.js` files:
+
+```js
+{ id: 'rivers', kind: 'hard', text: 'Rivers', a: {
+  c: 'Nile, Amazon, Mississippi',          // most players say these
+  f: '...', u: '...', r: '...', e: '...',
+  l: 'Okavango=okavango river',            // "=" adds an alias
+}},
+```
+
+`kind` is `broad` (legs 1–2), `mid` (legs 3, 4, 6; also set `lane` to `geo`, `nature` or `culture`), `wild` (leg 5) or `hard` (leg 7). Each pool is dealt in cycles with no repeats, so adding categories lengthens the time before any category comes back.
+
+## What runs where
+
+- **As a Claude artifact:** answers missing from the word list can be checked by Claude on the player's own account, after they allow it once.
+- **On GitHub Pages:** only word-list answers count. A backend judge (Supabase edge function or Cloudflare Worker calling an LLM) would bring checking to the public site.
+- **Not yet built (spec v1):** server-authoritative timers, accounts, leaderboards, image share card, review tooling. Everything is client-side, so the answer bank is visible in the page source.
