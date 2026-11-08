@@ -297,10 +297,13 @@
       ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
       ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
     }
-    function range(fn, fx, fy, base, haze, snowLine) {
+    function range(fn, fx, fy, base, haze, snowLine, shade) {
       const yOf = (a) => H / 2 - (a - cam.alt) * cam.sy * fy;
+      const rp = [];
+      const par = cam.sx * fx, hs = Math.max(par, 20000 * cam.sy * fy);
+      for (let x = -4; x <= W + 8; x += 4) { const u = (cam.p * par + x - W / 2) / hs; rp.push([x, yOf(fn(u))]); }
       ctx.beginPath(); ctx.moveTo(-4, H + 4);
-      for (let x = -4; x <= W + 8; x += 4) { const u = cam.p + (x - W / 2) / (cam.sx * fx); ctx.lineTo(x, yOf(fn(u))); }
+      for (const q of rp) ctx.lineTo(q[0], q[1]);
       ctx.lineTo(W + 8, H + 4); ctx.closePath();
       const g = ctx.createLinearGradient(0, yOf(8800), 0, yOf(3000));
       const snow = mixc(tint([244, 248, 252]), HAZE, haze), rock = mixc(tint(base), HAZE, haze * 0.85);
@@ -308,20 +311,49 @@
       g.addColorStop(0, css(snow)); g.addColorStop(s1, css(snow)); g.addColorStop(s2, css(rock));
       g.addColorStop(1, css(mixc(rock, HAZE, 0.35)));
       ctx.fillStyle = g; ctx.fill();
+      // shadow faces: every stretch of ridge that falls away to the right is in shade
+      ctx.save(); ctx.clip();
+      ctx.beginPath();
+      // one polygon per continuous shaded run (gaps of a sample or two are bridged)
+      const depth = Math.max(60, H * (fy > 0.25 ? 0.16 : 0.22));
+      const n = rp.length - 1, sh = new Array(n);
+      for (let i = 0; i < n; i++) { const lo = rp[Math.max(0, i - 3)], hi = rp[Math.min(n, i + 4)]; sh[i] = hi[1] - lo[1] > 2.5; }
+      for (let i = 1; i < n - 2; i++) if (!sh[i] && sh[i - 1] && (sh[i + 1] || sh[i + 2])) sh[i] = true;
+      for (let i = 0; i < n; i++) {
+        if (!sh[i]) continue;
+        let j = i; while (j + 1 < n && sh[j + 1]) j++;
+        // the shadow hugs the ridge, as deep as the face falls, so it ends in a slant, not a column
+        const drop = rp[j + 1][1] - rp[i][1];
+        if (j - i >= 4 && drop > 12) {
+          const dp = Math.min(depth, drop * 1.6);
+          for (let k = i; k <= j + 1; k++) k === i ? ctx.moveTo(rp[k][0], rp[k][1]) : ctx.lineTo(rp[k][0], rp[k][1]);
+          for (let k = j + 1; k >= i; k--) ctx.lineTo(rp[k][0] - dp * 0.35, rp[k][1] + dp);
+          ctx.closePath();
+        }
+        i = j;
+      }
+      ctx.fillStyle = css(mixc(tint([38, 50, 104]), HAZE, haze * 0.6), shade);
+      ctx.fill();
+      // aerial perspective: the foot of each range dissolves into haze
+      const hg = ctx.createLinearGradient(0, yOf(5200), 0, yOf(3300));
+      hg.addColorStop(0, css(HAZE, 0)); hg.addColorStop(1, css(HAZE, 0.55));
+      ctx.fillStyle = hg; ctx.fillRect(-4, yOf(5200), W + 12, H);
+      ctx.restore();
     }
     function plate(x, y, title, sub, opts) {
       const o = Object.assign({ align: 'left', small: false, accent: false }, opts);
       const fs = o.small ? 11 : 12.5;
-      ctx.font = `700 ${fs}px "Atkinson Hyperlegible", system-ui, sans-serif`;
-      const t = sub ? `${title} · ${sub}` : title;
-      const tw = ctx.measureText(t).width, pw = tw + 14, ph = fs + 9;
+      const fT = `700 ${fs}px "Atkinson Hyperlegible", system-ui, sans-serif`, fS = `400 ${fs}px "Atkinson Hyperlegible", system-ui, sans-serif`;
+      ctx.font = fT; const tw = ctx.measureText(title).width;
+      ctx.font = fS; const sw = sub ? ctx.measureText(sub).width + 6 : 0;
+      const pw = tw + sw + 14, ph = fs + 10;
       let px = o.align === 'right' ? x - pw : o.align === 'center' ? x - pw / 2 : x;
       px = clamp(px, 4, W - pw - 4);
-      ctx.fillStyle = o.accent ? 'rgba(207,74,18,0.95)' : 'rgba(251,246,234,0.93)';
-      rr(px, y - ph / 2, pw, ph, 5); ctx.fill();
-      ctx.fillStyle = o.accent ? '#fff' : '#1b2440';
+      ctx.fillStyle = o.accent ? '#ff5a1f' : 'rgba(20,28,52,0.82)';
+      rr(px, y - ph / 2, pw, ph, 3); ctx.fill();
       ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-      ctx.fillText(t, px + 7, y + 0.5);
+      ctx.font = fT; ctx.fillStyle = '#fff'; ctx.fillText(title, px + 7, y + 0.5);
+      if (sub) { ctx.font = fS; ctx.fillStyle = o.accent ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.66)'; ctx.fillText(sub, px + 7 + tw + 6, y + 0.5); }
       return { x: px, w: pw, h: ph };
     }
     function flags(x1, y1, x2, y2, s, n) {
@@ -370,7 +402,7 @@
       const sky = skyAt(timeAlt);
       AMB = sky.amb; HAZE = sky.bot;
       const g = ctx.createLinearGradient(0, 0, 0, H);
-      g.addColorStop(0, css(sky.top)); g.addColorStop(1, css(sky.bot));
+      g.addColorStop(0, css(sky.top)); g.addColorStop(0.62, css(mixc(sky.top, sky.bot, 0.78))); g.addColorStop(1, css(mixc(sky.bot, [255, 248, 236], 0.18)));
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 
       if (sky.star > 0.02) {
@@ -386,9 +418,10 @@
       if (sunA > 0) {
         const sx = W * (0.14 + 0.76 * t), sy = H * (0.5 - 0.4 * Math.sin(Math.PI * Math.min(t, 0.98)));
         const scol = t < 0.25 ? mixc(hex('#ffc9a0'), hex('#fff4d6'), t / 0.25) : t < 0.7 ? hex('#fff4d6') : mixc(hex('#ffd08a'), hex('#ff7a59'), (t - 0.7) / 0.3);
-        const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 150);
-        glow.addColorStop(0, css(scol, 0.55 * sunA)); glow.addColorStop(1, css(scol, 0));
-        ctx.fillStyle = glow; ctx.fillRect(sx - 150, sy - 150, 300, 300);
+        const gr = Math.max(180, Math.min(W, H) * 0.5);
+        const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, gr);
+        glow.addColorStop(0, css(scol, 0.55 * sunA)); glow.addColorStop(0.18, css(scol, 0.22 * sunA)); glow.addColorStop(1, css(scol, 0));
+        ctx.fillStyle = glow; ctx.fillRect(sx - gr, sy - gr, gr * 2, gr * 2);
         ctx.fillStyle = css(scol, sunA); ctx.beginPath(); ctx.arc(sx, sy, 15, 0, Math.PI * 2); ctx.fill();
       }
       const moonA = clamp((t - 0.82) / 0.12, 0, 1);
@@ -398,8 +431,8 @@
         ctx.fillStyle = css(sky.top, moonA); ctx.beginPath(); ctx.arc(mx + 6, my - 3, 12, 0, Math.PI * 2); ctx.fill();
       }
 
-      range(farAlt, 0.22, 0.17, [150, 160, 182], 0.55, 6000);
-      range(midAlt, 0.45, 0.3, [110, 118, 128], 0.32, 5300);
+      range(farAlt, 0.22, 0.17, [150, 160, 182], 0.55, 6000, 0.16);
+      range(midAlt, 0.45, 0.3, [104, 112, 126], 0.32, 5300, 0.24);
 
       // cloud sea
       if (cam.sy > 0.2) {
@@ -427,8 +460,26 @@
       ctx.save(); ctx.clip();
       const s = clamp(cam.sy / 0.55, 0.3, 1.35);
       // yellow band on the Lhotse face
-      ctx.fillStyle = css(tint([201, 170, 104]), 0.38);
-      ctx.fillRect(X(0.74), Y(7760), Math.max(0, X(0.93) - X(0.74)), Math.max(1, Y(7560) - Y(7760)));
+      {
+        const bx0 = X(0.73), bx1 = X(0.94), y0 = Y(7780), y1 = Y(7540);
+        if (bx1 > 0 && bx0 < W && y1 > y0) {
+          const bc = tint([201, 170, 104]);
+          const bg = ctx.createLinearGradient(0, y0, 0, y1);
+          bg.addColorStop(0, css(bc, 0)); bg.addColorStop(0.3, css(bc, 0.34)); bg.addColorStop(0.7, css(bc, 0.34)); bg.addColorStop(1, css(bc, 0));
+          ctx.fillStyle = bg;
+          ctx.save(); ctx.globalAlpha = 0.9;
+          ctx.beginPath(); ctx.moveTo(bx0, y0 + 10); ctx.lineTo(bx1, y0 - 6); ctx.lineTo(bx1, y1 - 6); ctx.lineTo(bx0, y1 + 10); ctx.closePath(); ctx.fill();
+          ctx.restore();
+        }
+      }
+      // rock facets: short ridges falling away to the right sit in shade
+      ctx.beginPath();
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1];
+        const lo = pts[Math.max(0, i - 2)], hi = pts[Math.min(pts.length - 1, i + 3)];
+        if (hi[1] - lo[1] > 1.5) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0] + 0.5, b[1]); ctx.lineTo(b[0] + 0.5, b[1] + 46 * s); ctx.lineTo(a[0], a[1] + 46 * s); ctx.closePath(); }
+      }
+      ctx.fillStyle = 'rgba(22,34,78,0.13)'; ctx.fill();
       // shaded body under a lit rim
       for (const [depth, al] of [[22, 0.16], [70, 0.12], [160, 0.1]]) {
         ctx.beginPath(); ctx.moveTo(-6, H + 10);
@@ -550,8 +601,9 @@
           const left = !['lukla', 'camp1'].includes(m.id);
           plate(left ? x - 8 : x + 8, y - (m.id === 'summit' ? 14 : m.id === 'teahouse' ? 13 : 6), m.short, fmt(m.alt) + ' m', { align: left ? 'right' : 'left', small: true });
         } else {
-          ctx.strokeStyle = 'rgba(40,40,40,0.7)'; ctx.lineWidth = 1.2;
+          ctx.strokeStyle = 'rgba(20,28,52,0.75)'; ctx.lineWidth = 1.4;
           ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 30); ctx.stroke();
+          ctx.fillStyle = 'rgba(20,28,52,0.75)'; ctx.beginPath(); ctx.ellipse(x, y, 3, 1.2, 0, 0, Math.PI * 2); ctx.fill();
           plate(x - 4, y - 38, m.short, fmt(m.alt) + ' m', { align: 'right' });
         }
       }
@@ -827,7 +879,7 @@
     G.today = E.localDateStr();
     G.puzzle = E.puzzleNumber(G.today);
     $('#home-num').textContent = 'No. ' + G.puzzle;
-    $('#home-date').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) + ' · Climb No. ' + G.puzzle;
+    $('#home-date').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     const r = Store.data.rounds[G.today];
     const done = !!(r && r.completed);
     const best = bestAltitude();
@@ -921,7 +973,7 @@
     ui.category.textContent = G.cats[i].text;
     ui.category.classList.remove('veiled');
     $('#leg-label').textContent = G.mode === 'practice' ? 'Practice climb' : `Leg ${i + 1} of 7`;
-    $('#leg-mult').textContent = `${Math.round(secs)} s · ×${conf.mult}`;
+    $('#leg-mult').textContent = `${Math.round(secs)} s  ×${conf.mult}`;
     ui.chips.innerHTML = '';
     ui.feedback.textContent = '';
     ui.feedback.className = 'feedback';
@@ -1070,7 +1122,7 @@
 
   // Floating "+N m" over the answer box for every find below the spotlight ranks.
   function gainPop(ans, eff) {
-    const card = $('.play-card');
+    const card = $('.answer-form');
     if (!card) return;
     const el = document.createElement('div');
     el.className = `gain-pop t${ans.tier}`;
@@ -1228,7 +1280,7 @@
     $('#tr-gain').innerHTML = o.checking ? 'Checking<small>…</small>' : `+${fmt(E.legEffective(leg.raw))}<small> m</small>`;
     const found = leg.answers.filter((a) => a.s === 'ok');
     const rare = found.reduce((m, a) => Math.max(m, a.tier), -1);
-    $('#tr-note').textContent = o.checking ? 'Waiting for answer checks' : found.length ? `${found.length} answer${found.length === 1 ? '' : 's'} · best find ${tierName(rare)}` : 'No answers this leg';
+    $('#tr-note').textContent = o.checking ? 'Waiting for answer checks' : found.length ? `${found.length} answer${found.length === 1 ? '' : 's'}, best find ${tierName(rare)}` : 'No answers this leg';
     $('#tr-alt').textContent = fmt(alt) + ' m';
     $('#tr-next-row').hidden = !nx;
     $('#tr-next').hidden = !nx;
@@ -1237,8 +1289,8 @@
     $('#tr-leg-row').hidden = !showLeg;
     if (showLeg) {
       const c = C.legs[nxt];
-      $('#tr-leg').textContent = `Leg ${nxt + 1}${nxt >= 5 ? ' · summit push' : ''}`;
-      $('#tr-leg-info').textContent = `${Math.round(c.secs * (G.round.extra ? C.extraTimeFactor : 1))} s · ×${c.mult}`;
+      $('#tr-leg').textContent = nxt >= 5 ? `Leg ${nxt + 1}, summit push` : `Leg ${nxt + 1}`;
+      $('#tr-leg-info').textContent = `${Math.round(c.secs * (G.round.extra ? C.extraTimeFactor : 1))} s  ×${c.mult}`;
     }
     const acts = $('#tr-actions'); acts.hidden = true; acts.innerHTML = '';
     tr.hidden = false;
@@ -1325,7 +1377,7 @@
     const note = r.final >= C.summitAlt ? 'You stood on the roof of the world.' : nx ? `${fmt(nx.alt - r.final)} m short of ${nx.name}.` : '';
     const html = `
       <header class="res-head">
-        <p class="eyebrow">Daily Ascent No. ${r.puzzle} · ${esc(dateLabel)}</p>
+        <p class="eyebrow">Climb ${r.puzzle}, ${esc(dateLabel)}</p>
         <h2 class="res-mile">${esc(m.name)}</h2>
         <p class="res-alt">${fmt(r.final)}<small> m</small></p>
         <p class="res-note">${isPB ? '<span class="pb">Personal best</span>' : ''}${esc(note)}</p>
@@ -1502,7 +1554,7 @@
       G.state = 'leg';
       ui.category.textContent = G.cats[G.legIdx].text; ui.category.classList.remove('veiled');
       $('#leg-label').textContent = `Leg ${G.legIdx + 1} of 7`;
-      $('#leg-mult').textContent = `${Math.round(leg.total / 1000)} s · ×${C.legs[G.legIdx].mult}`;
+      $('#leg-mult').textContent = `${Math.round(leg.total / 1000)} s  ×${C.legs[G.legIdx].mult}`;
       leg.answers.filter((a) => a.s === 'ok').forEach((a) => ui.chips.prepend(chipEl(a)));
       renderLegDots(); setNight();
     } else if (G.legIdx >= 6 && leg && leg.ended) finishRound();

@@ -23,12 +23,21 @@ The original spec is `docs/product-spec.md`. Where the code differs from it, §1
 
 ### Art direction and tone
 
-- **Mountain:** flat-shaded and illustrated, with parallax layers. It is not photoreal. The base is warm and green, and it gets stark and white higher up.
+- **Visual system ("Khumbu dawn"):** the mountain is the hero; the UI is trail equipment.
+  - **Snowfield panels** for content: opaque, crisp 6–10px corners, one soft shadow. No glass blur, no pill soup.
+  - **Khumbu-ink plates** (`--plate`) for instruments on the sky: the seven-peak leg trail, the altimeter, the next-landmark plate, the icon buttons and the canvas landmark signs.
+  - **One loud colour:** down-suit orange for the thing to press. Buttons are pressable, with a solid lip (`--accent-lip`) that compresses on press.
+  - **Answers are trail-blaze tags:** a coloured bar in the rank colour, plus the word and the gain.
+  - **Labels are sentence case.** Uppercase is reserved for display-face signage (category names, headings, buttons).
+- **Mountain:** flat-shaded and illustrated, with parallax layers. It is not photoreal. The base is warm and green, and it gets stark and white higher up. The distant ranges have faceted shadow faces (light from the left) and dissolve into haze at their feet.
 - **Sky:** it moves through one "day" as the climber rises: dawn at Lukla, then midday, golden hour, dusk at the Death Zone and stars at the summit. Legs 6–7, the "summit push", switch the UI to night panels.
-- **Colors:** the accent is expedition orange, the color of down suits and oxygen bottles. Panels are snow-white or glacier-blue. The five prayer-flag colors appear only in flags and confetti.
+- **Colors:**
+  - Palette: Khumbu ink `#17203a`, snowfield `#f3f6f9`, glacier `#cfdbe7`, and down-suit orange `#ff5a1f` (`#d4460c` for text-size uses).
+  - Rank colours: slate, juniper, glacier blue, aurora violet and oxygen gold.
+  - The five prayer-flag colours appear only in flags and confetti.
 - **Type:**
-  - Big Shoulders Display for category names and numbers.
-  - Big Shoulders Stencil Display (gear-crate stencil) for the wordmark and milestone names.
+  - Big Shoulders Display for category names and all numbers.
+  - Big Shoulders Stencil Display (gear-crate stencil) only for the wordmark, milestone names and spotlight rank tags.
   - Atkinson Hyperlegible for UI text.
 - **Copy:** short, plain and specific. Errors say what happened and what it cost ("“zzq” isn't a match · −1 s").
 
@@ -332,7 +341,7 @@ Streaks (`updateStreak`, `liveStreak`): playing the day after your last climb ex
 
 ### 8.2 Icons: `ICON[tier]`
 
-These are inline 14×14 SVG strings that use `currentColor`, colored through a `.t0`–`.t5` class that sets `--c`. They are trusted markup; never build them from user input.
+These are inline 14×14 SVG strings that use `currentColor`, colored through a `.t0`–`.t4` class that sets `--c`. They are trusted markup; never build them from user input.
 
 ### 8.3 Sound: `Sound`
 
@@ -412,16 +421,20 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 ## 9. UI and design system (`src/shell.html`)
 
 - **Tokens** are defined on `:root`, light by default, with the dark set under `prefers-color-scheme` and `[data-theme="dark"]`:
-  - surfaces: `--bg`, `--panel` (frosted), `--panel-solid`, `--panel-edge`, `--line`, `--plate`, `--shadow`
+  - palette: `--khumbu`, `--snow`, `--glacier`, `--suit`, `--suit-deep`, `--suit-lip`
+  - surfaces: `--bg`, `--panel` (opaque snowfield), `--panel-solid`, `--panel-edge`, `--line`, `--track` (timer and bar tracks), `--plate` (ink instrument plates), `--shadow`, `--shadow-sm`
+  - motion: `--ease-out`, `--ease-spring`
   - text: `--ink`, `--ink-2`, `--ink-3`
   - action and state: `--accent` / `--accent-hi` / `--accent-ink`, `--bad`
-  - tier colors: `--t0` … `--t5`
+  - rank colors: `--t0` … `--t4`
   - fonts and radius: `--f-display`, `--f-stencil`, `--f-body`, `--r`
 
   **`.night`** on `#app` swaps the panel tokens to night values (legs 6–7, any altitude ≥ 8,000 m, and results that finish ≥ 8,000 m).
 - **Layout:**
   - `#scene` is a fixed full-viewport canvas behind `#app`. Each screen is an absolutely positioned flex column with safe-area gutters (`max(16px, env(safe-area-inset-*))`).
-  - Breakpoints: `min-width: 900px` (results sheet docks right, home card shifts left, the mountain fills the rest) and `max-height: 640px` (compact leg screen).
+  - On phones, the home card and the results sheet are bottom sheets flush to the screen edges.
+  - Breakpoints: `min-width: 900px` (results sheet docks right, home card floats left, the mountain fills the rest), `max-height: 640px` (compact leg screen) and `max-width: 360px` (tighter HUD).
+  - Between legs, `.play:has(#transition:not([hidden]))` fades the leg card out, so the camp report has the screen to itself. The input keeps focus.
   - `.reduced` on `<html>` kills animations, matching the OS reduced-motion media query.
 - **Key element ids:**
   - Home: `#btn-begin`, `#btn-practice`, `#judge-row`, `#fact-*`.
