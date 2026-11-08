@@ -17,7 +17,7 @@ Moving to your own domain later: add a `CNAME` file in GitHub Pages settings. To
 | File | What it is |
 | --- | --- |
 | `src/engine.js` | Config, normalization, matching (exact → alias → fuzzy), scoring, daily deal, judge prompt. No DOM. |
-| `src/data-*.js` | The answer bank: 49 categories plus a practice one, about 12,700 answers in six rarity tiers. |
+| `src/data-*.js` | The answer bank: 49 categories plus a practice one, about 12,700 answers, scored across five climber ranks (Crawler, Hiker, Climber, Mountaineer, Sherpa). |
 | `src/app.js` | Canvas mountain, sound, answer checking, game flow, results, stats. |
 | `src/shell.html` | Markup and styles. |
 | `build.mjs` | `node build.mjs` writes `index.html` (the playable page, committed for GitHub Pages) and `dist/game.html` (Claude artifact body, git-ignored). |
@@ -26,7 +26,7 @@ Moving to your own domain later: add a `CNAME` file in GitHub Pages settings. To
 
 ## Tuning
 
-Every number lives in `CONFIG` at the top of `src/engine.js`: leg timers and multipliers, tier gains, chain bonus, leg cap, penalties, judge thresholds. Change, run `node test.mjs` to see the simulated altitude distribution, then `node build.mjs`.
+Every number lives in `CONFIG` at the top of `src/engine.js`: leg timers and multipliers, rank gains, chain bonus, leg cap, penalties, judge thresholds. Change, run `node test.mjs` to see the simulated altitude distribution, then `node build.mjs`.
 
 ## Adding categories
 

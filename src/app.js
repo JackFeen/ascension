@@ -30,6 +30,13 @@
       d.settings = Object.assign({ sound: false, reduced: null, extra: false }, d.settings);
       d.rounds = d.rounds && typeof d.rounds === 'object' ? d.rounds : {};
       d.streak = Object.assign({ current: 0, best: 0, last: null, tokens: 0 }, d.streak);
+      // v1 rounds used six tiers (common…legendary); fold them onto the five ranks.
+      const OLD = [0, 0, 1, 2, 3, 4];
+      for (const r of Object.values(d.rounds)) {
+        if (!r || r.v !== 1) continue;
+        (r.legs || []).forEach((l) => l && (l.answers || []).forEach((a) => { if (typeof a.tier === 'number') a.tier = OLD[a.tier] != null ? OLD[a.tier] : 4; }));
+        r.v = 2;
+      }
       this.data = d;
     },
     save() { try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch (e) { /* private mode */ } },
@@ -40,7 +47,6 @@
   // ===========================================================================
   const ICON = [
     '<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="3.3" fill="currentColor"/></svg>',
-    '<svg viewBox="0 0 14 14" aria-hidden="true" fill="currentColor"><ellipse cx="7" cy="11.4" rx="5.6" ry="2.1"/><ellipse cx="7" cy="7.5" rx="4.1" ry="1.9"/><ellipse cx="7" cy="4" rx="2.7" ry="1.7"/></svg>',
     '<svg viewBox="0 0 14 14" aria-hidden="true" fill="currentColor"><path d="M7 .6 11.8 7H9.3l3.1 4.6H8v1.9H6v-1.9H1.6l3.1-4.6H2.2Z"/></svg>',
     '<svg viewBox="0 0 14 14" aria-hidden="true" fill="currentColor"><path d="M7 .5 13.5 7 7 13.5.5 7Z"/></svg>',
     '<svg viewBox="0 0 14 14" aria-hidden="true" fill="currentColor"><path d="M7 .2c.6 4.3 2.2 5.9 6.8 6.8C9.2 7.9 7.6 9.5 7 13.8 6.4 9.5 4.8 7.9.2 7 4.8 6.1 6.4 4.5 7 .2Z"/></svg>',
@@ -98,12 +104,19 @@
       if (!c) return;
       const t = c.currentTime + 0.01;
       switch (kind) {
-        case 't0': this.tone(988, t, 0.12, { vol: 0.09 }); break;
-        case 't1': this.tone(659, t, 0.1, { vol: 0.1, type: 'triangle' }); this.tone(988, t + 0.07, 0.16, { vol: 0.1, type: 'triangle' }); break;
-        case 't2': [523, 659, 784].forEach((f, i) => this.tone(f, t + i * 0.06, 0.24, { vol: 0.1, type: 'triangle' })); break;
-        case 't3': [784, 988, 1175].forEach((f, i) => this.bell(f, t + i * 0.07, 0.9, 0.08)); break;
-        case 't4': [880, 1109, 1319, 1760].forEach((f, i) => this.bell(f, t + i * 0.06, 1.2, 0.07)); this.bell(2217, t + 0.3, 1.4, 0.05); break;
-        case 't5': this.bell(196, t, 4.2, 0.2); this.bell(293.7, t + 0.04, 3.6, 0.1); [440, 554, 659, 880].forEach((f, i) => this.tone(f, t + 0.15 + i * 0.09, 1.9, { vol: 0.06, attack: 0.08 })); break;
+        case 't0': this.tone(988, t, 0.12, { vol: 0.09 }); this.tone(1319, t + 0.05, 0.1, { vol: 0.05 }); break;
+        case 't1': [523, 659, 784].forEach((f, i) => this.tone(f, t + i * 0.06, 0.24, { vol: 0.1, type: 'triangle' })); break;
+        case 't2': [784, 988, 1175, 1568].forEach((f, i) => this.bell(f, t + i * 0.06, 0.9, 0.08)); break;
+        case 't3': // Mountaineer: low thump, rising bell arpeggio, sparkle on top
+          this.tone(110, t, 0.35, { vol: 0.18, glide: 55 });
+          [587, 740, 880, 1175, 1480].forEach((f, i) => this.bell(f, t + 0.05 + i * 0.07, 1.4, 0.08));
+          [2349, 2960].forEach((f, i) => this.bell(f, t + 0.45 + i * 0.08, 1.2, 0.04)); break;
+        case 't4': // Sherpa: singing bowl, brass-ish fanfare chord, shimmer
+          this.tone(82, t, 0.5, { vol: 0.22, glide: 41 }); this.hiss(t, 0.5, 0.05, 3000);
+          this.bell(196, t, 4.6, 0.22); this.bell(293.7, t + 0.04, 4, 0.12);
+          [392, 494, 587, 784].forEach((f, i) => this.tone(f, t + 0.12 + i * 0.08, 0.5, { vol: 0.07, type: 'sawtooth', attack: 0.02 }));
+          [523, 659, 784, 1047].forEach((f) => this.tone(f, t + 0.5, 2.2, { vol: 0.05, type: 'triangle', attack: 0.06 }));
+          [1568, 1976, 2349, 3136].forEach((f, i) => this.bell(f, t + 0.7 + i * 0.09, 1.6, 0.04)); break;
         case 'bad': this.tone(150, t, 0.22, { vol: 0.22, glide: 60 }); this.hiss(t, 0.12, 0.08, 900); break;
         case 'dup': this.tone(440, t, 0.1, { vol: 0.06 }); break;
         case 'tick': this.tone(1320, t, 0.04, { vol: 0.05, type: 'square' }); break;
@@ -566,7 +579,7 @@
       // bursts on rare finds
       for (let i = bursts.length - 1; i >= 0; i--) {
         const b = bursts[i]; b.t += dt;
-        const k = b.t / b.dur; if (k >= 1) { bursts.splice(i, 1); continue; }
+        const k = b.t / b.dur; if (k >= 1) { bursts.splice(i, 1); continue; } if (k < 0) continue;
         ctx.strokeStyle = css(b.c, (1 - k) * 0.9); ctx.lineWidth = 3 * (1 - k) + 1;
         ctx.beginPath(); ctx.arc(cx, cy - 12 * cs, 8 + k * b.r, 0, Math.PI * 2); ctx.stroke();
         for (const sp of b.sparks) {
@@ -589,7 +602,7 @@
         for (const w of streaks) { w.x += w.v * dt; if (w.x - w.l > W) { w.x = -10; w.y = Math.random() * H * 0.9; } ctx.moveTo(w.x - w.l, w.y); ctx.lineTo(w.x, w.y + 1); }
         ctx.stroke();
       }
-      // prayer-flag confetti for legendary finds
+      // prayer-flag confetti for Sherpa finds and summits
       for (let i = confetti.length - 1; i >= 0; i--) {
         const c = confetti[i]; c.life -= dt;
         if (c.life <= 0) { confetti.splice(i, 1); continue; }
@@ -630,16 +643,17 @@
       get alt() { return climb; },
       burst(tier) {
         if (reduced) return;
-        const cols = [[200, 205, 212], [214, 180, 130], [92, 197, 128], [99, 170, 245], [181, 140, 243], [255, 200, 70]];
-        const n = 6 + tier * 4, sparks = [];
-        for (let i = 0; i < n; i++) sparks.push({ a: Math.random() * Math.PI * 2, v: 30 + Math.random() * (40 + tier * 22) });
-        bursts.push({ t: 0, dur: 0.7 + tier * 0.12, r: 30 + tier * 16, c: cols[tier], sparks });
-        if (tier >= 3) cheerUntil = time + 0.9;
+        const cols = [[200, 205, 212], [92, 197, 128], [99, 170, 245], [181, 140, 243], [255, 200, 70]];
+        const s = tier * 1.4, n = 6 + Math.round(s * 5), sparks = [];
+        for (let i = 0; i < n; i++) sparks.push({ a: Math.random() * Math.PI * 2, v: 30 + Math.random() * (40 + s * 28) });
+        bursts.push({ t: 0, dur: 0.7 + s * 0.15, r: 30 + s * 22, c: cols[tier], sparks });
+        if (tier >= 3) bursts.push({ t: -0.15, dur: 1.2 + s * 0.12, r: 60 + s * 30, c: cols[tier], sparks: [] });
+        if (tier >= 2) cheerUntil = time + (tier >= 3 ? 1.6 : 0.9);
       },
       confetti() {
         if (reduced) return;
         const cols = ['#2f6fd0', '#f4f2ea', '#d8382b', '#2f9b4a', '#f2c230'];
-        for (let i = 0; i < 80; i++) confetti.push({ x: Math.random() * W, y: -20 - Math.random() * H * 0.4, vx: (Math.random() - 0.5) * 60, vy: 40 + Math.random() * 80, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 8, col: cols[i % 5], ph: Math.random() * 6, life: 2.6 + Math.random() * 1.2 });
+        for (let i = 0; i < 140; i++) confetti.push({ x: Math.random() * W, y: -20 - Math.random() * H * 0.4, vx: (Math.random() - 0.5) * 60, vy: 40 + Math.random() * 80, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 8, col: cols[i % 5], ph: Math.random() * 6, life: 2.6 + Math.random() * 1.2 });
       },
     };
   })();
@@ -740,7 +754,7 @@
   // ===========================================================================
   const G = {
     screen: 'home', state: 'idle', mode: 'daily', today: '', puzzle: 1, cats: [], index: [], round: null,
-    legIdx: 0, aid: 0, lastSubmit: 0, peek: false, lastSec: -1,
+    legIdx: 0, aid: 0, lastSubmit: 0, peek: false, lastSec: -1, pauseUntil: 0,
   };
   const ui = {
     home: $('#home'), play: $('#play'), results: $('#results'), app: $('#app'),
@@ -875,7 +889,7 @@
     Scene.setGhost(null);
     enterPlay();
     countdown().then(() => {
-      G.round = { v: 1, date: G.today, puzzle: G.puzzle, catIds: G.cats.map((c) => c.id), startedAt: now(), extra: !!Store.data.settings.extra, legs: [], completed: false };
+      G.round = { v: 2, date: G.today, puzzle: G.puzzle, catIds: G.cats.map((c) => c.id), startedAt: now(), extra: !!Store.data.settings.extra, legs: [], completed: false };
       Store.data.rounds[G.today] = G.round;
       startLeg(0);
     });
@@ -903,6 +917,7 @@
     save();
     G.state = 'leg';
     G.lastSec = -1;
+    clearSpotlight();
     ui.category.textContent = G.cats[i].text;
     ui.category.classList.remove('veiled');
     $('#leg-label').textContent = G.mode === 'practice' ? 'Practice climb' : `Leg ${i + 1} of 7`;
@@ -933,7 +948,7 @@
       ui.next.innerHTML = nx ? `Next: <b>${esc(nx.short)}</b> in ${fmt(nx.alt - alt)} m` : '<b>On the summit</b>';
       if (G.state === 'leg') {
         const leg = curLeg();
-        const rem = Math.max(0, leg.deadline - now());
+        const rem = Math.max(0, leg.deadline - Math.max(now(), G.pauseUntil));
         const k = rem / leg.total;
         ui.fill.style.setProperty('--k', k.toFixed(4));
         ui.fill.style.transform = `scaleX(${k.toFixed(4)})`;
@@ -997,6 +1012,7 @@
     if (G.state !== 'leg') { ui.input.value = ''; return; }
     const leg = curLeg();
     const t = now();
+    if (t < G.pauseUntil) return;   // spotlight up: keep the typed text for after
     if (t > leg.deadline) return;
     if (t - G.lastSubmit < C.minSubmitGapMs) return;
     const text = raw.trim();
@@ -1036,11 +1052,74 @@
     }
     Scene.setClimb(totalAltitude());
     Sound.play('t' + ans.tier);
-    if (ans.tier >= 3) { Scene.burst(ans.tier); buzz(ans.tier >= 4 ? [15, 40, 25] : 15); }
-    else Scene.burst(ans.tier);
-    if (ans.tier === 5) { Scene.confetti(); const f = $('#flash'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on'); buzz([20, 50, 20, 50, 40]); }
+    Scene.burst(ans.tier);
+    const live = legIdx === G.legIdx && G.screen === 'play';
+    if (ans.tier === 2) buzz(15);
+    if (ans.tier === 3) { flash('m'); buzz([15, 40, 25]); }
+    if (ans.tier === 4) { Scene.confetti(); flash('s'); buzz([20, 50, 20, 50, 40]); }
+    if (live && C.tiers[ans.tier].pause && G.state === 'leg') spotlight(ans, eff);
+    else if (live) gainPop(ans, eff);
     announce(`${ans.c}, ${tierName(ans.tier)}, plus ${eff} meters`);
     setNight();
+  }
+
+  function flash(kind) {
+    const f = $('#flash');
+    f.className = ''; void f.offsetWidth; f.className = 'on ' + kind;
+  }
+
+  // Floating "+N m" over the answer box for every find below the spotlight ranks.
+  function gainPop(ans, eff) {
+    const card = $('.play-card');
+    if (!card) return;
+    const el = document.createElement('div');
+    el.className = `gain-pop t${ans.tier}`;
+    el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = `${ICON[ans.tier]}+${fmt(eff)}<small> m</small>`;
+    card.appendChild(el);
+    setTimeout(() => el.remove(), 1100);
+  }
+
+  // Mountaineer and Sherpa finds freeze the leg and put the answer centre stage.
+  // The clock is held (deadline pushed back by the pause), Enter is ignored, and
+  // the input keeps focus so the keyboard stays up.
+  function spotlight(ans, eff) {
+    const ms = C.tiers[ans.tier].pause;
+    const leg = curLeg();
+    const t = now();
+    const from = Math.max(t, G.pauseUntil);
+    const until = Math.max(G.pauseUntil, t + ms);
+    leg.deadline += until - from;
+    G.pauseUntil = until;
+    save();
+    const box = $('#spot');
+    box.className = `overlay spot t${ans.tier}`;
+    $('#spot-rank').innerHTML = `${ICON[ans.tier]}<span>${tierName(ans.tier)}</span>`;
+    $('#spot-word').textContent = ans.c;
+    $('#spot-cat').textContent = G.cats[G.legIdx] ? G.cats[G.legIdx].text : '';
+    const num = $('#spot-gain');
+    box.hidden = false;
+    void box.offsetWidth;
+    box.classList.add('on');
+    $('.play-inner').classList.remove('quake'); void box.offsetWidth;
+    if (ans.tier >= 4 && !isReduced()) $('.play-inner').classList.add('quake');
+    // count the meters up
+    const t0 = performance.now(), dur = isReduced() ? 0 : Math.min(600, ms * 0.5);
+    const tick = (ts) => {
+      const k = dur ? Math.min(1, (ts - t0) / dur) : 1;
+      num.innerHTML = `+${fmt(Math.round(eff * (1 - Math.pow(1 - k, 3))))}<small> m</small>`;
+      if (k < 1 && !box.hidden) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    clearTimeout(G.spotT);
+    G.spotT = setTimeout(clearSpotlight, until - t);
+  }
+  function clearSpotlight() {
+    clearTimeout(G.spotT);
+    G.pauseUntil = 0;
+    const box = $('#spot');
+    if (box) { box.hidden = true; box.classList.remove('on'); }
+    const pi = $('.play-inner'); if (pi) pi.classList.remove('quake');
   }
 
   function reject(leg, text, norm, penalize) {
@@ -1107,6 +1186,7 @@
   async function endLeg() {
     if (G.state !== 'leg') return;
     G.state = 'settle';
+    clearSpotlight();
     const leg = curLeg();
     ui.fill.style.transform = 'scaleX(0)';
     ui.secs.textContent = '0';
@@ -1223,7 +1303,7 @@
     const answers = [];
     r.legs.forEach((l, i) => l && l.answers.forEach((a) => { if (a.s === 'ok') answers.push(Object.assign({ cat: cats[i].text }, a)); }));
     const best = answers.slice().sort((a, b) => b.tier - a.tier || b.raw - a.raw).slice(0, 3);
-    // missed gems: one rare or epic answer per category the player did not find
+    // missed gems: one Climber or Mountaineer answer per category the player did not find
     const gems = [];
     const rng = E.rng(E.hashStr('gems:' + r.puzzle));
     const order = E.shuffled(cats.map((_, i) => i), E.hashStr('gem-order:' + r.puzzle));
@@ -1231,7 +1311,7 @@
       if (gems.length >= 4) break;
       const ix = E.buildIndex(cats[i]);
       const found = new Set((r.legs[i] ? r.legs[i].answers : []).filter((a) => a.s === 'ok').map((a) => a.eid));
-      const pool = ix.entries.filter((e) => (e.tier === 3 || e.tier === 4) && !found.has(e.id));
+      const pool = ix.entries.filter((e) => (e.tier === 2 || e.tier === 3) && !found.has(e.id));
       if (pool.length) gems.push({ e: pool[Math.floor(rng() * pool.length)], cat: cats[i].text });
     }
     const st = liveStreak();
@@ -1274,7 +1354,7 @@
     $('#btn-res-stats').onclick = openStats;
     if (o && o.fresh) {
       announce(`Climb complete. ${fmt(r.final)} meters, ${m.name}.`);
-      if (r.final >= C.summitAlt) { Scene.confetti(); Sound.play('t5'); }
+      if (r.final >= C.summitAlt) { Scene.confetti(); Sound.play('t4'); }
     }
     $('.res-mile').setAttribute('tabindex', '-1');
     $('.res-mile').focus({ preventScroll: true });
@@ -1324,7 +1404,7 @@
     const avg = n ? rs.reduce((s, r) => s + r.final, 0) / n : 0;
     const best = n ? Math.max(...rs.map((r) => r.final)) : 0;
     const summits = rs.filter((r) => r.final >= C.summitAlt).length;
-    const dist = [0, 0, 0, 0, 0, 0];
+    const dist = C.tiers.map(() => 0);
     let rarest = null;
     rs.forEach((r) => r.legs.forEach((l, i) => l && l.answers.forEach((a) => {
       if (a.s !== 'ok') return;
@@ -1396,7 +1476,7 @@
   $('#btn-settings').addEventListener('click', openSettings);
   $('#btn-sound').addEventListener('click', () => {
     Store.data.settings.sound = !Store.data.settings.sound; Store.save(); applySound();
-    if (Store.data.settings.sound) { Sound.ensure(); Sound.play('t2'); }
+    if (Store.data.settings.sound) { Sound.ensure(); Sound.play('t1'); }
   });
   $('#btn-judge').addEventListener('click', () => Judge.enable());
   $('#set-judge').addEventListener('click', () => Judge.enable());
