@@ -24,7 +24,7 @@
     // one wildcard, one harder knowledge category to finish.
     legKinds: ['broad', 'broad', 'mid', 'mid', 'wild', 'mid', 'hard'],
     countdownSecs: 3,
-    transitionMs: 2500,
+    transitionMs: 3500,
     invalidPenaltySecs: 1,          // open question 3: invalid costs time, not altitude
     maxAcceptedPerLeg: 30,
     minSubmitGapMs: 150,
@@ -34,21 +34,23 @@
     legFullUpTo: 750,               // raw gain counted in full up to here (spec draft: 900)
     legOverRate: 0.35,              // then at 35% (spec draft: 50%)
     legCap: 1000,                   // effective cap per leg (spec draft: 1,200)
-    // Six rarity tiers (spec §5.6). Gains reconcile §6.1's four values with the
-    // six tiers; caps and gains were tuned by simulation toward the §4 targets
-    // (summit ≈ 5%). Re-tune once real play data exists.
+    // Five climber ranks (spec §6.1 names, plus Climber in the middle). `keys`
+    // are the data-file tier keys folded into each rank: the answer bank keeps
+    // its six-way c/f/u/r/e/l split, and Crawler takes both obvious tiers so
+    // Mountaineer and Sherpa stay scarce. `pause` = ms the leg freezes to
+    // spotlight the find (the leg timer is held, not spent). Gains were tuned
+    // by simulation toward the §4 targets (summit ≈ 5%).
     tiers: [
-      { id: 'common',    key: 'c', name: 'Common',    theme: 'Trail dust',  min: 0.60, gain: 45,   emoji: '⬜' },
-      { id: 'familiar',  key: 'f', name: 'Familiar',  theme: 'Cairn',       min: 0.30, gain: 75,   emoji: '🟫' },
-      { id: 'uncommon',  key: 'u', name: 'Uncommon',  theme: 'Pine',        min: 0.10, gain: 120, emoji: '🟩' },
-      { id: 'rare',      key: 'r', name: 'Rare',      theme: 'Glacier',     min: 0.03, gain: 200, emoji: '🟦' },
-      { id: 'epic',      key: 'e', name: 'Epic',      theme: 'Aurora',      min: 0.01, gain: 320, emoji: '🟪' },
-      { id: 'legendary', key: 'l', name: 'Legendary', theme: 'Summit gold', min: 0.00, gain: 500, emoji: '🟨' },
+      { id: 'crawler',     keys: ['c', 'f'], name: 'Crawler',     theme: 'Trail dust',  min: 0.30, gain: 55,  emoji: '⬜', pause: 0 },
+      { id: 'hiker',       keys: ['u'],      name: 'Hiker',       theme: 'Pine',        min: 0.10, gain: 120, emoji: '🟩', pause: 0 },
+      { id: 'climber',     keys: ['r'],      name: 'Climber',     theme: 'Glacier',     min: 0.03, gain: 200, emoji: '🟦', pause: 0 },
+      { id: 'mountaineer', keys: ['e'],      name: 'Mountaineer', theme: 'Aurora',      min: 0.01, gain: 320, emoji: '🟪', pause: 1000 },
+      { id: 'sherpa',      keys: ['l'],      name: 'Sherpa',      theme: 'Summit gold', min: 0.00, gain: 500, emoji: '🟨', pause: 1400 },
     ],
     noFindEmoji: '⬛',
     judge: {
       confident: 0.6,               // below this, a "valid" verdict is capped…
-      lowConfidenceMaxTier: 2,      // …at Uncommon (tier index)
+      lowConfidenceMaxTier: 1,      // …at Hiker (tier index)
       maxPerLeg: 12,                // novel answers sent for checking per leg
       batchDelayMs: 220,
       maxBatch: 6,
@@ -173,7 +175,7 @@
     const forms = [];          // [normalized form, entry id] for fuzzy matching
     const stripped = [];       // affix-free forms, added after all real forms
     CONFIG.tiers.forEach((tier, tierIdx) => {
-      const raw = (cat.a && cat.a[tier.key]) || '';
+      const raw = tier.keys.map((k) => (cat.a && cat.a[k]) || '').filter(Boolean).join(',');
       raw.split(',').forEach((chunk) => {
         const parts = chunk.split('=').map((x) => x.trim()).filter(Boolean);
         if (!parts.length) return;

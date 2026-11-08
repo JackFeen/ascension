@@ -35,7 +35,7 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
   const legs = await f.evaluate(() => {
     const E = DA_ENGINE;
     const cats = E.dailyCategories({ categories: DA_CATS.filter((c) => c.kind !== 'practice') }, E.puzzleNumber(E.localDateStr()));
-    return cats.map((c) => { const ix = E.buildIndex(c); return { text: c.text, words: [0, 1, 2, 3].map((t) => (ix.entries.find((e) => e.tier === t) || {}).canon).filter(Boolean) }; });
+    return cats.map((c) => { const ix = E.buildIndex(c); return { text: c.text, words: [0, 1, 2, 3, 4].map((t) => { const e = ix.entries.find((x) => x.tier === t); return e && { w: e.canon, t }; }).filter(Boolean) }; });
   });
   await f.click('#btn-begin');
   await page.waitForTimeout(1300);
@@ -44,7 +44,18 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
     const shown = await f.textContent('#category');
     if (shown !== legs[i].text) fail(`leg ${i + 1} shows "${shown}", expected "${legs[i].text}"`);
     await f.click('#answer');
-    for (const w of legs[i].words) { await page.keyboard.type(w); await page.keyboard.press('Enter'); await page.waitForTimeout(170); }
+    for (const { w, t } of legs[i].words) {
+      await page.keyboard.type(w); await page.keyboard.press('Enter');
+      if (t >= 3) {
+        // Mountaineer / Sherpa: the spotlight must appear, hold the clock, then clear.
+        try { await f.waitForSelector('#spot:not([hidden])', { timeout: 1500 }); } catch (e) { fail(`leg ${i + 1}: no spotlight for "${w}"`); continue; }
+        const rank = await f.textContent('#spot-rank');
+        if (rank !== (t === 3 ? 'Mountaineer' : 'Sherpa')) fail(`leg ${i + 1}: spotlight rank "${rank}"`);
+        if (i === 0) await page.screenshot({ path: path.join(SHOTS, `spot-t${t}.png`) });
+        await f.waitForSelector('#spot', { state: 'hidden', timeout: 4000 });
+      }
+      await page.waitForTimeout(170);
+    }
     await page.keyboard.type('zzqxv'); await page.keyboard.press('Enter'); await page.waitForTimeout(170);
     const chips = await f.locator('.chip:not(.rejected)').count();
     if (chips !== legs[i].words.length) fail(`leg ${i + 1}: ${chips} chips for ${legs[i].words.length} valid answers`);

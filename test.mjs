@@ -92,16 +92,17 @@ ok(idx.usstates.entries.length === 50, 'states ' + idx.usstates.entries.length);
 ok(idx.africa.entries.filter((e) => e.canon !== 'Western Sahara').length === 54, 'africa ' + idx.africa.entries.length);
 
 // ---- scoring
-ok(E.answerGain(0, 0, 0) === 45, 'common gain leg1');
-ok(E.answerGain(5, 10, 6) === Math.round(500 * 1.25 * 1.5), 'legendary chained leg7');
+ok(E.answerGain(0, 0, 0) === 55, 'crawler gain leg1');
+ok(E.answerGain(4, 10, 6) === Math.round(500 * 1.25 * 1.5), 'sherpa chained leg7');
+ok(E.CONFIG.tiers.map((t) => t.name).join() === 'Crawler,Hiker,Climber,Mountaineer,Sherpa', 'rank names');
 ok(E.legEffective(750) === 750 && E.legEffective(950) === 820 && E.legEffective(5000) === 1000, 'leg cap');
 ok(E.finalAltitude([5000, 5000, 5000, 5000, 5000, 5000, 5000]) === 8849, 'summit cap');
 ok(E.milestoneFor(5400).id === 'basecamp' && E.milestoneFor(8849).id === 'summit' && E.milestoneFor(3000).id === 'lukla', 'milestones');
 ok(E.airPercent(8849) >= 30 && E.airPercent(8849) <= 34, 'air at summit ' + E.airPercent(8849));
 
 // ---- verdicts
-ok(E.interpretVerdict({ valid: true, commonness: 0.005, confidence: 0.9 }).tier === 5, 'confident legendary');
-ok(E.interpretVerdict({ valid: true, commonness: 0.005, confidence: 0.3 }).tier === 2, 'low confidence capped');
+ok(E.interpretVerdict({ valid: true, commonness: 0.005, confidence: 0.9 }).tier === 4, 'confident sherpa');
+ok(E.interpretVerdict({ valid: true, commonness: 0.005, confidence: 0.3 }).tier === 1, 'low confidence capped at hiker');
 ok(E.interpretVerdict({ valid: false, confidence: 0.9 }).penalize === true, 'confident invalid penalized');
 ok(E.interpretVerdict({ valid: false, confidence: 0.2 }).penalize === false, 'unsure invalid not penalized');
 ok(E.interpretVerdict(null).kind === 'error', 'bad verdict');
@@ -137,8 +138,8 @@ function simulate(profile, n = 4000) {
       for (let k = 0; k < answers; k++) {
         if (r() < profile.invalidRate) { chain = 0; continue; }
         const x = r(); let acc = 0, t = 0;
-        for (; t < 6; t++) { acc += profile.mix[t]; if (x < acc) break; }
-        raw += E.answerGain(Math.min(t, 5), chain, li); chain++;
+        for (; t < 5; t++) { acc += profile.mix[t]; if (x < acc) break; }
+        raw += E.answerGain(Math.min(t, 4), chain, li); chain++;
       }
       return raw;
     });
@@ -156,10 +157,10 @@ const bands = (alts) => {
 };
 const median = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
 const players = [
-  { name: 'casual', weight: 0.3, skill: 1, secsPerAnswer: 5, invalidRate: 0.15, mix: [0.55, 0.3, 0.12, 0.03, 0, 0] },
-  { name: 'solid', weight: 0.4, skill: 1, secsPerAnswer: 3, invalidRate: 0.1, mix: [0.4, 0.3, 0.18, 0.09, 0.025, 0.005] },
-  { name: 'strong', weight: 0.25, skill: 1, secsPerAnswer: 2.5, invalidRate: 0.06, mix: [0.28, 0.27, 0.22, 0.14, 0.07, 0.02] },
-  { name: 'expert', weight: 0.05, skill: 1, secsPerAnswer: 2, invalidRate: 0.04, mix: [0.2, 0.22, 0.24, 0.18, 0.11, 0.05] },
+  { name: 'casual', weight: 0.3, skill: 1, secsPerAnswer: 5, invalidRate: 0.15, mix: [0.85, 0.12, 0.03, 0, 0] },
+  { name: 'solid', weight: 0.4, skill: 1, secsPerAnswer: 3, invalidRate: 0.1, mix: [0.7, 0.18, 0.09, 0.025, 0.005] },
+  { name: 'strong', weight: 0.25, skill: 1, secsPerAnswer: 2.5, invalidRate: 0.06, mix: [0.55, 0.22, 0.14, 0.07, 0.02] },
+  { name: 'expert', weight: 0.05, skill: 1, secsPerAnswer: 2, invalidRate: 0.04, mix: [0.42, 0.24, 0.18, 0.11, 0.05] },
 ];
 let all = [];
 for (const p of players) {
