@@ -149,7 +149,7 @@
   // Panel
   // ===========================================================================
   const TABS = [
-    ['time', 'Time'], ['move', 'Move'], ['content', 'Content'], ['effects', 'Effects'],
+    ['time', 'Time'], ['move', 'Move'], ['content', 'Content'], ['answers', 'Answers'], ['effects', 'Effects'],
     ['debug', 'Debugger'], ['checker', 'Checker'], ['save', 'Save & dates'], ['perf', 'Perf'],
   ];
   let tab = 'time';
@@ -196,7 +196,7 @@
     if (!body || !H) return;
     $$('#dev-panel [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
     body.setAttribute('aria-labelledby', 'dev-tab-' + tab);
-    body.innerHTML = ({ time: tabTime, move: tabMove, content: tabContent, effects: tabEffects, debug: tabDebug, checker: tabChecker, save: tabSave, perf: tabPerf })[tab]();
+    body.innerHTML = ({ time: tabTime, move: tabMove, content: tabContent, answers: tabAnswers, effects: tabEffects, debug: tabDebug, checker: tabChecker, save: tabSave, perf: tabPerf })[tab]();
     afterRender[tab] && afterRender[tab]();
   }
   const afterRender = {};
@@ -260,6 +260,10 @@
       }
       case 'clear-next-cat': H.setNextCat(null); notice('Next leg uses the normal pool.'); renderTab(); break;
       case 'bot': bot.on ? stopBot() : startBot(); renderTab(); break;
+      // answers
+      case 'ans-rank': { const i = Number(d.v); ans.ranks[i] = !ans.ranks[i]; b.setAttribute('aria-pressed', String(ans.ranks[i])); ans.shown = ANS_CHUNK; renderAnswers(true); break; }
+      case 'ans-more': ans.shown += ANS_CHUNK; renderAnswers(false); break;
+      case 'ans-csv': copyAnswersCsv(); break;
       // effects
       case 'rank-fx': H.fireRank(Number(d.v)); break;
       case 'sound': H.playSound(d.v); break;
@@ -301,10 +305,14 @@
     if (t.id === 'dev-alt') act('goto-alt', t);
     else if (t.id === 'dev-bot-rank') { bot.rank = t.value; }
     else if (t.id === 'dev-bot-wrong') { bot.wrongEvery = Math.max(0, Math.round(Number(t.value) || 0)); }
+    else if (t.id === 'dev-bot-typo') { bot.typoEvery = Math.max(0, Math.round(Number(t.value) || 0)); }
     else if (t.id === 'dev-mock-state') { mock.state = t.value; if (mock.on) applyMockState(); renderTab(); }
     else if (t.id === 'dev-mock-default') { mock.dflt = t.value; }
     else if (t.id === 'dev-mock-comm') { mock.comm = Number(t.value); }
     else if (t.id === 'dev-dbg-cat') { dbgCat = t.value; analyseNow(); }
+    else if (t.id === 'dev-ans-cat') { ans.cat = t.value; ans.picked = true; ans.pos = null; ans.shown = ANS_CHUNK; renderAnswersControls(); renderAnswers(true); }
+    else if (t.id === 'dev-ans-pos') { ans.pos = t.value === '' ? null : Number(t.value); renderAnswers(false); }
+    else if (t.id === 'dev-ans-sort') { ans.sort = t.value; ans.shown = ANS_CHUNK; renderAnswers(false); }
     else if (t.id === 'dev-prev-date') { const n = H.E.puzzleNumber(t.value); $('#dev-prev-num').value = n; renderPreview(n); }
     else if (t.id === 'dev-prev-num') { renderPreview(Math.max(1, Math.round(Number(t.value) || 1))); }
   }
@@ -316,6 +324,7 @@
     else if (t.id === 'dev-mock-delay') { mock.delay = Number(t.value); $('#dev-mock-delay-out').textContent = (mock.delay / 1000).toFixed(1) + ' s'; }
     else if (t.id === 'dev-cat-search') { filterCats(t.value); }
     else if (t.id === 'dev-dbg-in') { dbgText = t.value; dbgSource = 'test box'; analyseNow(); }
+    else if (t.id === 'dev-ans-q') { ans.q = t.value; ans.shown = ANS_CHUNK; renderAnswers(true); }
   }
 
   function doPause() {
@@ -340,8 +349,8 @@
   // ---------------------------------------------------------------- events from the game
   function onEvent(type, data) {
     switch (type) {
-      case 'answer': logAnswer(data); if (tab === 'content') renderCheat(); if (tab === 'checker' && data.kind === 'judged') renderMockLog(); break;
-      case 'leg-start': if (tab === 'content') renderCheat(); if (tab === 'debug') analyseNow(); if (tab === 'time') renderTab(); break;
+      case 'answer': logAnswer(data); if (tab === 'content') renderCheat(); if (tab === 'answers') renderAnswers(false); if (tab === 'checker' && data.kind === 'judged') renderMockLog(); break;
+      case 'leg-start': if (tab === 'content') renderCheat(); if (tab === 'answers') { if (!ans.picked) { ans.cat = null; renderTab(); } else renderAnswers(false); } if (tab === 'debug') analyseNow(); if (tab === 'time') renderTab(); break;
       case 'lap': showLap(data); break;
       case 'pause': renderActs(); if (tab === 'time') renderTab(); break;
       case 'dev-start': case 'dev-end': case 'dev-exit': if (type !== 'dev-start') stopBot(); renderActs(); if (!$('#dev-panel').hidden) renderTab(); break;
@@ -476,7 +485,8 @@
       <p class="dev-note">Types seed answers through the real submit path during a dev climb. It pauses with the game.</p>
       <div class="dev-row">
         <label>Rank <select class="dev-in" id="dev-bot-rank"><option value="mix"${bot.rank === 'mix' ? ' selected' : ''}>Random mix</option>${H.C.tiers.map((t, i) => `<option value="${i}"${bot.rank === String(i) ? ' selected' : ''}>${t.name}</option>`).join('')}</select></label>
-        <label>Wrong every <input class="dev-in" type="number" id="dev-bot-wrong" min="0" step="1" value="${bot.wrongEvery}"> <span class="dev-note">(0 = never)</span></label></div>
+        <label>Wrong every <input class="dev-in" type="number" id="dev-bot-wrong" min="0" step="1" value="${bot.wrongEvery}"> <span class="dev-note">(0 = never)</span></label>
+        <label>Typo every <input class="dev-in" type="number" id="dev-bot-typo" min="0" step="1" value="${bot.typoEvery}"> <span class="dev-note">(0 = never; misspells a real answer)</span></label></div>
       <div class="dev-row"><label for="dev-bot-rate">Speed</label><input class="dev-in" type="range" id="dev-bot-rate" min="1" max="6" step="1" value="${bot.rate}"><output id="dev-bot-rate-out" for="dev-bot-rate">${bot.rate}/s</output>
         ${btn('bot', bot.on ? 'Stop bot' : 'Start bot', { cls: bot.on ? 'on' : 'primary', pressed: bot.on })}</div>
       <h3>Cheat sheet</h3>
@@ -507,17 +517,44 @@
     const ix = G.index && G.index[G.legIdx];
     if (!ix || G.screen !== 'play') { el.innerHTML = '<p class="dev-note">Shows the current leg\'s full answer list during a climb.</p>'; return; }
     const leg = H.curLeg();
-    const found = new Set(leg ? leg.answers.filter((a) => a.s === 'ok' && a.eid != null).map((a) => a.eid) : []);
+    const found = new Set(leg ? leg.answers.filter((a) => a.s === 'ok' && a.eid != null && !a.q).map((a) => a.eid) : []);
+    const variants = leg ? leg.answers.filter((a) => a.s === 'ok' && a.q).map((a) => a.c) : [];
+    const quals = H.E.qualifierList(ix.cat);
     el.innerHTML = `<p class="dev-note"><strong>${esc(ix.cat.text)}</strong>: ${found.size} of ${ix.entries.length} found. Found answers are bold, underlined and ticked.</p>`
       + H.C.tiers.map((t, i) => {
         const list = ix.entries.filter((e) => e.tier === i);
         const got = list.filter((e) => found.has(e.id)).length;
         return `<h4 class="t${i}">${H.ICON[i]}${t.name} <span class="dev-note">${got}/${list.length}</span></h4><p>${list.map((e) => found.has(e.id) ? `<span class="got">✓ ${esc(e.canon)}</span>` : esc(e.canon)).join(', ') || '—'}</p>`;
-      }).join('');
+      }).join('')
+      + `<h4>Qualifiers <span class="dev-note">${variants.length}/${H.C.maxQualifiedPerLeg} used this leg</span></h4>`
+      + `<p>${quals.length ? quals.map(esc).join(', ') + ' (one in front of any answer above; scores at that answer\'s rank)' : 'None for this category.'}</p>`
+      + (variants.length ? `<p>Found: ${variants.map((c) => `<span class="got">✓ ${esc(c)}</span>`).join(', ')}</p>` : '');
   }
 
   // autoplay bot
-  const bot = { on: false, rank: 'mix', rate: 4, wrongEvery: 0, n: 0, timer: null };
+  const bot = { on: false, rank: 'mix', rate: 4, wrongEvery: 0, typoEvery: 0, n: 0, timer: null };
+  // One realistic slip: drop one of a doubled letter, or swap a later letter for a QWERTY neighbour.
+  const KB_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+  function kbNeighbour(ch) {
+    for (let r = 0; r < 3; r++) {
+      const c = KB_ROWS[r].indexOf(ch);
+      if (c < 0) continue;
+      const opts = [KB_ROWS[r][c - 1], KB_ROWS[r][c + 1]].filter(Boolean);
+      return opts[Math.floor(Math.random() * opts.length)];
+    }
+    return null;
+  }
+  function misspell(word) {
+    const w = word.toLowerCase();
+    const dbl = [];
+    for (let i = 1; i < w.length; i++) if (w[i] === w[i - 1] && /[a-z]/.test(w[i])) dbl.push(i);
+    if (dbl.length && Math.random() < 0.5) { const i = dbl[Math.floor(Math.random() * dbl.length)]; return w.slice(0, i) + w.slice(i + 1); }
+    const spots = [];
+    for (let i = 2; i < w.length - 1; i++) if (kbNeighbour(w[i])) spots.push(i);
+    if (!spots.length) return w;
+    const i = spots[Math.floor(Math.random() * spots.length)];
+    return w.slice(0, i) + kbNeighbour(w[i]) + w.slice(i + 1);
+  }
   function startBot() {
     clearInterval(bot.timer);
     bot.on = true;
@@ -539,13 +576,131 @@
     if (bot.wrongEvery > 0 && bot.n % bot.wrongEvery === 0) { H.submit('zzq' + Math.random().toString(36).slice(2, 6)); return; }
     const found = new Set(leg.answers.filter((a) => a.s === 'ok').map((a) => a.eid));
     let pool = ix.entries.filter((e) => !found.has(e.id));
+    const typo = bot.typoEvery > 0 && bot.n % bot.typoEvery === 0;
+    if (typo) { const long = pool.filter((e) => H.E.normalize(e.canon).replace(/ /g, '').length >= 6); if (long.length) pool = long; }
     if (bot.rank !== 'mix') {
       const r = Number(bot.rank);
       const exact = pool.filter((e) => e.tier === r), lower = pool.filter((e) => e.tier < r);
       pool = exact.length ? exact : lower.length ? lower : pool;
     }
     if (!pool.length) return;
-    H.submit(pool[Math.floor(Math.random() * pool.length)].canon);
+    const pick = pool[Math.floor(Math.random() * pool.length)].canon;
+    H.submit(typo ? misspell(pick) : pick);
+  }
+
+  // ---------------------------------------------------------------- answers (the full answer bank)
+  // Every category's answers with rank and score, from DA_DEV_CORE.answerTable().
+  // Rows are built once per category and leg; search, rank filter and sort run in
+  // memory, and the table renders in chunks so typing stays smooth on a phone.
+  const ANS_CHUNK = 200;
+  const ans = { cat: null, picked: false, q: '', ranks: null, pos: null, sort: 'rare', shown: ANS_CHUNK, cache: null, view: [], announceT: 0 };
+  function ansCurrentCat() {
+    const G = H.G, ix = G.index && G.index[G.legIdx];
+    return G.screen === 'play' && ix ? ix.cat.id : null;
+  }
+  function ansCat() {
+    if (!ans.cat) ans.cat = ansCurrentCat() || H.ALL[0].id;
+    return H.ALL.find((c) => c.id === ans.cat) || H.ALL[0];
+  }
+  function ansGroups() {
+    const groups = [['broad', 'Broad'], ['mid:geo', 'Mid · geography'], ['mid:nature', 'Mid · nature'], ['mid:culture', 'Mid · culture'], ['wild', 'Wildcard'], ['hard', 'Hard'], ['practice', 'Practice']];
+    return groups.map(([key, label]) => {
+      const [kind, lane] = key.split(':');
+      const list = H.ALL.filter((c) => c.kind === kind && (!lane || c.lane === lane));
+      return list.length ? `<optgroup label="${esc(label)}">${list.map((c) => `<option value="${esc(c.id)}"${c.id === ans.cat ? ' selected' : ''}>${esc(c.text)}</option>`).join('')}</optgroup>` : '';
+    }).join('');
+  }
+  function ansPosOptions(cat) {
+    const nat = Math.max(0, H.C.legKinds.indexOf(cat.kind));   // same rule as answerTable()
+    return `<option value=""${ans.pos == null ? ' selected' : ''}>Natural leg (${nat + 1}, ×${H.C.legs[nat].mult})</option>`
+      + H.C.legs.map((l, i) => `<option value="${i}"${ans.pos === i ? ' selected' : ''}>Leg ${i + 1} (×${l.mult})</option>`).join('');
+  }
+  function tabAnswers() {
+    if (!ans.ranks) ans.ranks = H.C.tiers.map(() => true);
+    const cat = ansCat();
+    const sorts = [['rare', 'Rarest first'], ['common', 'Most common first'], ['az', 'A–Z'], ['list', 'List order']];
+    return `<div class="dev-sec dev-ans">
+      <p class="dev-note">Every answer in a category, with its rank (how rare it is) and what it scores. Works any time; during a climb it opens on the current leg and ticks what you've found.</p>
+      <div class="dev-row"><label>Category <select class="dev-in" id="dev-ans-cat">${ansGroups()}</select></label></div>
+      <label class="sr-only" for="dev-ans-q">Search answers and aliases</label>
+      <input class="dev-in" type="search" id="dev-ans-q" placeholder="Search answers and aliases" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(ans.q)}">
+      <div class="dev-row" role="group" aria-label="Ranks shown">${H.C.tiers.map((t, i) => btn('ans-rank', `${H.ICON[i]}${esc(t.name)}`, { cls: 't' + i + ' dev-chip', v: i, pressed: ans.ranks[i] })).join('')}</div>
+      <div class="dev-row" id="dev-ans-ctl">
+        <label>Score at <select class="dev-in" id="dev-ans-pos">${ansPosOptions(cat)}</select></label>
+        <label>Sort <select class="dev-in" id="dev-ans-sort">${sorts.map(([v, l]) => `<option value="${v}"${ans.sort === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+        ${btn('ans-csv', 'Copy as CSV')}
+      </div>
+      <div id="dev-ans-sum" class="dev-ans-sum"></div>
+      <div id="dev-ans-table"></div>
+    </div>`;
+  }
+  afterRender.answers = () => renderAnswers(false);
+  function renderAnswersControls() {
+    const el = $('#dev-ans-pos');
+    if (el) el.innerHTML = ansPosOptions(ansCat());
+  }
+  function ansTable() {
+    const cat = ansCat();
+    const key = cat.id + '|' + (ans.pos == null ? 'n' : ans.pos);
+    if (!ans.cache || ans.cache.key !== key) {
+      const t = CORE.answerTable(H.E, cat, ans.pos == null ? {} : { pos: ans.pos });
+      t.rows.forEach((r) => { r.search = [r.norm, ...r.aliases.map((a) => H.E.normalize(a))].join('|'); });
+      ans.cache = { key, t };
+    }
+    return ans.cache.t;
+  }
+  function ansFound(cat) {
+    const leg = H.curLeg && H.curLeg();
+    if (!leg || ansCurrentCat() !== cat.id) return null;
+    return new Set(leg.answers.filter((a) => a.s === 'ok' && a.eid != null && !a.q).map((a) => a.eid));
+  }
+  function renderAnswers(announceCount) {
+    const sumEl = $('#dev-ans-sum'), tblEl = $('#dev-ans-table');
+    if (!sumEl || !tblEl || !H) return;
+    const cat = ansCat();
+    const t = ansTable(), S = t.summary, C = H.C;
+    const q = H.E.normalize(ans.q || '');
+    let view = t.rows.filter((r) => ans.ranks[r.tier] && (!q || r.search.includes(q)));
+    const byName = (a, b) => a.canon.localeCompare(b.canon);
+    if (ans.sort === 'rare') view.sort((a, b) => b.tier - a.tier || byName(a, b));
+    else if (ans.sort === 'common') view.sort((a, b) => a.tier - b.tier || byName(a, b));
+    else if (ans.sort === 'az') view.sort(byName);
+    ans.view = view;
+    const found = ansFound(cat);
+    const max = Math.max(1, ...S.counts);
+    const kind = S.kind + (S.lane ? ' · ' + S.lane : '');
+    sumEl.innerHTML = `<p><strong>${esc(S.text)}</strong> <span class="dev-note">${esc(kind)} · ${fmt(S.total)} answers · scores at leg ${S.pos + 1} (×${S.mult})${S.pos === S.natural ? ', its natural leg' : ''}${found ? ` · ${found.size} found this leg` : ''}</span></p>
+      <ul class="dev-ans-ranks">${C.tiers.map((tier, i) => `<li class="t${i}"><span class="rk">${H.ICON[i]}${esc(tier.name)}</span><b>${fmt(S.counts[i])}</b><span class="bar" aria-hidden="true"><i style="width:${Math.round(100 * S.counts[i] / max)}%"></i></span><small>${esc(S.bands[i])} · +${tier.gain} m</small></li>`).join('')}</ul>
+      ${S.qualifiers.length ? `<p class="dev-note">Plus up to ${C.maxQualifiedPerLeg} variants per leg: ${esc(S.qualifiers.join(', '))} (one in front of any answer, at that answer's rank).</p>` : ''}`;
+    const rows = view.slice(0, ans.shown);
+    tblEl.innerHTML = `<table class="dev-ans-table">
+      <caption>${fmt(view.length)} of ${fmt(S.total)} answers${view.length > rows.length ? `, showing the first ${fmt(rows.length)}` : ''}</caption>
+      <thead><tr><th scope="col">Rank</th><th scope="col">Answer</th><th scope="col" class="num">Base</th><th scope="col" class="num">Leg ${S.pos + 1}</th><th scope="col" class="num c-max">Max chain</th></tr></thead>
+      <tbody>${rows.map((r) => `<tr class="t${r.tier}${found && found.has(r.id) ? ' got' : ''}" data-tier="${r.tier}">
+        <td class="rk">${H.ICON[r.tier]}${esc(r.rank)}</td>
+        <td>${found && found.has(r.id) ? '<span class="got-mark" aria-label="found">✓ </span>' : ''}${esc(r.canon)}${r.aliases.length ? `<span class="al">also: ${esc(r.aliases.join(', '))}</span>` : ''}</td>
+        <td class="num">${fmt(r.base)}</td><td class="num">${fmt(r.atPos)}</td><td class="num c-max">${fmt(r.atPosMax)}</td></tr>`).join('')}</tbody>
+    </table>${view.length > rows.length ? `<div class="dev-row">${btn('ans-more', `Show ${fmt(Math.min(ANS_CHUNK, view.length - rows.length))} more`)}</div>` : ''}${!view.length ? '<p class="dev-note">No answers match.</p>' : ''}`;
+    if (announceCount) {
+      clearTimeout(ans.announceT);
+      ans.announceT = setTimeout(() => notice(`${fmt(view.length)} answer${view.length === 1 ? '' : 's'} shown`), 450);
+    }
+  }
+  function copyAnswersCsv() {
+    const t = ansTable(), S = t.summary;
+    const cell = (v) => { const x = String(v); return /[",\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; };
+    const lines = [['category', 'answer', 'aliases', 'rank', 'base', `score at leg ${S.pos + 1}`, 'score at max chain'].join(',')]
+      .concat(ans.view.map((r) => [S.text, r.canon, r.aliases.join('; '), r.rank, r.base, r.atPos, r.atPosMax].map(cell).join(',')));
+    const text = lines.join('\n');
+    const done = () => notice(`Copied ${fmt(ans.view.length)} answers as CSV.`);
+    const fallback = () => {
+      const dlg = $('#dlg-dev-csv'), ta = $('#dev-csv-text');
+      ta.value = text;
+      try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); }
+      ta.focus(); ta.select();
+      notice('Copying is blocked here: the CSV is selected in the dialog, copy it from there.');
+    };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
   }
 
   // ---------------------------------------------------------------- effects
@@ -599,22 +754,23 @@
     out.bare = E.stripAffixes(norm, ix.cat);
     if (out.bare !== norm) out.bareKeys = E.candidateKeys(out.bare);
     out.m = E.match(ix, text);
-    if (out.m && out.m.ambiguous) {
-      const ids = new Set();
-      for (const [form, id] of ix.forms) {
-        const allow = E.fuzzyAllowance(form.length);
-        if (!allow || Math.abs(form.length - norm.length) > allow) continue;
-        if (E.editDistance(norm, form, allow) <= allow) ids.add(id);
-      }
-      out.competitors = [...ids].map((id) => ix.entries[id]);
+    // Stage 3 (autocorrect) runs only when the list itself has no match.
+    const listed = E.match(ix, text, { noFuzzy: true });
+    if (!(listed && listed.entry && !listed.qualifier)) {
+      const base = out.m && out.m.qualifier ? norm.slice(out.m.qualifier.length + 1) : norm;
+      out.corr = E.corrections(ix, base, true);
+      out.corrInput = base;
     }
+    if (out.m && out.m.ambiguous && out.corr) out.competitors = out.corr.ranked.filter((r) => r.allowed).slice(0, 4).map((r) => r.entry);
     return out;
   }
   function resultText(r) {
     if (!r.norm) return 'empty after normalizing';
     if (!r.m) return 'no match (rejected, or sent to the checker if it is on)';
-    if (r.m.ambiguous) return 'ambiguous fuzzy match: ' + r.competitors.map((e) => `${e.canon} (${H.tierName(e.tier)})`).join(', ');
-    return `${r.m.via} → ${r.m.entry.canon} · ${H.tierName(r.m.entry.tier)}`;
+    if (r.m.ambiguous) return 'ambiguous: too close to call between ' + r.competitors.map((e) => `${e.canon} (${H.tierName(e.tier)})`).join(', ');
+    const how = r.m.fix ? `corrected (${r.m.fix})` : r.m.via;
+    if (r.m.qualifier) return `qualified → ${r.m.canon} · base ${r.m.entry.canon} (${how}) · ${H.tierName(r.m.entry.tier)}`;
+    return `${how} → ${r.m.entry.canon} · ${H.tierName(r.m.entry.tier)}`;
   }
   function analyseNow() {
     const out = $('#dev-dbg-out');
@@ -627,8 +783,31 @@
       ['normalize()', JSON.stringify(r.norm)],
       ['candidateKeys()', r.keys.map((k) => JSON.stringify(k)).join(', ') || '—'],
       ['Affix-stripped', r.bare && r.bare !== r.norm ? `${JSON.stringify(r.bare)} → ${r.bareKeys.map((k) => JSON.stringify(k)).join(', ')}` : '—'],
+      ['Qualifiers', ix ? (H.E.qualifierList(ix.cat).join(', ') || 'none for this category') : '—'],
       ['Match', ix ? resultText(r) : '—'],
     ];
+    if (ix && r.norm) {
+      if (!r.corr) rows.push(['Correction', 'not needed: the list matched directly']);
+      else {
+        const K = H.C.correct, c = r.corr;
+        const fmtC = (x) => (x === Infinity ? '∞' : String(Math.round(x * 100) / 100));
+        rows.push(['Correction input', `${JSON.stringify(r.corrInput)} · phonetic key ${JSON.stringify(c.key)}`]);
+        c.ranked.slice(0, 3).forEach((x, i) => rows.push([`Candidate ${i + 1}`,
+          `${x.entry.canon} via ${JSON.stringify(x.form)} · cost ${fmtC(x.cost)}${x.fix ? ' (' + x.fix + ')' : ''} · allowance ${fmtC(x.allow)} · key ${JSON.stringify(x.formKey)} · ${x.allowed ? 'within' : 'out: ' + x.reason}`]));
+        if (!c.ranked.length) rows.push(['Candidates', 'none']);
+        const ok = c.ranked.filter((x) => x.allowed);
+        rows.push(['Margin check', ok.length < 2 ? (ok.length ? 'only one candidate within its allowance' : '—')
+          : `runner-up ${ok[1].entry.canon} is ${fmtC(ok[1].cost - ok[0].cost)} behind (needs ${K.margin}, or the winner alone sounds the same)`]);
+        const v = c.verdict;
+        rows.push(['Verdict', v && v.entry ? `corrected to ${v.entry.canon} (${v.fix})` : v && v.ambiguous ? `ambiguous between ${v.ambiguous.map((e) => e.canon).join(' and ')}`
+          : `no candidate${c.ranked[0] ? ' (closest ' + c.ranked[0].entry.canon + ': ' + (c.ranked[0].reason || 'over the allowance') + ')' : ''}`]);
+      }
+    }
+    if (r.m && r.m.qualifier) {
+      const rest = r.norm.slice(r.m.qualifier.length + 1);
+      rows.push(['Qualifier step', `stripped ${JSON.stringify(r.m.qualifier)} → base ${JSON.stringify(rest)} → ${r.m.entry.canon} (${r.m.via})`]);
+      rows.push(['Dedupe key', H.E.answerKey(r.m.entry.id, r.m.qualifier)]);
+    }
     if (r.m && r.m.entry) {
       const e = r.m.entry;
       rows.push(['Entry', `#${e.id} ${e.canon}${e.aliases.length ? ' (aliases: ' + e.aliases.join(', ') + ')' : ''}`]);
@@ -636,8 +815,10 @@
       if (dbgCat === 'current' && leg && G.state === 'leg') {
         const raw = H.E.answerGain(e.tier, leg.chain, H.legPos(G.legIdx));
         const eff = H.E.legEffective(leg.raw + raw) - H.E.legEffective(leg.raw);
-        const dupe = leg.answers.some((a) => a.s === 'ok' && a.eid === e.id);
-        rows.push(['Would gain', dupe ? 'nothing: already found this leg' : `+${fmt(raw)} raw · +${fmt(eff)} m effective (chain ${leg.chain})`]);
+        const key = H.E.answerKey(e.id, r.m.qualifier);
+        const dupe = leg.answers.some((a) => a.s === 'ok' && H.E.answerKey(a.eid, a.q) === key);
+        const capped = !dupe && r.m.qualifier && leg.answers.filter((a) => a.s === 'ok' && a.q).length >= H.C.maxQualifiedPerLeg;
+        rows.push(['Would gain', dupe ? 'nothing: already found this leg' : capped ? 'nothing: variant limit reached this leg' : `+${fmt(raw)} raw · +${fmt(eff)} m effective (chain ${leg.chain})`]);
       } else rows.push(['Base gain', `+${H.C.tiers[e.tier].gain} m before chain and leg multipliers`]);
     }
     out.innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
@@ -655,7 +836,7 @@
     const text = d.text != null ? d.text : d.ans ? d.ans.t : '';
     const r = analyse(text, ix);
     const e = { t: new Date(), kind: d.kind, text, match: ix ? resultText(r) : '—', cat: ix ? ix.cat.text : '' };
-    if (d.kind === 'ok') Object.assign(e, { canon: d.ans.c, tier: d.ans.tier, raw: d.rawGain, eff: d.eff, via: d.ans.k === 'judge' ? 'checker' : r.m && r.m.via });
+    if (d.kind === 'ok') Object.assign(e, { canon: d.ans.c, tier: d.ans.tier, raw: d.rawGain, eff: d.eff, fix: d.ans.x || null, via: d.ans.k === 'judge' ? 'checker' : d.ans.q ? 'qualified (' + d.ans.q + ')' : r.m && r.m.via });
     if (d.kind === 'dup') e.canon = d.ans.c || d.ans.t;
     if (d.kind === 'rejected') e.penalized = d.penalized;
     if (d.kind === 'judged') { e.decision = d.decision; e.verdict = d.verdict; }
@@ -666,8 +847,11 @@
   function logLine(e) {
     const head = `${clockStr(e.t)}  ${JSON.stringify(e.text)}`;
     switch (e.kind) {
-      case 'ok': return `${head} → ACCEPTED via ${e.via || 'seed'} → ${e.canon} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`;
+      case 'ok': return e.fix
+        ? `${clockStr(e.t)}  corrected (${e.fix}): ${e.text} → ${e.canon}${e.via && e.via.startsWith('qualified') ? ' · ' + e.via : ''} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`
+        : `${head} → ACCEPTED via ${e.via || 'seed'} → ${e.canon} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`;
       case 'dup': return `${head} → DUPLICATE of ${e.canon} (no penalty)`;
+      case 'variant-limit': return `${head} → VARIANT LIMIT reached (no points, no penalty) · ${e.match}`;
       case 'rejected': return `${head} → REJECTED${e.penalized ? ' · −1 s' : ''} · ${e.match}`;
       case 'pending': return `${head} → sent to the answer checker`;
       case 'judged': return `${head} → checker verdict ${JSON.stringify(e.verdict)} → ${e.decision.kind}${e.decision.kind === 'accept' ? ' as ' + H.tierName(e.decision.tier) : e.decision.kind === 'reject' ? (e.decision.penalize ? ' with −1 s' : ' without penalty') : ' (unchecked)'}`;

@@ -1,4 +1,4 @@
-/* Daily Ascent — dev mode core: lap math and password check.
+/* Daily Ascent — dev mode core: lap math, password check and the answer-bank table.
    Pure logic, no DOM. Runs in the browser and in Node (for tests). */
 (function (root) {
   'use strict';
@@ -52,7 +52,47 @@
     return timingSafeEqual(new Uint8Array(bits), want);
   }
 
-  const CORE = { lapState, b64ToBytes, timingSafeEqual, verifyPassword };
+  // ---------------------------------------------------------------------------
+  // Answer bank (Answers tab). One row per entry of E.buildIndex(cat), in entry
+  // order, with its rank and what it scores. Everything comes from CONFIG.
+  //   opts.pos   pattern leg 0–6 whose multiplier applies (default: the
+  //              category's natural leg, the first leg of its kind; practice 0)
+  //   opts.chain chain length before the answer (default 0)
+  // ---------------------------------------------------------------------------
+  function commonnessBand(tiers, i) {
+    const pct = (x) => `${Math.round(x * 100)}%`;
+    const lo = tiers[i].min, hi = i > 0 ? tiers[i - 1].min : null;
+    if (hi == null) return `${pct(lo)}+ of players`;
+    if (!lo) return `under ${pct(hi)} of players`;
+    return `${Math.round(lo * 100)}–${pct(hi)} of players`;
+  }
+  function naturalPos(C, cat) {
+    const i = C.legKinds.indexOf(cat && cat.kind);
+    return i < 0 ? 0 : i;
+  }
+  function answerTable(E, cat, opts) {
+    const C = E.CONFIG;
+    const o = opts || {};
+    const pos = Number.isInteger(o.pos) && o.pos >= 0 && o.pos < C.legs.length ? o.pos : naturalPos(C, cat);
+    const chain = Math.max(0, Math.floor(Number(o.chain) || 0));
+    const maxChain = Math.ceil(C.chainMax / C.chainStep - 1e-9);
+    const ix = E.buildIndex(cat);
+    const bands = C.tiers.map((t, i) => commonnessBand(C.tiers, i));
+    const rows = ix.entries.map((e) => ({
+      id: e.id, canon: e.canon, aliases: e.aliases.slice(), norm: e.norm, tier: e.tier,
+      rank: C.tiers[e.tier].name, base: C.tiers[e.tier].gain,
+      atPos: E.answerGain(e.tier, chain, pos), atPosMax: E.answerGain(e.tier, Math.max(chain, maxChain), pos),
+      pctPlayers: bands[e.tier],
+    }));
+    const counts = C.tiers.map((t, i) => rows.filter((r) => r.tier === i).length);
+    return {
+      rows,
+      summary: { id: cat.id, text: cat.text, kind: cat.kind, lane: cat.lane || null, total: rows.length, counts, bands,
+        qualifiers: E.qualifierList(cat), pos, natural: naturalPos(C, cat), mult: C.legs[pos].mult, chain, maxChain },
+    };
+  }
+
+  const CORE = { lapState, b64ToBytes, timingSafeEqual, verifyPassword, answerTable, commonnessBand };
   if (typeof module !== 'undefined' && module.exports) module.exports = CORE;
   else root.DA_DEV_CORE = CORE;
 })(typeof window !== 'undefined' ? window : globalThis);

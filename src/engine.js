@@ -12,13 +12,13 @@
     summitAlt: 8849,
     // Timers shorten with altitude; later legs score more (spec §3).
     legs: [
-      { secs: 20, mult: 1.0 },
-      { secs: 20, mult: 1.0 },
-      { secs: 15, mult: 1.25 },
-      { secs: 15, mult: 1.25 },
-      { secs: 15, mult: 1.25 },
-      { secs: 10, mult: 1.5 },
-      { secs: 10, mult: 1.5 },
+      { secs: 30, mult: 1.0 },
+      { secs: 30, mult: 1.0 },
+      { secs: 25, mult: 1.25 },
+      { secs: 25, mult: 1.25 },
+      { secs: 25, mult: 1.25 },
+      { secs: 20, mult: 1.5 },
+      { secs: 20, mult: 1.5 },
     ],
     // Daily mix (spec §7.2): two broad openers, three mid (one per lane),
     // one wildcard, one harder knowledge category to finish.
@@ -27,6 +27,18 @@
     transitionMs: 3500,
     invalidPenaltySecs: 1,          // open question 3: invalid costs time, not altitude
     maxAcceptedPerLeg: 30,
+    maxQualifiedPerLeg: 3,          // qualified answers ("womens soccer") per leg; they score at the base tier
+    // Autocorrect (§6.3): how close a typed answer must be to a listed one to be corrected to it.
+    correct: {
+      keyboardCost: 0.5,      // swapping in a QWERTY neighbour (s↔d, o↔p) costs half a normal edit
+      doubleLetterCost: 0.5,  // adding or dropping a repeated letter ("bananna", "brocoli") costs half
+      soundCost: 1,           // extra allowance when the input sounds like the answer (same phonetic key)
+      soundMinLen: 7,         // sound-alike matching only for answers this long (short words collide too often)
+      margin: 1,              // the best answer must beat the runner-up by at least this, else ambiguous
+      shortLen: 4,            // forms this long allow only one keyboard or repeated-letter fix; shorter never correct
+      minRatio: 0.6,          // input length ÷ answer length must be at least this…
+      maxRatio: 1.4,          // …and at most this
+    },
     minSubmitGapMs: 150,
     extraTimeFactor: 1.5,           // accessibility setting
     chainStep: 0.05,
@@ -144,10 +156,180 @@
     return prev[lb];
   }
 
+  // How far (in correction cost) a form of this length may be from the input.
   function fuzzyAllowance(len) {
-    if (len < 5) return 0;
+    const K = CONFIG.correct;
+    if (len < K.shortLen) return 0;
+    if (len === K.shortLen) return Math.min(K.keyboardCost, K.doubleLetterCost);
     if (len <= 8) return 1;
     return 2;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Autocorrect helpers (§6.3): keyboard neighbours, weighted edit cost, phonetic key
+  // ---------------------------------------------------------------------------
+  const KB = (() => {
+    const rows = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+    const near = {};
+    rows.forEach((row, r) => [...row].forEach((ch, c) => {
+      const set = near[ch] = new Set();
+      const add = (rr, cc) => { const k = rows[rr] && rows[rr][cc]; if (k) set.add(k); };
+      add(r, c - 1); add(r, c + 1);
+      add(r - 1, c); add(r - 1, c + 1);   // staggered rows: the row above sits half a key right
+      add(r + 1, c - 1); add(r + 1, c);
+    }));
+    return near;
+  })();
+  const kbNear = (a, b) => !!(KB[a] && KB[a].has(b));
+
+  // Weighted optimal-string-alignment cost: edits cost 1, except a QWERTY-neighbour
+  // substitution after the first letter (keyboardCost) and adding or dropping a
+  // repeated letter (doubleLetterCost). Returns a value > max once the cost must exceed max.
+  function correctionDistance(a, b, max, kbCost) {
+    const K = CONFIG.correct;
+    const kc = kbCost == null ? K.keyboardCost : kbCost, dc = K.doubleLetterCost;
+    const la = a.length, lb = b.length;
+    if (Math.abs(la - lb) * Math.min(1, dc) > max) return max + 1;
+    let prev2 = null, prev = new Array(lb + 1);
+    prev[0] = 0;
+    for (let j = 1; j <= lb; j++) prev[j] = prev[j - 1] + (b[j - 1] === b[j - 2] || b[j - 1] === b[j] ? dc : 1);
+    for (let i = 1; i <= la; i++) {
+      const cur = new Array(lb + 1);
+      const del = a[i - 1] === a[i - 2] || a[i - 1] === a[i] ? dc : 1;   // input has an extra repeated letter
+      cur[0] = prev[0] + del;
+      let rowMin = cur[0];
+      for (let j = 1; j <= lb; j++) {
+        const ins = b[j - 1] === b[j - 2] || b[j - 1] === b[j] ? dc : 1;   // input dropped a repeated letter
+        const ca = a[i - 1], cb = b[j - 1];
+        const sub = ca === cb ? 0 : i > 1 && j > 1 && kbNear(ca, cb) ? kc : 1;   // first letters are typed deliberately: no discount
+        let v = Math.min(prev[j] + del, cur[j - 1] + ins, prev[j - 1] + sub);
+        if (prev2 && i > 1 && j > 1 && ca === b[j - 2] && a[i - 2] === cb && ca !== cb) v = Math.min(v, prev2[j - 2] + 1);
+        cur[j] = v;
+        if (v < rowMin) rowMin = v;
+      }
+      if (rowMin > max) return max + 1;
+      prev2 = prev; prev = cur;
+    }
+    return prev[lb];
+  }
+
+  // Respelling toward sound: the letter-level rules of the phonetic key, before
+  // vowels are dropped. "chihuahua" → "chiwawa", "phoenix" → "fenix".
+  function respell(norm) {
+    let s = compact(norm);
+    s = s.replace(/^(kn|gn|pn|wr|ps)/, (m) => m[1]);
+    s = s.replace(/^gh/, 'g').replace(/gh/g, '');
+    s = s.replace(/hu(?=[aeio])/g, 'w');
+    s = s.replace(/ph/g, 'f').replace(/tch/g, 'ch').replace(/dg/g, 'j');
+    s = s.replace(/ck/g, 'k').replace(/q/g, 'k').replace(/x/g, 'ks');
+    s = s.replace(/c(?=[eiy])/g, 's').replace(/c/g, 'k');
+    s = s.replace(/(.)\1+/g, '$1');
+    return s;
+  }
+  // Phonetic key in the spirit of Metaphone: the respelling, first letter kept,
+  // vowels (and y) dropped after it, and each consonant cluster reduced to its
+  // sorted set of letters so that "fuschia"/"fuchsia" and "daschund"/"dachshund"
+  // (same sounds, letters shuffled inside a cluster) share a key.
+  function phoneticKey(norm) {
+    const s = respell(norm);
+    if (!s) return '';
+    let out = s[0];
+    for (const cl of s.slice(1).split(/[aeiouy]+/)) if (cl) out += [...new Set(cl)].sort().join('');
+    return out.replace(/(.)\1+/g, '$1');
+  }
+  // First letters that may differ in a correction: equal, QWERTY neighbours, or
+  // the same sound (c/k/s, f/p as in ph, j/g, i/y).
+  const SAME_SOUND = ['cks', 'fp', 'jg', 'iy'];
+  function firstOk(a, b) {
+    if (!a || !b) return false;
+    if (a === b || kbNear(a, b)) return true;
+    return SAME_SOUND.some((g) => g.includes(a) && g.includes(b));
+  }
+
+  // Precomputed shape of an input or a listed form.
+  function prepForm(norm) {
+    const c = compact(norm);
+    const words = norm.split(' ');
+    return { norm, len: c.length, first: c[0] || '', resp: respell(norm), key: phoneticKey(norm), words };
+  }
+
+  // Scores one input against one form. Returns
+  //   { cost, fix: 'typo'|'keyboard'|'sound'|'words', allowed, allow, reason }
+  // `max` (optional) is how far to keep computing for an explanation.
+  function scoreForm(inp, f, max) {
+    const K = CONFIG.correct;
+    const allow = fuzzyAllowance(f.len);
+    const out = { cost: Infinity, fix: null, allowed: false, allow, reason: '' };
+    const ratio = inp.len / (f.len || 1);
+    const firstPass = firstOk(inp.first, f.first) || (inp.resp[0] && inp.resp[0] === f.resp[0]);
+    const limit = Math.max(allow + K.soundCost, max || 0);
+    // 1. the whole string, letter by letter
+    const d = correctionDistance(inp.norm, f.norm, limit);
+    if (d <= limit) { out.cost = d; out.fix = d < correctionDistance(inp.norm, f.norm, limit, 1) ? 'keyboard' : 'typo'; }
+    if (d <= allow && allow > 0) out.allowed = true;
+    // 2. sound-alike: same phonetic key. The plain cost (the lower of the spelling
+    //    as typed and the respelled forms, so "chiwawa" ≈ "chihuahua") may run
+    //    soundCost past the allowance, and must stay under allowance + 2.
+    if (!out.allowed && allow >= 1 && f.len >= K.soundMinLen && inp.key && inp.key === f.key) {
+      const r = Math.min(d, correctionDistance(inp.resp, f.resp, allow + 2));
+      if (r < allow + 2 && r <= allow + K.soundCost) { out.cost = r; out.fix = 'sound'; out.allowed = true; }
+    }
+    // 3. word by word, for multi-word answers with the same number of words
+    if (!out.allowed && f.words.length > 1 && f.words.length === inp.words.length) {
+      let total = 0, ok = true;
+      for (let w = 0; w < f.words.length && ok; w++) {
+        const fw = f.words[w], iw = inp.words[w];
+        const wa = fuzzyAllowance(fw.length);
+        const wd = fw === iw ? 0 : wa ? correctionDistance(iw, fw, wa) : Infinity;
+        if (wd > wa) ok = false; else total += wd;
+      }
+      if (ok) { out.cost = total; out.fix = 'words'; out.allowed = true; }
+    }
+    // guardrails
+    if (!firstPass) { out.allowed = false; out.reason = 'first letter'; }
+    else if (ratio < K.minRatio || ratio > K.maxRatio) { out.allowed = false; out.reason = 'length ratio'; }
+    else if (!allow) { out.allowed = false; out.reason = 'too short to correct'; }
+    else if (!out.allowed) out.reason = 'over the allowance';
+    return out;
+  }
+  function correctionCost(input, form) {
+    const a = normalize(input), b = normalize(form);
+    if (!a || !b) return { cost: Infinity, fix: null, allowed: false, allow: 0, reason: 'empty' };
+    return scoreForm(prepForm(a), prepForm(b));
+  }
+
+  // Ranks the category's entries for a correction. Returns
+  //   { key, ranked: [{ entry, form, cost, fix, allow, allowed, reason }], verdict }
+  // verdict: { entry, fix, cost } | { ambiguous: [entry, entry] } | null.
+  // With explain, every entry is scored (best form per entry) for the dev debugger.
+  function corrections(index, norm, explain) {
+    const K = CONFIG.correct;
+    const inp = prepForm(norm);
+    const best = new Map();
+    for (const f of index.prepped) {
+      if (!explain) {
+        const ratio = inp.len / (f.len || 1);
+        if (ratio < K.minRatio || ratio > K.maxRatio) continue;
+        if (!(firstOk(inp.first, f.first) || (inp.resp[0] && inp.resp[0] === f.resp[0]))) continue;
+        if (!fuzzyAllowance(f.len)) continue;
+      }
+      const r = scoreForm(inp, f, explain ? 6 : 0);
+      if (!explain && !r.allowed) continue;
+      const prev = best.get(f.id);
+      const better = !prev || (r.allowed && !prev.allowed) || (r.allowed === prev.allowed && r.cost < prev.cost);
+      if (better) best.set(f.id, Object.assign(r, { entry: index.entries[f.id], form: f.norm, formKey: f.key }));
+    }
+    const ranked = [...best.values()].sort((x, y) => (y.allowed - x.allowed) || (x.cost - y.cost));
+    const ok = ranked.filter((r) => r.allowed);
+    let verdict = null;
+    // Within the margin, the one answer that sounds like the input (same phonetic
+    // key) still wins: "saxaphone" → Saxophone, not Daxophone.
+    const close = ok.filter((r) => r.cost - (ok[0] ? ok[0].cost : 0) < K.margin);
+    const sounding = close.filter((r) => r.formKey === inp.key);
+    const win = close.length === 1 ? close[0] : sounding.length === 1 ? sounding[0] : null;
+    if (win) verdict = { entry: win.entry, fix: win.fix, cost: win.cost };
+    else if (close.length > 1) verdict = { ambiguous: [close[0].entry, close[1].entry] };
+    return { key: inp.key, ranked, verdict };
   }
 
   // ---------------------------------------------------------------------------
@@ -173,6 +355,7 @@
     const exact = new Map();   // normalized form -> entry id
     const comp = new Map();    // space-free form -> entry id
     const forms = [];          // [normalized form, entry id] for fuzzy matching
+    const prepped = [];        // prepForm() of every form, for autocorrect
     const stripped = [];       // affix-free forms, added after all real forms
     CONFIG.tiers.forEach((tier, tierIdx) => {
       const raw = tier.keys.map((k) => (cat.a && cat.a[k]) || '').filter(Boolean).join(',');
@@ -190,6 +373,7 @@
           const c = compact(n);
           if (!comp.has(c)) comp.set(c, id);
           forms.push([n, id]);
+          prepped.push(Object.assign(prepForm(n), { id }));
           const s = stripAffixes(n, cat);
           if (s !== n) stripped.push([s, id]);
         });
@@ -199,14 +383,24 @@
       if (!exact.has(s)) exact.set(s, id);
       if (!comp.has(compact(s))) comp.set(compact(s), id);
     }
-    return { cat, entries, exact, comp, forms };
+    return { cat, entries, exact, comp, forms, prepped };
   }
 
-  // Stages 1–3 of the matching pipeline. Returns
-  // { entry, via: 'exact'|'alias'|'fuzzy' } | { ambiguous: true } | null
-  function match(index, input) {
+  // The matching pipeline. Returns
+  //   { entry, via: 'exact'|'alias'|'fuzzy', norm, fix?, cost? }          a listed answer (fix/cost on corrections)
+  //   { entry, via, norm, qualifier, canon }                               a qualified answer (stage 4)
+  //   { ambiguous: true, norm } | null
+  // opts.noFuzzy skips stage 3 (used when mapping the judge's canonical).
+  function match(index, input, opts) {
     const norm = typeof input === 'string' ? normalize(input) : '';
     if (!norm) return null;
+    const hit = matchListed(index, norm, opts);
+    if (hit) return hit;
+    return matchQualified(index, norm, opts);
+  }
+
+  // Stages 1–3: the category's own list.
+  function matchListed(index, norm, opts) {
     const keys = candidateKeys(norm);
     const bare = stripAffixes(norm, index.cat);
     if (bare !== norm) keys.push(...candidateKeys(bare));
@@ -217,17 +411,62 @@
         return { entry, via: k === entry.norm ? 'exact' : 'alias', norm };
       }
     }
-    // Stage 3: fuzzy, only when exactly one answer qualifies.
-    const hits = new Set();
-    for (const [form, id] of index.forms) {
-      const allow = fuzzyAllowance(form.length);
-      if (!allow) continue;
-      if (Math.abs(form.length - norm.length) > allow) continue;
-      if (editDistance(norm, form, allow) <= allow) hits.add(id);
-    }
-    if (hits.size === 1) return { entry: index.entries[[...hits][0]], via: 'fuzzy', norm };
-    if (hits.size > 1) return { ambiguous: true, norm };
+    if (opts && opts.noFuzzy) return null;
+    // Stage 3: autocorrect. The closest listed answer wins if it is within its
+    // allowance and clearly closer (by CONFIG.correct.margin) than any other.
+    const v = corrections(index, norm).verdict;
+    if (v && v.entry) return { entry: v.entry, via: 'fuzzy', fix: v.fix, cost: v.cost, norm };
+    if (v && v.ambiguous) return { ambiguous: true, norm };
     return null;
+  }
+
+  // Stage 4: qualifiers. A category may list generic qualifiers (cat.qualifiers,
+  // normalized, e.g. ['womens', 'indoor']). Only when the list itself finds
+  // nothing, one leading qualifier is stripped and the rest is matched with
+  // stages 1–3. No stacking, no qualifier on its own. The result keeps the base
+  // entry (so it scores at the base tier) plus the qualifier, which together
+  // form the dedupe key.
+  function qualifierList(cat) {
+    const qs = (cat && Array.isArray(cat.qualifiers) ? cat.qualifiers : []).map(normalize).filter(Boolean);
+    return qs.sort((a, b) => b.length - a.length);
+  }
+  function matchQualified(index, norm, opts) {
+    const qs = qualifierList(index.cat);
+    const leads = (x) => qs.some((q) => x === q || x.startsWith(q + ' '));
+    for (const q of qs) {
+      if (!norm.startsWith(q + ' ')) continue;
+      const rest = norm.slice(q.length + 1).trim();
+      // No stacking: "dark dark green" or "womens youth soccer" never qualify,
+      // even when the rest happens to be a listed answer.
+      if (!rest || leads(rest)) return null;
+      const base = matchListed(index, rest, opts);
+      if (!base || !base.entry || leads(base.entry.norm)) return null;
+      const hit = { entry: base.entry, via: base.via, norm, qualifier: q, canon: qualifiedCanon(q, base.entry.canon) };
+      if (base.fix) { hit.fix = base.fix; hit.cost = base.cost; }
+      return hit;
+    }
+    return null;
+  }
+  // Display names for qualifiers whose readable form differs from the normalized one.
+  const QUAL_DISPLAY = { womens: 'Women\u2019s', mens: 'Men\u2019s', girls: 'Girls\u2019', boys: 'Boys\u2019', childrens: 'Children\u2019s', kids: 'Kids\u2019' };
+  function qualifiedCanon(q, canon) {
+    const head = QUAL_DISPLAY[q] || (q.charAt(0).toUpperCase() + q.slice(1));
+    // "Soccer" → "soccer", but keep "NASCAR", "Formula 1" readable.
+    const tail = /^[A-Z][a-z]/.test(canon) ? canon.charAt(0).toLowerCase() + canon.slice(1) : canon;
+    return head + ' ' + tail;
+  }
+  // Dedupe key for an accepted answer: the entry id, plus the qualifier if any.
+  function answerKey(eid, q) { return eid == null ? null : q ? eid + '|' + q : String(eid); }
+  // What happens to a hit on (eid, q) given the leg's answers so far:
+  //   { kind: 'dup', prior } already found · { kind: 'limit' } past maxQualifiedPerLeg · { kind: 'new' }
+  // `skip` is an answer to ignore (the pending one being resolved by the judge).
+  function hitOutcome(answers, eid, q, skip) {
+    const key = answerKey(eid, q);
+    const ok = (answers || []).filter((a) => a !== skip && a.s === 'ok');
+    const prior = key == null ? null : ok.find((a) => answerKey(a.eid, a.q) === key);
+    if (prior) return { kind: 'dup', prior };
+    if (q && ok.filter((a) => a.q).length >= CONFIG.maxQualifiedPerLeg) return { kind: 'limit' };
+    return { kind: 'new' };
   }
 
   // ---------------------------------------------------------------------------
@@ -426,7 +665,8 @@
 
   const ENGINE = {
     CONFIG, normalize, pluralVariants, candidateKeys, editDistance, fuzzyAllowance,
-    stripAffixes, buildIndex, match, tierFromCommonness, chainBonus, answerGain, legEffective,
+    correctionDistance, respell, phoneticKey, correctionCost, corrections,
+    stripAffixes, buildIndex, match, qualifierList, qualifiedCanon, answerKey, hitOutcome, tierFromCommonness, chainBonus, answerGain, legEffective,
     finalAltitude, milestoneFor, nextMilestone, airPercent, setClockOffset, clockOffset,
     nowDate, localDateStr, dayIndex,
     puzzleNumber, hashStr, rng, shuffled, dailyCategories, judgeEligible, judgePrompt,
