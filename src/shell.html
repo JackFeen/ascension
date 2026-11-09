@@ -465,6 +465,32 @@ select.dev-in[size] { width: 100%; min-height: 110px; padding: 4px; }
   white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; }
 .dev-log { list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .dev-log li { border-bottom: 1px dashed var(--line); padding-bottom: 3px; }
+.dev-ans .t0, .dev-ans-ranks .t0 { --c: var(--t0); } .dev-ans .t1, .dev-ans-ranks .t1 { --c: var(--t1); } .dev-ans .t2, .dev-ans-ranks .t2 { --c: var(--t2); } .dev-ans .t3, .dev-ans-ranks .t3 { --c: var(--t3); } .dev-ans .t4, .dev-ans-ranks .t4 { --c: var(--t4); }
+.dev-chip { min-height: 30px; padding: 0 9px; gap: 5px; display: inline-flex; align-items: center; }
+.dev-chip[aria-pressed="false"] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line); color: var(--ink-3); text-decoration: line-through; }
+.dev-chip[aria-pressed="true"] { background: color-mix(in srgb, var(--c) 18%, var(--panel)); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--c); }
+.dev-chip[aria-pressed="true"] svg { color: var(--c); }
+.dev-ans-sum p { margin: 0; font-size: 14px; }
+.dev-ans-ranks { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: max-content max-content 1fr; gap: 3px 8px; align-items: center; font-size: 13px; }
+.dev-ans-ranks li { display: contents; }
+.dev-ans-ranks b { font: 800 14px var(--f-display); text-align: right; font-variant-numeric: tabular-nums; }
+.dev-ans-ranks .bar { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; }
+.dev-ans-ranks .bar i { display: block; height: 100%; background: var(--c); }
+.dev-ans-ranks small { grid-column: 1 / -1; margin: -2px 0 3px 21px; color: var(--ink-3); font-size: 12px; }
+.dev-ans .rk { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-weight: 700; }
+.dev-ans .rk svg { width: 13px; height: 13px; color: var(--c); flex: none; }
+.dev-ans-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dev-ans-table caption { text-align: left; color: var(--ink-3); font-size: 12px; padding: 2px 0 4px; }
+.dev-ans-table th { text-align: left; font: 700 12px var(--f-body); color: var(--ink-3); padding: 4px 6px; border-bottom: 1.5px solid var(--line); position: sticky; top: -10px; background: var(--panel-solid); z-index: 1; }
+.dev-ans-table td { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--ink); }
+.dev-ans-table td.rk { display: table-cell; }
+.dev-ans-table td.rk svg { vertical-align: -2px; margin-right: 4px; }
+.dev-ans-table .num { text-align: right; font: 800 14px var(--f-display); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dev-ans-table .al { display: block; font-size: 11px; color: var(--ink-3); overflow-wrap: anywhere; }
+.dev-ans-table tr.got td { background: color-mix(in srgb, var(--c) 10%, transparent); }
+.dev-ans-table .got-mark { font-weight: 800; color: var(--c); }
+.dev-csv { width: 100%; min-height: 220px; padding: 8px; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; }
+@media (max-width: 360px) { .dev-ans-table .c-max { display: none; } .dev-ans-table td, .dev-ans-table th { padding: 4px 4px; } }
 .dev-cheat h4 { margin: 8px 0 3px; display: flex; align-items: center; gap: 6px; font: 800 14px/1 var(--f-display); letter-spacing: .05em; text-transform: uppercase; color: var(--c); }
 .dev-cheat h4 svg { width: 14px; height: 14px; }
 .dev-cheat h4.t0 { --c: var(--t0); } .dev-cheat h4.t1 { --c: var(--t1); } .dev-cheat h4.t2 { --c: var(--t2); } .dev-cheat h4.t3 { --c: var(--t3); } .dev-cheat h4.t4 { --c: var(--t4); }
@@ -651,6 +677,14 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
   </div>
 </dialog>
 
+<dialog id="dlg-dev-csv" aria-labelledby="dev-csv-title">
+  <div class="dlg">
+    <div class="dlg-head"><h2 id="dev-csv-title">Answers as CSV</h2><button class="dlg-close" data-close aria-label="Close">✕</button></div>
+    <p class="dev-note">Copying to the clipboard is blocked here. The text is selected: copy it with Ctrl+C or Cmd+C.</p>
+    <label class="sr-only" for="dev-csv-text">CSV</label>
+    <textarea class="dev-in dev-csv" id="dev-csv-text" readonly rows="12"></textarea>
+  </div>
+</dialog>
 <dialog id="dlg-dev-shot" aria-labelledby="dev-shot-title">
   <div class="dlg dev-shot">
     <div class="dlg-head"><h2 id="dev-shot-title">Screenshot</h2><button class="dlg-close" data-close aria-label="Close">✕</button></div>
