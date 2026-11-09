@@ -19,7 +19,8 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
   const wrapper = path.join(SHOTS, 'sandbox.html');
   fs.writeFileSync(wrapper, `<!doctype html><body style="margin:0"><iframe sandbox="allow-scripts allow-same-origin" src="${PAGE}" style="width:390px;height:844px;border:0"></iframe></body>`);
 
-  const browser = await chromium.launch();
+  // CHROME_PATH lets the smoke run on an installed Chrome when Playwright's own browser isn't downloaded.
+  const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -73,6 +74,54 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
   await page.reload(); await page.waitForTimeout(1200);
   const label = await page.frames()[1].textContent('#btn-begin');
   if (label !== 'View Results') fail('after reload the button says "' + label + '"');
+
+  // ---- dev mode: unlock with ?dev, play a full lap with the autoplay bot, and
+  // confirm the real save (daily-ascent:v1) is untouched. Needs the private
+  // dev.local.mjs for the password; skipped without it.
+  const priv = path.join(ROOT, 'dev.local.mjs');
+  if (!fs.existsSync(priv)) console.log('skip dev mode smoke: no dev.local.mjs');
+  else {
+    const { DEV_PASSWORD } = await import('file://' + priv);
+    const devWrap = path.join(SHOTS, 'sandbox-dev.html');
+    fs.writeFileSync(devWrap, `<!doctype html><body style="margin:0"><iframe sandbox="allow-scripts allow-same-origin" src="${PAGE}?dev" style="width:390px;height:844px;border:0"></iframe></body>`);
+    await page.goto('file://' + devWrap);
+    await page.waitForTimeout(900);
+    const d = page.frames()[1];
+    if (!(await d.evaluate(() => document.querySelector('#dlg-dev-lock').open))) fail('?dev did not open the password dialog');
+    await d.fill('#dev-lock-pw', 'not-the-password'); await d.press('#dev-lock-pw', 'Enter');
+    await page.waitForTimeout(1600);
+    if (!/isn’t right/.test(await d.textContent('#dev-lock-err'))) fail('wrong dev password was not rejected');
+    await d.fill('#dev-lock-pw', DEV_PASSWORD); await d.press('#dev-lock-pw', 'Enter');
+    try { await d.waitForSelector('#dev-badge:not([hidden])', { timeout: 5000 }); } catch (e) { fail('dev mode did not unlock'); }
+    const realBefore = await d.evaluate(() => localStorage.getItem('daily-ascent:v1'));
+    await d.evaluate(() => { const C = DA_ENGINE.CONFIG; C.legs.forEach((l) => (l.secs = 6)); C.transitionMs = 700; C.countdownSecs = 1; });
+    await d.click('#dev-acts [data-act="start-climb"]');
+    await d.waitForFunction(() => /^Dev leg 1/.test(document.querySelector('#leg-label').textContent), null, { timeout: 5000 });
+    // pause holds the clock
+    await d.click('#dev-acts [data-act="pause"]');
+    const s1 = await d.textContent('#secs'); await page.waitForTimeout(1500); const s2 = await d.textContent('#secs');
+    if (s1 !== s2) fail(`pause did not hold the clock (${s1} → ${s2})`);
+    if (await d.evaluate(() => document.querySelector('#dev-pause').hidden)) fail('no PAUSED overlay');
+    await page.screenshot({ path: path.join(SHOTS, 'dev-paused.png') });
+    await d.click('#dev-acts [data-act="pause"]');
+    // autoplay bot until the climber passes the summit
+    await d.click('#dev-tab-content');
+    await d.selectOption('#dev-bot-rank', '2');
+    await d.evaluate(() => { const r = document.querySelector('#dev-bot-rate'); r.value = '6'; r.dispatchEvent(new Event('input', { bubbles: true })); });
+    await d.click('[data-act="bot"]');
+    try {
+      await d.waitForFunction(() => /Lap 2/.test(document.querySelector('#dev-hud').textContent), null, { timeout: 120000 });
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: path.join(SHOTS, 'dev-lap2.png') });
+    } catch (e) { fail('dev climb never reached lap 2: ' + await d.textContent('#dev-hud')); }
+    await d.click('#dev-acts [data-act="end-climb"]');
+    await d.waitForSelector('#results:not([hidden])', { timeout: 5000 });
+    if (!/Dev climb/.test(await d.textContent('#sheet'))) fail('no dev results summary');
+    const realAfter = await d.evaluate(() => localStorage.getItem('daily-ascent:v1'));
+    if (realBefore !== realAfter) fail('dev mode changed the real save');
+    if (!(await d.evaluate(() => !!localStorage.getItem('daily-ascent:dev:v1')))) fail('dev climb did not use the dev save');
+    console.log('dev mode: unlocked, paused, lapped and left the real save alone');
+  }
 
   if (errors.length) fail('page errors:\n' + errors.join('\n'));
   await browser.close();

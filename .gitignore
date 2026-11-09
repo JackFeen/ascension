@@ -2,3 +2,5 @@ node_modules/
 shots/
 dist/
 .DS_Store
+# Dev mode password (plaintext). Never commit; `npm run dev-lock` turns it into src/dev-lock.js.
+dev.local.mjs

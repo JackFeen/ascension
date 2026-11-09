@@ -417,6 +417,79 @@ dialog::backdrop { background: rgba(10, 16, 36, 0.55); }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
 }
 .reduced *, .reduced *::before, .reduced *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
+
+/* ---------------------------------------------------------------- dev mode (password-locked; src/dev.js)
+   Hidden for players: every element below starts [hidden] and only dev.js reveals it. */
+.dev-chrome { font: 400 14px/1.4 var(--f-body); }
+.dev-badge { position: fixed; right: 0; bottom: 118px; z-index: 21; appearance: none; border: 0; cursor: pointer; writing-mode: vertical-rl; transform: rotate(180deg);
+  padding: 10px 4px; border-radius: 0 6px 6px 0; background: var(--suit); color: #fff; font: 900 13px/1 var(--f-stencil); letter-spacing: .14em; text-transform: uppercase;
+  box-shadow: 0 6px 18px -6px rgba(16, 26, 56, .5); max-height: 70vh; overflow: hidden; white-space: nowrap; }
+.dev-badge small { font: 700 11px/1 var(--f-body); letter-spacing: .02em; text-transform: none; margin-top: 6px; }
+.dev-panel { position: fixed; z-index: 20; display: flex; flex-direction: column; background: var(--panel-solid); color: var(--ink); box-shadow: var(--shadow);
+  left: 0; right: 0; bottom: 0; height: min(54vh, 470px); border-radius: 12px 12px 0 0; border-top: 3px solid var(--suit); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.dev-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; }
+.dev-head h2 { margin: 0; font: 900 20px/1 var(--f-stencil); letter-spacing: .08em; text-transform: uppercase; color: var(--accent-text); flex: none; }
+.dev-status { margin: 0; flex: 1; min-width: 0; font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dev-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px; }
+.dev-tabs { display: flex; gap: 2px; overflow-x: auto; padding: 0 8px; border-bottom: 1px solid var(--line); scrollbar-width: none; flex: none; }
+.dev-tabs button { appearance: none; border: 0; background: none; padding: 8px 10px; font: 800 14px/1 var(--f-display); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
+.dev-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--suit); }
+.dev-body { flex: 1; overflow-y: auto; padding: 10px 12px 16px; overscroll-behavior: contain; }
+.dev-sec { display: flex; flex-direction: column; gap: 10px; }
+.dev-sec h3 { margin: 6px 0 0; font: 800 15px/1 var(--f-display); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.dev-note { margin: 0; font-size: 13px; color: var(--ink-3); }
+.dev-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.dev-row label { display: inline-flex; align-items: center; gap: 6px; }
+.dev-btn { appearance: none; border: 0; cursor: pointer; min-height: 34px; padding: 0 11px; border-radius: var(--r-sm); background: var(--track); color: var(--ink); font: 700 13px/1.1 var(--f-body);
+  display: inline-flex; align-items: center; gap: 6px; box-shadow: inset 0 0 0 1px var(--line); }
+.dev-btn:hover { background: color-mix(in srgb, var(--ink) 12%, var(--track)); }
+.dev-btn[aria-pressed="true"], .dev-btn.on { background: var(--suit); color: #fff; box-shadow: none; }
+.dev-btn.primary { background: var(--suit); color: #fff; box-shadow: none; }
+.dev-btn.danger { background: var(--bad); color: #fff; box-shadow: none; }
+.dev-btn:disabled { opacity: .45; cursor: not-allowed; }
+.dev-btn svg { width: 14px; height: 14px; color: var(--c, currentColor); }
+.dev-btn.t0 { --c: var(--t0); } .dev-btn.t1 { --c: var(--t1); } .dev-btn.t2 { --c: var(--t2); } .dev-btn.t3 { --c: var(--t3); } .dev-btn.t4 { --c: var(--t4); }
+.dev-in { min-height: 34px; padding: 0 8px; border-radius: var(--r-sm); border: 1.5px solid var(--line); background: var(--panel); color: var(--ink); font: 400 14px var(--f-body); min-width: 0; }
+.dev-in[type="number"] { width: 84px; }
+.dev-in[type="range"] { padding: 0; border: 0; background: none; flex: 1; min-width: 120px; accent-color: var(--suit); }
+select.dev-in[size] { width: 100%; min-height: 110px; padding: 4px; }
+.dev-kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 10px; margin: 0; font-size: 13px; }
+.dev-kv dt { color: var(--ink-3); }
+.dev-kv dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+.dev-pre, .dev-log { margin: 0; padding: 8px; border-radius: var(--r-sm); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; }
+.dev-log { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.dev-log li { border-bottom: 1px dashed var(--line); padding-bottom: 3px; }
+.dev-cheat h4 { margin: 8px 0 3px; display: flex; align-items: center; gap: 6px; font: 800 14px/1 var(--f-display); letter-spacing: .05em; text-transform: uppercase; color: var(--c); }
+.dev-cheat h4 svg { width: 14px; height: 14px; }
+.dev-cheat h4.t0 { --c: var(--t0); } .dev-cheat h4.t1 { --c: var(--t1); } .dev-cheat h4.t2 { --c: var(--t2); } .dev-cheat h4.t3 { --c: var(--t3); } .dev-cheat h4.t4 { --c: var(--t4); }
+.dev-cheat p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--ink-2); }
+.dev-cheat .got { color: var(--ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.dev-hud { padding: 6px 10px; border-radius: var(--r-sm); background: var(--plate); color: var(--plate-ink); font: 700 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.dev-hud b { color: #ffb08c; font-weight: 700; }
+.dev-lap { position: fixed; left: 0; right: 0; margin-inline: auto; width: max-content; max-width: calc(100vw - 32px); text-align: center; top: max(118px, calc(env(safe-area-inset-top, 0px) + 118px)); z-index: 8; pointer-events: none; padding: 10px 18px 8px; border-radius: var(--r-sm);
+  background: var(--plate); color: #fff; font: 900 26px/1 var(--f-stencil); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; animation: card-in .4s var(--ease-out); }
+.dev-lap small { display: block; margin-top: 4px; font: 700 13px/1 var(--f-body); letter-spacing: 0; text-transform: none; color: #ffd2bf; }
+.dev-pause { z-index: 5; background: rgba(10, 14, 32, .45); }
+.dev-pause-card { padding: 16px 26px 14px; border-radius: var(--r); background: var(--plate); color: #fff; text-align: center; font: 900 54px/1 var(--f-display); letter-spacing: .08em; text-transform: uppercase; }
+.dev-pause-card small { display: block; margin-top: 6px; font: 400 14px/1.3 var(--f-body); letter-spacing: 0; text-transform: none; color: rgba(255, 255, 255, .8); }
+.dev-fps { position: fixed; left: max(8px, env(safe-area-inset-left, 0px)); bottom: max(8px, env(safe-area-inset-bottom, 0px)); z-index: 22; pointer-events: none; padding: 6px 8px; border-radius: var(--r-sm); background: rgba(8, 12, 26, .82); color: #d6ffe0;
+  font: 700 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; display: flex; flex-direction: column; gap: 4px; }
+.dev-fps canvas { width: 120px; height: 32px; display: block; }
+a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.dev-shot img { width: 100%; height: auto; border-radius: var(--r-sm); box-shadow: inset 0 0 0 1px var(--line); }
+.dev-err { margin: 0; min-height: 1.4em; color: var(--bad); font-size: 14px; }
+/* phones: with the sheet open, the badge becomes a handle on its top edge */
+@media (max-width: 899px) {
+  .dev-panel:not([hidden]) ~ .dev-badge { writing-mode: horizontal-tb; transform: none; right: 64px; bottom: min(54vh, 470px); border-radius: 6px 6px 0 0; padding: 7px 12px 5px; }
+  .dev-panel:not([hidden]) ~ .dev-badge small { margin: 0 0 0 6px; }
+}
+.dev-ui-hidden #app, .dev-ui-hidden .dev-badge, .dev-ui-hidden .dev-panel, .dev-ui-hidden .dev-lap { visibility: hidden !important; }
+@media (min-width: 900px) {
+  .dev-panel { left: auto; top: 0; height: auto; width: 390px; border-radius: 0; border-top: 0; border-left: 3px solid var(--suit); padding-top: env(safe-area-inset-top, 0px); }
+  .dev-panel:not([hidden]) ~ .dev-badge { right: 390px; }
+  .dev-open #app { width: calc(100% - 390px); }   /* the game makes room for the drawer */
+}
 </style>
 
 <canvas id="scene" aria-hidden="true"></canvas>
@@ -446,6 +519,7 @@ dialog::backdrop { background: rgba(10, 16, 36, 0.55); }
         <button class="btn btn-primary" id="btn-begin">Begin Climb</button>
         <p class="next-climb" id="next-climb" hidden>Next climb in <b id="next-time">--:--:--</b></p>
         <button class="btn-link" id="btn-practice">Try a 20-second practice climb</button>
+        <button class="btn-link" id="btn-dev" hidden>Dev mode: start an infinite climb</button>
       </div>
       <div class="judge-row" id="judge-row" hidden>
         <span class="judge-dot off" id="judge-dot"></span>
@@ -465,6 +539,7 @@ dialog::backdrop { background: rgba(10, 16, 36, 0.55); }
           <span class="air" id="air">Air 70%</span>
         </div>
       </div>
+      <div class="dev-hud" id="dev-hud" hidden></div>
       <div class="play-card panel">
         <div class="leg-meta eyebrow"><span id="leg-label">Leg 1 of 7</span><span class="mult" id="leg-mult">20 s  ×1</span></div>
         <h2 class="category" id="category" aria-live="polite">Get ready</h2>
@@ -491,6 +566,7 @@ dialog::backdrop { background: rgba(10, 16, 36, 0.55); }
         <p class="spot-cat" id="spot-cat"></p>
       </div>
     </div>
+    <div class="overlay dev-pause" id="dev-pause" hidden><div class="dev-pause-card">Paused<small>Press Alt+P or Resume in the dev tools</small></div></div>
     <div class="overlay" id="countdown" hidden><div class="count" id="count">3</div></div>
     <div class="overlay" id="transition" hidden>
       <div class="trans-card panel" role="status">
@@ -544,8 +620,44 @@ dialog::backdrop { background: rgba(10, 16, 36, 0.55); }
   </div>
 </dialog>
 
+
+<!-- DEV MODE (password-locked). Everything here stays hidden until src/dev.js unlocks it. -->
+<aside class="dev-panel dev-chrome" id="dev-panel" aria-label="Dev tools" hidden></aside>
+<button class="dev-badge dev-chrome" id="dev-badge" aria-controls="dev-panel" aria-expanded="false" hidden>Dev</button>
+<div class="dev-lap" id="dev-lap" role="status" hidden></div>
+<div class="dev-fps" id="dev-fps" aria-hidden="true" hidden><span id="dev-fps-text">— fps</span><canvas id="dev-fps-graph" width="240" height="64"></canvas></div>
+
+<dialog id="dlg-dev-lock" aria-labelledby="dev-lock-title">
+  <div class="dlg">
+    <div class="dlg-head"><h2 id="dev-lock-title">Dev mode</h2><button class="dlg-close" data-close aria-label="Close">✕</button></div>
+    <p>Enter the dev password to unlock the dev tools on this tab.</p>
+    <label class="sr-only" for="dev-lock-pw">Dev password</label>
+    <input class="answer" id="dev-lock-pw" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="128" placeholder="Password">
+    <p class="dev-err" id="dev-lock-err" role="alert"></p>
+    <div class="res-actions"><button class="btn btn-primary" id="dev-lock-go">Unlock</button><button class="btn btn-ghost" data-close>Cancel</button></div>
+  </div>
+</dialog>
+
+<dialog id="dlg-dev-confirm" aria-labelledby="dev-confirm-title">
+  <div class="dlg">
+    <div class="dlg-head"><h2 id="dev-confirm-title">Delete real save?</h2><button class="dlg-close" data-close aria-label="Close">✕</button></div>
+    <div id="dev-confirm-body"></div>
+    <div class="res-actions"><button class="btn btn-primary" id="dev-confirm-go">Delete</button><button class="btn btn-ghost" data-close>Cancel</button></div>
+  </div>
+</dialog>
+
+<dialog id="dlg-dev-shot" aria-labelledby="dev-shot-title">
+  <div class="dlg dev-shot">
+    <div class="dlg-head"><h2 id="dev-shot-title">Screenshot</h2><button class="dlg-close" data-close aria-label="Close">✕</button></div>
+    <p>If the download doesn't start, right-click or long-press the image and save it.</p>
+    <img id="dev-shot-img" alt="Screenshot of the mountain">
+    <div class="res-actions"><a class="btn btn-primary" id="dev-shot-dl" download="daily-ascent.png" href="#">Download PNG</a><button class="btn btn-ghost" data-close>Close</button></div>
+  </div>
+</dialog>
+
 <div id="flash"></div>
 <div id="sr-live" class="sr-only" aria-live="polite"></div>
 <script>/*@ENGINE*/</script>
 <script>var DA_CATS = [];/*@DATA*/</script>
+<script>/*@DEV*/</script>
 <script>/*@APP*/</script>

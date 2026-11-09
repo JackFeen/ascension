@@ -21,6 +21,7 @@ Moving to your own domain later: add a `CNAME` file in GitHub Pages settings. To
 | `src/app.js` | Canvas mountain, sound, answer checking, game flow, results, stats. |
 | `src/shell.html` | Markup and styles. |
 | `build.mjs` | `node build.mjs` writes `index.html` (the playable page, committed for GitHub Pages) and `dist/game.html` (Claude artifact body, git-ignored). |
+| `src/dev-*.js`, `src/dev.js` | Dev mode: the published lock (salt + hash), lap math and password check, and the tools UI. |
 | `test.mjs` | `npm test` checks every answer and alias, matching edge cases, scoring, 120 days of deals, and a calibration simulation. |
 | `scripts/smoke.cjs` | `npm run smoke` plays a full climb in headless Chromium inside a sandboxed iframe (needs `npm install && npx playwright install chromium`). |
 
@@ -41,6 +42,12 @@ Add an object to one of the `src/data-*.js` files:
 ```
 
 `kind` is `broad` (legs 1–2), `mid` (legs 3, 4, 6; also set `lane` to `geo`, `nature` or `culture`), `wild` (leg 5) or `hard` (leg 7). Each pool is dealt in cycles with no repeats, so adding categories lengthens the time before any category comes back.
+
+## Dev mode
+
+A password-locked infinite climb with testing tools: pause and speed controls, laps past the summit, jumping to any leg, altitude or category, an autoplay bot, effect triggers, an answer debugger, a fake answer checker, a fake clock, save-data tools, an FPS meter and screenshots. Open it with `?dev` in the URL or by tapping the "Daily Ascent" wordmark five times. Dev climbs use their own save and never touch your real streak or stats.
+
+The password lives only in `dev.local.mjs` at the repo root, which is git-ignored and must never be committed. `npm run dev-lock` turns it into `src/dev-lock.js`, which holds just a salt and a hash. Details are in [`CLAUDE.md`](CLAUDE.md) §15.
 
 ## What runs where
 

@@ -170,5 +170,35 @@ for (const p of players) {
 }
 console.log('blended          | ' + bands(all));
 
+// ---- dev mode: lap math and the password lock
+{
+  const dctx = { console, module: undefined, TextEncoder };
+  dctx.globalThis = dctx;
+  vm.createContext(dctx);
+  for (const f of ['src/dev-lock.js', 'src/dev-core.js']) vm.runInContext(fs.readFileSync(path.join(dir, f), 'utf8'), dctx, { filename: f });
+  const D = dctx.DA_DEV_CORE, LOCK = dctx.DA_DEV_LOCK;
+  const S = E.CONFIG.startAlt, T = E.CONFIG.summitAlt, span = T - S;
+  const lap = (t) => D.lapState(t, S, T);
+  ok(span === 5989, 'lap span ' + span);
+  ok(lap(0).lap === 1 && lap(0).alt === S, 'lap 1 starts at Lukla');
+  ok(lap(span - 1).lap === 1 && lap(span - 1).alt === T - 1, 'just below the summit is still lap 1');
+  ok(lap(span).lap === 2 && lap(span).alt === S, 'passing the summit wraps to Lukla on lap 2');
+  ok(lap(span * 3 + 100).lap === 4 && lap(span * 3 + 100).alt === S + 100, 'lap 4, 100 m up');
+  ok(lap(span * 3 + 100).total === span * 3 + 100, 'total climbed is uncapped');
+  ok(lap(-50).lap === 1 && lap(-50).alt === S, 'negative totals clamp to Lukla');
+  ok(D.timingSafeEqual(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 3])) && !D.timingSafeEqual(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 4])) && !D.timingSafeEqual(new Uint8Array([1, 2]), new Uint8Array([1, 2, 0])), 'constant-time compare');
+  ok(LOCK && LOCK.iterations >= 310000 && D.b64ToBytes(LOCK.salt).length === 16 && D.b64ToBytes(LOCK.hash).length === 32, 'dev lock shape');
+  const subtle = (await import('node:crypto')).webcrypto.subtle;
+  ok(!(await D.verifyPassword('definitely-not-it', LOCK, subtle)), 'wrong dev password fails');
+  const priv = path.join(dir, 'dev.local.mjs');
+  if (fs.existsSync(priv)) {
+    const { DEV_PASSWORD } = await import(new URL('file://' + priv).href);
+    ok(await D.verifyPassword(DEV_PASSWORD, LOCK, subtle), 'dev password from dev.local.mjs matches src/dev-lock.js (run npm run dev-lock after changing it)');
+  } else console.log('skip: no dev.local.mjs, so the right-password check is skipped');
+  let threw = false;
+  try { await D.verifyPassword('x', LOCK, undefined); } catch (e) { threw = true; }
+  ok(threw, 'missing WebCrypto throws (the UI shows the https message)');
+}
+
 console.log(fails ? `\n${fails} FAILURES` : '\nALL TESTS PASSED');
 process.exit(fails ? 1 : 0);
