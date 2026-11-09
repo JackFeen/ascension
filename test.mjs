@@ -499,6 +499,32 @@ console.log('blended          | ' + bands(all));
   let threw = false;
   try { await D.verifyPassword('x', LOCK, undefined); } catch (e) { threw = true; }
   ok(threw, 'missing WebCrypto throws (the UI shows the https message)');
+
+  // ---- dev mode: the answer-bank table (Answers tab)
+  const C = E.CONFIG;
+  for (const c of CATS) {
+    const t = D.answerTable(E, c);
+    const n = idx[c.id].entries.length;
+    ok(t.rows.length === n && t.summary.total === n, `${c.id}: answer table has one row per entry (${t.rows.length}/${n})`);
+    ok(t.summary.counts.reduce((a, b) => a + b, 0) === n, `${c.id}: rank counts add up to the total`);
+    ok(t.rows.every((r, i) => r.id === i), `${c.id}: rows are in entry order`);
+  }
+  const natural = { broad: 0, mid: 2, wild: 4, hard: 6, practice: 0 };
+  for (const c of CATS) ok(D.answerTable(E, c).summary.pos === natural[c.kind], `${c.id}: natural leg for ${c.kind}`);
+  const broad = CATS.find((c) => c.kind === 'broad'), hard = CATS.find((c) => c.kind === 'hard');
+  const crawler = D.answerTable(E, broad).rows.find((r) => r.tier === 0);
+  ok(crawler && crawler.atPos === 55 && crawler.base === 55 && crawler.rank === 'Crawler', 'broad Crawler answer scores 55 at leg 1, no chain');
+  const sherpa = D.answerTable(E, hard).rows.find((r) => r.tier === 4);
+  ok(sherpa && sherpa.atPos === Math.round(500 * 1.5) && sherpa.rank === 'Sherpa', 'hard Sherpa answer scores round(500 × 1.5) at leg 7');
+  ok(sherpa.atPosMax === E.answerGain(4, Math.ceil(C.chainMax / C.chainStep), 6) && sherpa.atPosMax === Math.round(500 * (1 + C.chainMax) * 1.5), 'atPosMax is the gain at the chainMax bonus');
+  for (let pos = 0; pos < C.legs.length; pos++) {
+    const r = D.answerTable(E, broad, { pos }).rows.find((x) => x.tier === 2);
+    ok(r.atPos === Math.round(C.tiers[2].gain * C.legs[pos].mult), `opts.pos ${pos} applies multiplier ${C.legs[pos].mult}`);
+  }
+  ok(D.answerTable(E, broad, { chain: 2 }).rows.find((x) => x.tier === 1).atPos === Math.round(C.tiers[1].gain * (1 + 2 * C.chainStep)), 'opts.chain applies the chain bonus');
+  const bands = D.answerTable(E, broad).summary.bands;
+  ok(bands.length === C.tiers.length && /30%\+/.test(bands[0]) && /under 1%/.test(bands[4]) && bands[1] === '10–30% of players', 'commonness bands come from CONFIG.tiers[].min');
+  ok(JSON.stringify(D.answerTable(E, CATS.find((c) => c.id === 'sports')).summary.qualifiers) === JSON.stringify(E.qualifierList(CATS.find((c) => c.id === 'sports'))), 'summary lists the qualifiers');
 }
 
 console.log(fails ? `\n${fails} FAILURES` : '\nALL TESTS PASSED');
