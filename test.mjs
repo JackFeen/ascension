@@ -185,6 +185,110 @@ ok(seen.size === DATA.categories.length, 'all categories dealt: ' + seen.size);
   ok(hash === '672df2266a0dc0913a8b2d6c0a7db5638be88287015772535eb69f5e1bb46b5e', 'deal for puzzles 1-365 unchanged (sha256 ' + hash.slice(0, 12) + ')');
 }
 
+// ---- autocorrect (§6.3): real misspellings that must be corrected to a listed answer
+const MUST_CORRECT = [
+  ["sports", "wheelchare basketbal", "Wheelchair basketball"],
+  ["composers", "tchaikovski", "Pyotr Tchaikovsky"],
+  ["colors", "fuschia", "Fuchsia"],
+  ["mountains", "kilimanjero", "Kilimanjaro"],
+  ["dogs", "chiwawa", "Chihuahua"],
+  ["dogs", "daschund", "Dachshund"],
+  ["fruits", "bananna", "Banana"],
+  ["fruits", "pinapple", "Pineapple"],
+  ["vegetables", "brocolli", "Broccoli"],
+  ["vegetables", "zuchini", "Zucchini"],
+  ["animals", "girafe", "Giraffe"],
+  ["animals", "hippopotamous", "Hippo"],
+  ["dinosaurs", "tyranosaurus", "Tyrannosaurus rex"],
+  ["painters", "michaelangelo", "Michelangelo"],
+  ["painters", "rembrant", "Rembrandt"],
+  ["spices", "cinammon", "Cinnamon"],
+  ["sea", "octapus", "Octopus"],
+  ["jobs", "plummer", "Plumber"],
+  ["europe", "lichtenstein", "Liechtenstein"],
+  ["asia", "phillipines", "Philippines"],
+  ["desserts", "tiramisoo", "Tiramisu"],
+  ["cheeses", "parmasan", "Parmesan"],
+  ["animals", "elephamt", "Elephant"],
+  ["kitchen", "spatuls", "Spatula"],
+  ["birds", "flamingoe", "Flamingo"],
+  ["insects", "cockroch", "Cockroach"],
+  ["instruments", "saxaphone", "Saxophone"],
+  ["instruments", "xylaphone", "Xylophone"],
+  ["capitals", "budapesht", "Budapest"],
+  ["africa", "zimbabwae", "Zimbabwe"],
+  ["europe", "swizerland", "Switzerland"],
+  ["asia", "afganistan", "Afghanistan"],
+  ["elements", "flourine", "Fluorine"],
+  ["elements", "potasium", "Potassium"],
+  ["greekmyth", "persefone", "Persephone"],
+  ["heroes", "wolverene", "Wolverine"],
+  ["trees", "eucalyptis", "Eucalyptus"],
+  ["flowers", "chrysanthemem", "Chrysanthemum"],
+  ["eurocities", "barcelone", "Barcelona"],
+  ["languages", "portugese", "Portuguese"],
+  ["cars", "lamborgini", "Lamborghini"],
+  ["games", "monopolu", "Monopoly"],
+  ["bathroom", "toothbrish", "Toothbrush"],
+  ["breakfast", "pancackes", "Pancakes"],
+  ["office", "stappler", "Stapler"],
+  ["clothing", "cardigam", "Cardigan"],
+  ["body", "stomache", "Stomach"],
+  ["constellations", "casiopeia", "Cassiopeia"],
+  ["sports", "table tenis", "Table tennis"],
+  ["fly", "helicoptor", "Helicopter"],
+  ["sports", "weelchiar baskeball", "Wheelchair basketball"],
+  ["dogs", "golden retreiver", "Golden Retriever"],
+];
+{
+  const kinds = new Set();
+  for (const [cat, input, canon] of MUST_CORRECT) {
+    const m = E.match(idx[cat], input);
+    ok(m && m.entry && m.entry.canon === canon && m.via === 'fuzzy', `${cat}: "${input}" corrects to ${canon}, got ${m ? (m.entry ? m.entry.canon + ' via ' + m.via : 'ambiguous') : 'nothing'}`);
+    if (m && m.fix) kinds.add(m.fix);
+  }
+  for (const k of ['typo', 'keyboard', 'sound', 'words']) ok(kinds.has(k), 'MUST_CORRECT covers fix kind ' + k);
+  ok(new Set(MUST_CORRECT.map((c) => c[0])).size >= 20 && MUST_CORRECT.length >= 40, 'MUST_CORRECT spans 40+ cases in 20+ categories');
+}
+
+// ---- autocorrect guardrails: inputs that must NOT be corrected
+// expect: null = no match · 'ambiguous' · a canonical name = that exact listed answer
+const MUST_NOT_CORRECT = [
+  ['animals', 'cst', null, '3 letters, one off: answers this short never correct'],
+  ['animals', 'dpg', null, '3 letters, one keyboard slip: still never corrected'],
+  ['animals', 'loin', null, '4 letters allow only one keyboard or repeated-letter fix, not a swap'],
+  ['animals', 'road', null, 'no keyboard discount on the first letter (road is not Toad)'],
+  ['islands', 'xqzvbn', null, 'gibberish: no first-letter match with anything close'],
+  ['jobs', 'qwerty', null, 'gibberish'],
+  ['sports', 'zzzzzzz', null, 'gibberish'],
+  ['flowers', 'chrys', null, 'under 60% of the answer’s length (chrysanthemum)'],
+  ['dinosaurs', 'tyran', null, 'under 60% of the answer’s length (tyrannosaurus)'],
+  ['fruits', 'safe', null, 'sound-alike matching is only for answers of 7+ letters (safou)'],
+  ['animals', 'mouse', 'Mouse', 'an exact answer never corrects to a near one (moose)'],
+  ['animals', 'moose', 'Moose', 'an exact answer never corrects to a near one (mouse)'],
+  ['office', 'staplet', 'ambiguous', 'equally close to stapler and staples, neither sounds the same'],
+];
+for (const [cat, input, expect, why] of MUST_NOT_CORRECT) {
+  const m = E.match(idx[cat], input);
+  const got = !m ? null : m.ambiguous ? 'ambiguous' : m.via === 'fuzzy' ? 'corrected to ' + m.entry.canon : m.entry.canon;
+  ok(got === expect, `${cat}: "${input}" → ${expect} (${why}), got ${got}`);
+}
+{
+  const K = E.CONFIG.correct;
+  ok(K && K.keyboardCost === 0.5 && K.doubleLetterCost === 0.5 && K.soundCost === 1 && K.margin === 1 && K.shortLen === 4, 'CONFIG.correct defaults');
+  ok(E.fuzzyAllowance(3) === 0 && E.fuzzyAllowance(4) === 0.5 && E.fuzzyAllowance(8) === 1 && E.fuzzyAllowance(9) === 2, 'allowance by length');
+  ok(E.phoneticKey('fuschia') === E.phoneticKey('fuchsia') && E.phoneticKey('chiwawa') === E.phoneticKey('chihuahua') && E.phoneticKey('daschund') === E.phoneticKey('dachshund'), 'phonetic keys match for sound-alikes');
+  ok(E.phoneticKey('phoenix')[0] === 'f' && E.phoneticKey('knight')[0] === 'n' && E.phoneticKey('cinnamon')[0] === 's', 'phonetic key respelling (ph, kn, soft c)');
+  const cc = E.correctionCost('fuschia', 'fuchsia');
+  ok(cc.allowed && cc.fix === 'sound', 'correctionCost reports the sound fix');
+  ok(E.correctionCost('bananna', 'banana').cost === 0.5 && E.correctionCost('elephamt', 'elephant').cost === 0.5, 'repeated-letter and keyboard fixes cost half');
+  ok(E.correctionCost('dog', 'bog').allowed === false, 'no first-letter keyboard discount');
+  ok(!E.match(idx.colors, 'fuschia', { noFuzzy: true }), 'noFuzzy skips the whole correction stage');
+  const qm = E.match(idx.sports, 'womens socer');
+  ok(qm && qm.qualifier === 'womens' && qm.entry.canon === 'Soccer' && qm.fix, 'qualified answers are corrected on the base word');
+  ok(!E.match(idx.sports, 'mens womens socer'), 'no stacking, even with a correction');
+}
+
 // ---- must-accept: every category keeps these answers (listed or qualified, never via fuzzy)
 const MUST_ACCEPT = {
   kitchen: ["spatula", "mandoline", "salad spinner", "mortar and pestle", "dutch oven", "zester", "sous vide", "tagine"],
