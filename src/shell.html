@@ -216,6 +216,9 @@ button { font: inherit; color: inherit; }
   animation: chip-in .32s var(--ease-spring); }
 .chip svg { width: 13px; height: 13px; color: var(--c); flex: none; margin-left: 2px; }
 .chip .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.chip.fixed .txt { display: flex; flex-direction: column; line-height: 1.1; }
+.chip .txt .w, .chip .txt .typed { overflow: hidden; text-overflow: ellipsis; }
+.chip .typed { font: 600 11px/1.2 var(--f-body); color: var(--ink-3); }
 .chip .gain { font: 800 15px var(--f-display); color: var(--c); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
 .chips .chip:nth-child(n+7) { opacity: 0.75; }
 .chips .chip:nth-child(n+11) { opacity: 0.5; }
@@ -412,6 +415,8 @@ dialog::backdrop { background: rgba(10, 16, 36, 0.55); }
   .legs { gap: 6px; padding: 0 10px; }
   .legs li { width: 13px; height: 11px; }
   .altimeter .alt { font-size: 26px; }
+  .chip .typed { font-size: 10px; }
+  .chip.fixed { max-width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition: none !important; }

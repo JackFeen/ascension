@@ -1092,10 +1092,16 @@
       li.querySelector('.txt').textContent = a.t;
       return;
     }
-    li.className = `chip t${a.tier}`;
+    li.className = `chip t${a.tier}` + (a.x ? ' fixed' : '');
     li.innerHTML = `${ICON[a.tier]}<span class="txt"></span><span class="gain">+${fmt(a.g)}</span><span class="sr-only">${tierName(a.tier)}</span>`;
-    li.querySelector('.txt').textContent = a.c;
-    li.title = `${tierName(a.tier)} · ${C.tiers[a.tier].theme}`;
+    const txt = li.querySelector('.txt');
+    if (a.x) {
+      // Autocorrected: the answer as listed, with what was typed underneath.
+      txt.innerHTML = '<span class="w"></span><span class="typed"></span>';
+      txt.querySelector('.w').textContent = a.c;
+      txt.querySelector('.typed').textContent = 'you typed ' + a.t;
+    } else txt.textContent = a.c;
+    li.title = `${tierName(a.tier)} · ${C.tiers[a.tier].theme}` + (a.x ? ` · corrected from “${a.t}”` : '');
   }
   function chipFor(a) { return ui.chips.querySelector(`[data-id="${a.id}"]`); }
   function pulse(a) {
@@ -1129,6 +1135,7 @@
       if (out.kind === 'limit') return variantLimit(text);
       const a = { t: text, n: norm, eid: m.entry.id, c: q ? m.canon : m.entry.canon, tier: m.entry.tier, k: 'seed' };
       if (q) a.q = q;
+      if (m.fix) a.x = m.fix;   // autocorrected: 'typo' | 'keyboard' | 'sound' | 'words'
       return accept(leg, G.legIdx, a);
     }
     const prior = leg.answers.find((a) => a.n === norm);
@@ -1163,7 +1170,7 @@
     if (ans.tier === 4) { Scene.confetti(); flash('s'); buzz([20, 50, 20, 50, 40]); }
     if (live && C.tiers[ans.tier].pause && G.state === 'leg') spotlight(ans, eff);
     else if (live) gainPop(ans, eff);
-    announce(`${ans.c}, ${tierName(ans.tier)}, plus ${eff} meters`);
+    announce(ans.x ? `Corrected to ${ans.c}. ${tierName(ans.tier)}, plus ${eff} meters` : `${ans.c}, ${tierName(ans.tier)}, plus ${eff} meters`);
     setNight();
     devEmit('answer', { kind: 'ok', ans, rawGain, eff, legIdx });
   }
@@ -1538,6 +1545,7 @@
       'Each category is a timed leg. Type an answer and press Enter. Keep going until time runs out.',
       `Rarer valid answers climb higher. Each answer in a row adds a ${Math.round(C.chainStep * 100)}% bonus, up to ${Math.round(C.chainMax * 100)}%.`,
       `A wrong answer costs ${pen} second${pen === 1 ? '' : 's'} and resets that bonus. Repeats cost nothing.`,
+      `Small typos and sound-alike spellings are corrected automatically, for answers of ${C.correct.shortLen} letters or more.`,
       `Some categories accept a variant of an answer, like “women’s soccer” in Sports. A variant scores like the answer it’s based on, up to ${C.maxQualifiedPerLeg} per leg.`,
       `The air thins: timers shrink from ${Math.max(...secs)} to ${Math.min(...secs)} seconds, but later legs score up to ${Math.max(...mults)}×.`,
       `Each leg counts in full up to ${fmt(C.legFullUpTo)} m, then at ${Math.round(C.legOverRate * 100)}%, to a limit of ${fmt(C.legCap)} m.`,
