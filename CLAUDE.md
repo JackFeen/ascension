@@ -51,6 +51,9 @@ The original spec is `docs/product-spec.md`. Where the code differs from it, §1
 | `npm test` | `node test.mjs` runs engine and data integrity tests plus a calibration simulation. It needs no dependencies |
 | `npm run smoke` | Plays a full climb in headless Chromium inside a sandboxed iframe and saves screenshots to `shots/`. First time only: `npm install && npx playwright install chromium` |
 | `npm run check` | Test, then build, then smoke |
+| `npm run dev-lock` | Regenerates `src/dev-lock.js` (salt + PBKDF2 hash) from the private, git-ignored `dev.local.mjs`. Run it after changing the dev mode password (§15) |
+
+If Playwright's own Chromium isn't downloaded, point the smoke at an installed Chrome: `CHROME_PATH=/usr/bin/google-chrome npm run smoke`.
 
 There is no dev server or bundler. Build, then open `index.html` in a browser. Node 18 or newer.
 
@@ -73,11 +76,16 @@ daily-ascent/
 │  ├─ data-hard-wild.js   7 hard (leg 7) + 7 wildcard (leg 5) + 1 practice category
 │  ├─ app.js              everything with a DOM: Store, Sound, Scene (canvas),
 │  │                      Judge, game flow, results, dialogs, boot
+│  ├─ dev-lock.js         GENERATED, COMMITTED: dev mode salt + PBKDF2 hash (no password)
+│  ├─ dev-core.js         pure dev mode logic: lap math, password check (Node-testable)
+│  ├─ dev.js              dev mode UI: unlock dialog, tools panel, HUD (§15)
 │  └─ shell.html          <title>, font links, ALL CSS (design tokens), ALL markup,
-│                         and three placeholders where the scripts are inlined
+│                         and four placeholders where the scripts are inlined
 ├─ build.mjs              inlines src/ into single-file pages
 ├─ test.mjs               Node tests (loads engine + data in a vm)
-├─ scripts/smoke.cjs      Playwright end-to-end test
+├─ scripts/smoke.cjs      Playwright end-to-end test (daily climb, then dev mode)
+├─ scripts/dev-lock.mjs   `npm run dev-lock`: dev.local.mjs → src/dev-lock.js
+├─ dev.local.mjs          PRIVATE, git-ignored: the dev mode password. Never commit
 ├─ package.json           scripts; playwright is the only (dev) dependency
 ├─ index.html             GENERATED, COMMITTED: the playable game; GitHub Pages serves it
 ├─ .nojekyll              tells GitHub Pages to serve files as-is
@@ -102,6 +110,7 @@ daily-ascent/
 | Change saved data, forfeits or resume | `Store`, `start()`, `resumeRound()` |
 | Change colors, fonts or layout | the `:root` tokens at the top of `src/shell.html` |
 | Change the help and rules copy | `renderHelp()` in app; it is generated from CONFIG, so don't hand-write numbers |
+| Change dev mode | §15: the "Dev mode" section of `src/app.js` for game flow, `src/dev.js` for the tools |
 
 ---
 
@@ -139,6 +148,7 @@ daily-ascent/
 shell.html
  ├─ <script> engine.js         → window.DA_ENGINE        (pure; also require()-able in Node)
  ├─ <script> var DA_CATS = []; data-*.js call DA_CATS.push(...)  → window.DA_CATS
+ ├─ <script> dev-lock.js + dev-core.js + dev.js → DA_DEV_LOCK, DA_DEV_CORE, DA_DEV (inert until unlocked)
  └─ <script> app.js            → one IIFE: Store, ICON, Sound, Scene, Judge, G (state), flow, UI, boot
 ```
 
@@ -457,7 +467,8 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
   - 120 days of deals: 7 unique categories per day, correct kinds, all 3 lanes, no category repeated from the day before, every category dealt
 
   It then prints per-category tier counts and a **calibration Monte Carlo**. The calibration uses four player archetypes (casual, solid, strong, expert) with guessed answer speeds and tier mixes, and reports how many rounds land in each band (below Base Camp, Base Camp, Camp 1–2, Camp 2–Death Zone, Death Zone, Summit). Treat it as a sanity check until real play data exists.
-- **`npm run smoke`** builds a sandboxed iframe, speeds up the CONFIG, plays all 7 legs typing seed answers plus one invalid answer per leg, and asserts that chip counts match, the results and share text appear, and a reload shows "View Results". It fails on any page error.
+- **`npm test`** also checks dev mode: lap math (wrap at the summit, uncapped total, lap count), the constant-time compare, the lock's shape, that a wrong password fails, and (only when `dev.local.mjs` exists) that the private password matches `src/dev-lock.js`.
+- **`npm run smoke`** builds a sandboxed iframe, speeds up the CONFIG, plays all 7 legs typing seed answers plus one invalid answer per leg, and asserts that chip counts match, the results and share text appear, and a reload shows "View Results". Then, if `dev.local.mjs` exists, it opens `?dev`, checks a wrong password is refused, unlocks, pauses (the clock must hold), runs the autoplay bot until lap 2, ends the climb and asserts `daily-ascent:v1` is byte-for-byte unchanged. It fails on any page error.
 - **Manual checks the scripts can't do:**
   - real phone keyboards (iOS Safari, Android Chrome); the keyboard must stay up between legs
   - artifact consent for answer checking
@@ -518,4 +529,57 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 - Canvas colors ignore the light/dark page theme (by design: the sky is the theme).
 - `eid` is not stable across data edits (see gotcha 10).
 - The overview milestone labels can crowd on very small screens (Lukla/Tea House, Camp 1/Camp 2).
-- `app.js` is about 1,450 lines in one IIFE. If it grows much more, split it into modules (`scene.js`, `judge.js`, `flow.js`) and extend `build.mjs` to concatenate them. Keep the `DA_ENGINE` / `DA_CATS` globals.
+- Dev mode is client-side too. The password check is real (PBKDF2, no plaintext anywhere public) but anyone who can edit the page or its storage can reach the same code. Dev mode only changes the viewer's own browser, so that's acceptable.
+- `app.js` is about 1,850 lines in one IIFE. If it grows much more, split it into modules (`scene.js`, `judge.js`, `flow.js`) and extend `build.mjs` to concatenate them. Keep the `DA_ENGINE` / `DA_CATS` globals.
+
+---
+
+## 15. Dev mode (password-locked testing tools)
+
+An infinite version of the game plus tools for testing changes. It ships in every build but stays inert until unlocked; a player who never unlocks it sees no difference.
+
+### Unlocking
+
+- **Entry points:** tap the wordmark ("Daily Ascent", home screen) 5 times within 3 s, or open the page with `?dev` in the URL. Either opens `#dlg-dev-lock`.
+- **Password:** stored in plaintext **only** in the git-ignored `dev.local.mjs` at the repo root (`export const DEV_PASSWORD = '…';`). `npm run dev-lock` writes `src/dev-lock.js` with a random 16-byte salt and a PBKDF2-SHA256 hash (310,000 iterations). The salt and hash are committed; the plaintext never is. A fresh clone without `dev.local.mjs` still builds a working dev mode; the private file is only needed to change the password.
+- **Check:** `DA_DEV_CORE.verifyPassword()` derives the key with WebCrypto and compares in constant time. Wrong attempts wait ~1 s. Without `crypto.subtle` (non-secure context) it shows "Dev mode needs a secure (https) page".
+- **Session:** the unlock is remembered in `sessionStorage` (`daily-ascent:dev-unlocked`) only, so it clears when the tab closes. "Lock dev mode" clears it and reloads.
+- **Hooks:** `app.js` calls `DA_DEV.init(devHooks)` at the end of `start()`. `dev.js` keeps that function in its closure and calls it only after a correct password, so the internals are never put on `window`.
+
+### Staying separate from the real game
+
+- A dev climb runs with `G.mode = 'dev'` and swaps the active `Store` to `DevStore` (key `daily-ascent:dev:v1`). It never writes `daily-ascent:v1`, never calls `updateStreak` on the real save, never touches the daily round and never shares. Settings are copied *into* the dev save at the start of each dev climb; changes made during one are not copied back.
+- While the fake clock is on, `beginDaily()` refuses to start (nothing may be saved under a fake date). The checker mock switches itself off when a real daily climb starts.
+- A "DEV" tab sits on the right edge of every screen (it shows "paused" and the fake clock when relevant) and toggles the panel.
+
+### The infinite climb (laps)
+
+- Legs never end. Leg *N* uses pattern position `pos` (stored on the leg) for its timer, multiplier and pool: positions run 0→6 and wrap, unless the Jump tool overrides the next one. Categories are dealt from the normal pools in shuffled cycles with no immediate repeats (`devPickCat`). The per-leg cap and chain rules are unchanged; `answerGain()` receives `pos`.
+- `devTotal()` = `round.offset` + Σ `legEffective(raw)`, uncapped. `DA_DEV_CORE.lapState(total, startAlt, summitAlt)` gives `lap = 1 + floor(total / 5,989)` and `alt = 2,860 + (total mod 5,989)`.
+- Passing the summit (`devLapUp`): holds the clock 2.2 s, climbs to the top, plants the flag, confetti and the Sherpa chime, shows the "Summit · Lap N" banner, announces it, then drops the climber to Lukla and climbs to the new altitude.
+- The dev HUD (`#dev-hud`) shows lap, total climbed, leg number and pattern position, raw and effective meters this leg, chain, and distance to the leg cap. "End climb" (`finishDev`) shows a summary on the results sheet: laps, total, legs played, best find per rank. Nothing goes to the real stats.
+
+### Tools (`src/dev.js` panel tabs)
+
+| Tab | Tools |
+| --- | --- |
+| Time | Pause/resume (Alt+P), freeze timer (sticky), infinite time this leg, speed 0.5×/1×/2×/4×, end leg now, ±5 s |
+| Move | Jump to pattern leg 1–7, altitude slider, teleport to any milestone, set lap, scrub the sky's time of day (`Scene.setSkyOverride`), night panels auto/on/off |
+| Content | Queue the next leg's category (searchable, all 49 + practice), autoplay bot (rank or mix, 1–6/s, a wrong answer every N), live cheat sheet for the current leg, preview any date or puzzle number's 7 categories |
+| Effects | Each rank's full find feedback (no score change; spotlight uses `noHold`), every `Sound.play` kind (plays even with sound off via `Sound.force`), summit flag, confetti, wrong-answer shake (`rejectFx`) |
+| Debugger | Live analysis of the answer box or a test box against any category: raw, `normalize()`, `candidateKeys()`, affix-stripped forms, match (`via`, ambiguous competitors, none), entry, would-gain. A timestamped submission log with Copy |
+| Checker | Mocks `Judge` everywhere (never calls `window.claude`, never writes the verdict cache): state off/prompt/on/denied/rate-limited (60 s), default verdict, a queue of next verdicts, response delay up to 10 s (past the 7 s settle wait → "unchecked"). Verdicts go through `interpretVerdict()`/`resolveJudged()` |
+| Save & dates | Fake clock (calendar only, via `E.setClockOffset`; never persisted), simulate a mid-climb reload (forfeit or resume, re-read from the dev save), dev save streak/rest days/last date, generate fake past rounds, open Stats with the dev save, record a climb today, reset dev save, read-only real save + verdict cache JSON, reset real save (confirm dialog lists exactly what goes) |
+| Perf | FPS meter with frame-time graph, hide UI (Alt+H, or tap the canvas to restore), screenshot of the mountain canvas (download, or a dialog to save it from when framed) |
+
+Alt+D opens or closes the panel. Shortcuts need Alt so they never capture typed answers. Panel buttons `preventDefault()` on pointer/mouse down and mouse clicks refocus `#answer`, so the keyboard stays up during a leg.
+
+### Gotchas
+
+1. **Never commit `dev.local.mjs` or the plaintext.** Before committing run `git grep -n "<password>"` and grep `index.html`; both must be empty.
+2. After changing the password, run `npm run dev-lock` and commit `src/dev-lock.js`. `npm test` fails if the two disagree.
+3. Dev-only branches in `app.js` are all behind `G.mode === 'dev'` or a hook call. Keep it that way so the daily game is unaffected.
+4. `endLeg()` re-checks `G.round`/`G.state` after each `await`, because a dev climb can end or "reload" while a leg is settling or between legs.
+5. The engine's `setClockOffset()` changes `localDateStr()`/`nowDate()` only. Leg timers use `Date.now()` and must stay that way.
+6. Pause during a transition takes effect when the next leg starts (the leg begins paused).
+
