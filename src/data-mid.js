@@ -155,7 +155,7 @@ DA_CATS.push(
   l: 'Puluc, Patolli, Bul, Pallanguzhi, Ganjifa, Chaturanga, Shatranj, Tablut, Alquerque, Fanorona, Bao, Oware, Awale, Kalah, Konane, Mu torere, Zamma, Seega, Hounds and Jackals, Mehen, Twenty squares, Latrunculi, Tabula, Duodecim scripta, Rithmomachia, Brandubh, Fidchell, Gwyddbwyll, Halatafl, Kriegspiel, Fairy chess, Bughouse, Crazyhouse, Fischer random=chess960, Arimaa, Tak, Onitama, Gipf, Zertz, Dvonn, Yinsh, Tamsk, Punct, Lines of Action, Amazons, Havannah, Twixt, Renju, Connect6, Abalone, Pylos, Quarto, Quixo, Gobblet',
 }},
 
-{ id: 'cheeses', kind: 'mid', lane: 'culture', text: 'Cheeses', suffix: ['cheese'], a: {
+{ id: 'cheeses', kind: 'mid', lane: 'culture', text: 'Cheeses', suffix: ['cheese'], qualifiers: ['smoked', 'aged'], a: {
   c: 'Cheddar, Mozzarella, Swiss, Parmesan=parmigiano=parmigiano reggiano, Brie, American cheese=american',
   f: 'Gouda, Feta, Blue cheese=blue, Cream cheese, Provolone, Ricotta, Colby, Monterey Jack=jack, Pepper Jack, Camembert, Goat cheese=chevre, Cottage cheese, Gruyere, Havarti, Muenster=munster, String cheese, Halloumi, Mascarpone',
   u: 'Stilton, Gorgonzola, Roquefort, Manchego, Emmental=emmentaler, Edam, Pecorino=pecorino romano, Romano, Asiago, Fontina, Burrata, Paneer, Queso fresco, Cotija, Oaxaca=queso oaxaca, Velveeta, Colby Jack, Jarlsberg, Wensleydale, Red Leicester, Double Gloucester, Boursin, Babybel, Laughing Cow, Raclette, Comte, Bocconcini, Neufchatel, Limburger, Quark, Smoked gouda, Mild cheddar, Sharp cheddar, Vintage cheddar, Queso, Nacho cheese, Processed cheese, Cheese whiz=cheez whiz, Squeeze cheese, Goats cheese',
@@ -164,7 +164,7 @@ DA_CATS.push(
   l: 'Pule, Caciocavallo podolico, Bitto storico, Moose cheese, Camel cheese, Yak cheese=chhurpi, Kalari, Rubing, Rushan, Byaslag, Aaruul, Kurt, Suluguni, Imeruli, Chechil, Brinza, Lighvan, Motal, Tulum, Mihalic, Kasar, Ezine, Lor, Lavash cheese, Akawi, Jibneh, Shanklish, Kashkaval, Sirene, Urda, Kajmak, Paski sir, Tounj, Livanjski, Travnicki, Vlasic, Njeguski, Pljevaljski, Sjenicki, Lepotica, Mohant, Bovski, Tolminc, Nanos, Liptov, Parenica, Korbacik, Ostiepok, Redykolka, Bundz',
 }},
 
-{ id: 'spices', kind: 'mid', lane: 'culture', text: 'Herbs and spices', a: {
+{ id: 'spices', kind: 'mid', lane: 'culture', text: 'Herbs and spices', qualifiers: ['ground', 'dried', 'fresh', 'smoked', 'whole'], a: {
   c: 'Black pepper=pepper, Cinnamon, Basil, Oregano, Garlic, Paprika',
   f: 'Parsley, Thyme, Rosemary, Ginger, Cumin, Nutmeg, Mint, Chili powder=chilli powder=chili, Turmeric, Cilantro=coriander, Dill, Sage, Cayenne=cayenne pepper, Curry powder=curry, Vanilla, Bay leaf=bay leaves=bay',
   u: 'Cloves=clove, Allspice, Cardamom, Saffron, Chives, Tarragon, Fennel seed=fennel, Mustard seed=mustard, Anise=aniseed, Star anise, Garam masala, Onion powder, Garlic powder, Red pepper flakes=chili flakes=crushed red pepper, Lemongrass, Sesame seeds=sesame, Poppy seeds, Caraway, Marjoram, Lavender, Peppermint, Spearmint, Mace, Horseradish, Wasabi, Celery seed, Smoked paprika, Italian seasoning, Herbes de Provence, Old Bay, Chinese five spice=five spice, Zaatar=za atar, Sumac, Cajun seasoning=cajun spice, Pumpkin spice, Coriander seed',
@@ -173,7 +173,7 @@ DA_CATS.push(
   l: 'Silphium, Spikenard, Galbanum, Costus, Ambergris, Spruce tips, Douglas fir tips, Sweet cicely, Alexanders, Sea fennel, Pennyroyal, Tansy, Costmary, Mugwort, Wormwood, Southernwood, Elecampane, Bergamot herb, Clary sage, Bog myrtle=sweet gale, Meadowsweet, Agrimony, Yarrow leaf, Wild bergamot, Sweet goldenrod, Spicebush, Sassafras leaf=file powder, Bay rum, Allspice leaf, Cinnamon leaf, Cassia bud, Nutmeg flower, Clove bud, Anise hyssop, Lemon catnip, Calamint, Nepitella, Mentuccia, Pipirrana, Ruda, Huacatay, Paico, Muna, Chincho',
 }},
 
-{ id: 'desserts', kind: 'mid', lane: 'culture', text: 'Desserts', a: {
+{ id: 'desserts', kind: 'mid', lane: 'culture', text: 'Desserts', qualifiers: ['chocolate', 'mini', 'vegan'], a: {
   c: 'Ice cream, Cake, Cookie=biscuit, Brownie, Pie, Chocolate',
   f: 'Cheesecake, Cupcake, Pudding, Donut=doughnut, Apple pie, Muffin, Tiramisu, Jello=jelly=gelatin, Sundae, Milkshake, Candy=sweets, Fudge, Pastry, Mousse=chocolate mousse, Creme brulee, Banana split, Sorbet, Frozen yogurt=froyo, Chocolate cake',
   u: 'Macaron=macarons, Eclair, Cannoli, Baklava, Churros=churro, Crepe=crepes, Gelato, Trifle, Panna cotta, Pavlova, Apple strudel=strudel, Cobbler, Crumble=apple crumble, Key lime pie, Pumpkin pie, Pecan pie, Lemon meringue pie=lemon meringue, Carrot cake, Red velvet cake=red velvet, Black forest cake=black forest gateau, Angel food cake, Pound cake, Sponge cake, Swiss roll=jelly roll, Rice pudding, Bread pudding, Custard, Flan=creme caramel, Profiteroles=cream puffs, Mochi, Popsicle=ice lolly, Strawberry shortcake=shortcake, Cinnamon roll, Scone, Snickerdoodle, Smores, Truffles=chocolate truffles, Toffee, Caramel, Marshmallow, Cotton candy=candy floss, Parfait, Souffle, Tart=fruit tart, Lava cake=molten chocolate cake, Ice cream sandwich, Waffles, Pancakes, Funnel cake',

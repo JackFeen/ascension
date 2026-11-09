@@ -11,7 +11,7 @@ DA_CATS.push(
   l: 'Spurtle, Mezzaluna, Chinois, Bain marie, Tagine, Tamis, Tortilla press, Ravioli cutter, Cherry pitter, Molcajete, Suribachi, Comal, Madeleine pan, Pie weights=baking beans, Proofing basket=banneton, Oven thermometer, Salamander, Dumbwaiter, Scullery, Aga, Hot plate, Samovar, Cruet, Tureen=soup tureen, Muddler, Mandoline slicer, Couscoussier, Takoyaki pan, Tamagoyaki pan, Bamboo steamer, Rice paddle, Tawa, Karahi, Idli steamer, Pressure canner, Sous chef, Kitchen porter',
 }},
 
-{ id: 'fruits', kind: 'broad', text: 'Fruits', a: {
+{ id: 'fruits', kind: 'broad', text: 'Fruits', qualifiers: ['dried'], a: {
   c: 'Apple, Banana, Orange, Strawberry, Grape, Pear, Pineapple, Watermelon',
   f: 'Mango, Peach, Cherry, Blueberry, Lemon, Kiwi=kiwifruit=kiwi fruit, Raspberry, Plum, Lime, Melon, Grapefruit, Coconut, Cantaloupe',
   u: 'Apricot, Blackberry, Pomegranate, Papaya, Nectarine, Avocado, Tangerine, Clementine, Fig, Honeydew=honeydew melon, Passion fruit=passionfruit, Cranberry, Tomato, Dragon fruit=pitaya=pitahaya, Lychee=litchi, Date, Mandarin, Guava, Persimmon',
@@ -20,7 +20,7 @@ DA_CATS.push(
   l: 'Black sapote=chocolate pudding fruit, Akebi, Hala fruit, Monstera deliciosa, Pulasan, Salal, Ilama, Mangaba, Pequi, Rollinia, Mabolo=velvet apple, Ice cream bean, Kepel, Kei apple, Hackberry, Chokecherry, Barberry, Ugni, Muntries, Davidson plum, Quandong, Lilly pilly, Bignay, Duku, Cempedak, Marang, Abiu, Canistel=egg fruit, Pitomba, Grumichama, Noni, Safou, Kiwiberry, Wineberry, Thimbleberry, Crowberry, Bearberry',
 }},
 
-{ id: 'vegetables', kind: 'broad', text: 'Vegetables', a: {
+{ id: 'vegetables', kind: 'broad', text: 'Vegetables', qualifiers: ['baby', 'purple', 'white'], a: {
   c: 'Carrot, Potato, Broccoli, Lettuce, Tomato, Onion, Cucumber, Corn=sweetcorn=maize=corn on the cob',
   f: 'Pea=peas, Spinach, Celery, Pepper=bell pepper=capsicum, Cabbage, Cauliflower, Green bean=bean=string bean=french bean, Garlic, Mushroom, Zucchini=courgette, Kale, Asparagus, Eggplant=aubergine, Sweet potato',
   u: 'Radish, Beet=beetroot, Squash, Butternut squash, Pumpkin, Brussels sprout=brussel sprout=sprout, Artichoke, Leek, Turnip, Parsnip, Okra, Avocado, Chili=chili pepper=chilli=jalapeno, Arugula=rocket, Bok choy=pak choi=bok choi, Spring onion=green onion=scallion, Shallot, Chickpea=garbanzo=garbanzo bean, Lentil, Edamame, Ginger, Olive, Yam, Red onion, Cherry tomato, Romaine=romaine lettuce=cos lettuce, Iceberg lettuce=iceberg',
@@ -56,7 +56,7 @@ DA_CATS.push(
   l: 'Solenodon, Olm, Hellbender, Hoatzin, Takahe, Kea, Quetzal, Potoo, Frogmouth, Blobfish, Dumbo octopus, Goblin shark, Frilled shark, Gulper eel, Oarfish, Sunfish=mola, Leafy seadragon, Pistol shrimp, Mantis shrimp, Coconut crab, Yeti crab, Glass frog, Purple frog, Arapaima, Zorilla, Tenrec, Colugo, Cuscus, Kowari, Dunnart, Antechinus, Planigale, Bandicoot, Bettong, Potoroo, Pademelon, Kultarr, Mulgara, Ningaui, Gundi, Agouti, Paca, Pacarana, Viscacha, Tuco-tuco, Degu, Hutia, Mara, Jaguarundi, Kodkod, Oncilla, Tayra, Grison, Serow, Goral, Tahr, Bharal=blue sheep, Argali, Urial, Mouflon, Addax, Dibatag, Beira, Klipspringer, Steenbok, Suni, Duiker, Sitatunga, Lechwe, Puku, Topi, Hartebeest, Bontebok, Sengi=elephant shrew, Desman, Ringtail, Cacomistle, Olingo, Linsang, Kiang, Onager, Chiru',
 }},
 
-{ id: 'sports', kind: 'broad', text: 'Sports', a: {
+{ id: 'sports', kind: 'broad', text: 'Sports', qualifiers: ['womens', 'mens', 'youth', 'junior', 'college', 'amateur', 'professional'], a: {
   c: 'Football=american football=gridiron, Soccer=association football, Basketball, Baseball, Tennis, Golf, Hockey=ice hockey, Swimming',
   f: 'Volleyball, Rugby, Cricket, Boxing, Running=jogging, Track and field=athletics=track, Cycling=biking=bike racing, Skiing, Badminton, Table tennis=ping pong, Bowling=ten pin bowling, Wrestling, Softball, Surfing, Lacrosse, Gymnastics',
   u: 'Snowboarding, Skateboarding, Karate, Judo, Taekwondo, Fencing, Archery, Rowing, Sailing, Diving, Water polo, Field hockey, Handball, Squash, Racquetball, Pickleball, Polo, Horse racing, Horse riding=equestrian=show jumping=dressage, Rock climbing=climbing=bouldering, Marathon, Triathlon, Motocross, Formula 1=f1=formula one=motor racing=car racing, NASCAR, Darts, Snooker, Pool=billiards, Kickboxing, MMA=mixed martial arts=ufc, Figure skating=ice skating=skating, Curling, Bobsled=bobsleigh, Luge, Weightlifting, Powerlifting, Kayaking, Canoeing, Rafting=white water rafting, Dodgeball, Ultimate frisbee=ultimate=frisbee',
@@ -65,7 +65,7 @@ DA_CATS.push(
   l: 'Chess boxing, Kin-ball, Wife carrying, Cheese rolling, Bog snorkelling, Toe wrestling, Stone skipping, Extreme ironing, Sepak raga, Calcio storico, Kemari, Hornussen, Schwingen, Kabaddi circle, Lucha libre, Pesapallo, Lapta, Gorodki, Kubb, Mölkky=molkky, Bossaball volley, Elephant polo, Yak polo, Camel racing, Ostrich racing, Pole climbing, Mallakhamb, Kho kho, Gilli danda, Jallikattu, Naadam, Buzkashi polo, Hurling on horseback, Pato horseback',
 }},
 
-{ id: 'jobs', kind: 'broad', text: 'Jobs', a: {
+{ id: 'jobs', kind: 'broad', text: 'Jobs', qualifiers: ['assistant', 'head', 'senior', 'junior', 'trainee'], a: {
   c: 'Doctor, Teacher, Nurse, Lawyer=attorney, Firefighter=fireman, Police officer=policeman=cop=police, Chef=cook, Engineer',
   f: 'Dentist, Pilot, Farmer, Scientist, Accountant, Artist, Mechanic, Plumber, Electrician, Carpenter, Programmer=software engineer=developer=coder=software developer, Waiter=waitress=server, Cashier, Writer=author, Actor=actress, Singer, Musician, Vet=veterinarian, Pharmacist, Banker, Architect, Soldier, Baker',
   u: 'Astronaut, Journalist=reporter, Photographer, Designer, Librarian, Janitor=cleaner=custodian, Secretary, Receptionist, Manager, Salesperson=salesman=sales rep, Barber, Hairdresser=hairstylist, Butcher, Bus driver, Taxi driver=cab driver, Truck driver=trucker, Driver, Lifeguard, Coach, Judge, Mail carrier=postman=mailman=postal worker, Builder=construction worker, Painter, Surgeon, Psychologist, Therapist, Professor, Principal=headteacher, Dancer, Athlete, Model, Tailor, Florist, Gardener=landscaper, Fisherman, Miner, Sailor, Bartender, Barista, Consultant, CEO, Clerk, Welder, Zookeeper, Product manager, Data scientist, Analyst, Paramedic, President',
@@ -74,7 +74,7 @@ DA_CATS.push(
   l: 'Cooper, Fletcher, Bowyer, Cordwainer, Chandler, Ostler, Wheelwright, Thatcher, Saddler, Farrier, Lexicographer, Horologist, Etymologist, Muezzin, Verger, Sexton, Stevedore=longshoreman=docker, Boatswain=bosun, Purser, Docent, Milliner, Haberdasher, Taxidermist, Falconer, Lighthouse keeper, Gondolier, Luthier, Ombudsman, Knacker, Fuller, Tanner, Chiropodist, Herbalist, Apothecary, Scrivener, Town crier, Lamplighter, Knocker upper, Rat catcher, Ice cutter, Pinsetter, Switchboard operator, Lector, Elevator operator, Cartwright, Wainwright, Sawyer, Collier, Drover, Swineherd, Cowherd, Goatherd, Ploughman, Reeve, Bailie, Squire, Steward of the household, Seneschal, Chamberlain, Herald, Jester, Troubadour, Minstrel, Scribe',
 }},
 
-{ id: 'colors', kind: 'broad', text: 'Colors', a: {
+{ id: 'colors', kind: 'broad', text: 'Colors', qualifiers: ['light', 'dark', 'pale', 'deep', 'bright', 'neon', 'pastel', 'metallic'], a: {
   c: 'Red, Blue, Green, Yellow, Orange, Purple, Pink, Black, White',
   f: 'Brown, Gray=grey, Violet, Indigo, Gold, Silver, Teal, Turquoise, Navy=navy blue, Beige, Maroon, Magenta, Cyan',
   u: 'Lavender, Lilac, Crimson, Scarlet, Burgundy, Olive, Lime, Mint, Peach, Coral, Cream, Tan, Ivory, Khaki, Mauve, Aqua, Sky blue, Royal blue, Fuchsia, Plum, Rose, Salmon, Charcoal, Bronze, Copper, Amber, Emerald, Jade, Ruby, Sapphire, Light blue, Dark blue, Dark green, Light green, Off white',

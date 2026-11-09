@@ -507,13 +507,18 @@
     const ix = G.index && G.index[G.legIdx];
     if (!ix || G.screen !== 'play') { el.innerHTML = '<p class="dev-note">Shows the current leg\'s full answer list during a climb.</p>'; return; }
     const leg = H.curLeg();
-    const found = new Set(leg ? leg.answers.filter((a) => a.s === 'ok' && a.eid != null).map((a) => a.eid) : []);
+    const found = new Set(leg ? leg.answers.filter((a) => a.s === 'ok' && a.eid != null && !a.q).map((a) => a.eid) : []);
+    const variants = leg ? leg.answers.filter((a) => a.s === 'ok' && a.q).map((a) => a.c) : [];
+    const quals = H.E.qualifierList(ix.cat);
     el.innerHTML = `<p class="dev-note"><strong>${esc(ix.cat.text)}</strong>: ${found.size} of ${ix.entries.length} found. Found answers are bold, underlined and ticked.</p>`
       + H.C.tiers.map((t, i) => {
         const list = ix.entries.filter((e) => e.tier === i);
         const got = list.filter((e) => found.has(e.id)).length;
         return `<h4 class="t${i}">${H.ICON[i]}${t.name} <span class="dev-note">${got}/${list.length}</span></h4><p>${list.map((e) => found.has(e.id) ? `<span class="got">✓ ${esc(e.canon)}</span>` : esc(e.canon)).join(', ') || '—'}</p>`;
-      }).join('');
+      }).join('')
+      + `<h4>Qualifiers <span class="dev-note">${variants.length}/${H.C.maxQualifiedPerLeg} used this leg</span></h4>`
+      + `<p>${quals.length ? quals.map(esc).join(', ') + ' (one in front of any answer above; scores at that answer\'s rank)' : 'None for this category.'}</p>`
+      + (variants.length ? `<p>Found: ${variants.map((c) => `<span class="got">✓ ${esc(c)}</span>`).join(', ')}</p>` : '');
   }
 
   // autoplay bot
@@ -614,6 +619,7 @@
     if (!r.norm) return 'empty after normalizing';
     if (!r.m) return 'no match (rejected, or sent to the checker if it is on)';
     if (r.m.ambiguous) return 'ambiguous fuzzy match: ' + r.competitors.map((e) => `${e.canon} (${H.tierName(e.tier)})`).join(', ');
+    if (r.m.qualifier) return `qualified → ${r.m.canon} · base ${r.m.entry.canon} (${r.m.via}) · ${H.tierName(r.m.entry.tier)}`;
     return `${r.m.via} → ${r.m.entry.canon} · ${H.tierName(r.m.entry.tier)}`;
   }
   function analyseNow() {
@@ -627,8 +633,14 @@
       ['normalize()', JSON.stringify(r.norm)],
       ['candidateKeys()', r.keys.map((k) => JSON.stringify(k)).join(', ') || '—'],
       ['Affix-stripped', r.bare && r.bare !== r.norm ? `${JSON.stringify(r.bare)} → ${r.bareKeys.map((k) => JSON.stringify(k)).join(', ')}` : '—'],
+      ['Qualifiers', ix ? (H.E.qualifierList(ix.cat).join(', ') || 'none for this category') : '—'],
       ['Match', ix ? resultText(r) : '—'],
     ];
+    if (r.m && r.m.qualifier) {
+      const rest = r.norm.slice(r.m.qualifier.length + 1);
+      rows.push(['Qualifier step', `stripped ${JSON.stringify(r.m.qualifier)} → base ${JSON.stringify(rest)} → ${r.m.entry.canon} (${r.m.via})`]);
+      rows.push(['Dedupe key', H.E.answerKey(r.m.entry.id, r.m.qualifier)]);
+    }
     if (r.m && r.m.entry) {
       const e = r.m.entry;
       rows.push(['Entry', `#${e.id} ${e.canon}${e.aliases.length ? ' (aliases: ' + e.aliases.join(', ') + ')' : ''}`]);
@@ -636,8 +648,10 @@
       if (dbgCat === 'current' && leg && G.state === 'leg') {
         const raw = H.E.answerGain(e.tier, leg.chain, H.legPos(G.legIdx));
         const eff = H.E.legEffective(leg.raw + raw) - H.E.legEffective(leg.raw);
-        const dupe = leg.answers.some((a) => a.s === 'ok' && a.eid === e.id);
-        rows.push(['Would gain', dupe ? 'nothing: already found this leg' : `+${fmt(raw)} raw · +${fmt(eff)} m effective (chain ${leg.chain})`]);
+        const key = H.E.answerKey(e.id, r.m.qualifier);
+        const dupe = leg.answers.some((a) => a.s === 'ok' && H.E.answerKey(a.eid, a.q) === key);
+        const capped = !dupe && r.m.qualifier && leg.answers.filter((a) => a.s === 'ok' && a.q).length >= H.C.maxQualifiedPerLeg;
+        rows.push(['Would gain', dupe ? 'nothing: already found this leg' : capped ? 'nothing: variant limit reached this leg' : `+${fmt(raw)} raw · +${fmt(eff)} m effective (chain ${leg.chain})`]);
       } else rows.push(['Base gain', `+${H.C.tiers[e.tier].gain} m before chain and leg multipliers`]);
     }
     out.innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
@@ -655,7 +669,7 @@
     const text = d.text != null ? d.text : d.ans ? d.ans.t : '';
     const r = analyse(text, ix);
     const e = { t: new Date(), kind: d.kind, text, match: ix ? resultText(r) : '—', cat: ix ? ix.cat.text : '' };
-    if (d.kind === 'ok') Object.assign(e, { canon: d.ans.c, tier: d.ans.tier, raw: d.rawGain, eff: d.eff, via: d.ans.k === 'judge' ? 'checker' : r.m && r.m.via });
+    if (d.kind === 'ok') Object.assign(e, { canon: d.ans.c, tier: d.ans.tier, raw: d.rawGain, eff: d.eff, via: d.ans.k === 'judge' ? 'checker' : d.ans.q ? 'qualified (' + d.ans.q + ')' : r.m && r.m.via });
     if (d.kind === 'dup') e.canon = d.ans.c || d.ans.t;
     if (d.kind === 'rejected') e.penalized = d.penalized;
     if (d.kind === 'judged') { e.decision = d.decision; e.verdict = d.verdict; }
@@ -668,6 +682,7 @@
     switch (e.kind) {
       case 'ok': return `${head} → ACCEPTED via ${e.via || 'seed'} → ${e.canon} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`;
       case 'dup': return `${head} → DUPLICATE of ${e.canon} (no penalty)`;
+      case 'variant-limit': return `${head} → VARIANT LIMIT reached (no points, no penalty) · ${e.match}`;
       case 'rejected': return `${head} → REJECTED${e.penalized ? ' · −1 s' : ''} · ${e.match}`;
       case 'pending': return `${head} → sent to the answer checker`;
       case 'judged': return `${head} → checker verdict ${JSON.stringify(e.verdict)} → ${e.decision.kind}${e.decision.kind === 'accept' ? ' as ' + H.tierName(e.decision.tier) : e.decision.kind === 'reject' ? (e.decision.penalize ? ' with −1 s' : ' without penalty') : ' (unchecked)'}`;

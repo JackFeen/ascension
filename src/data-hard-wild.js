@@ -75,7 +75,7 @@ DA_CATS.push(
   l: 'Steam cracking, Catalytic cracking, Fluid catalytic cracker, Hydrocracking, Kerosene, Diesel, Bitumen, Shale, Fracking, Tectonic plates, Fault line, San Andreas Fault, Mid Atlantic Ridge, Rift valley, Lunar surface, Mars surface, Europa ice, Enceladus, Sound barrier, Glass ceiling, Code of silence, Omerta, Cold fusion, Fermats last theorem, Riemann hypothesis, Navier Stokes, Collatz conjecture, Kryptos sculpture, Beale ciphers, Dorabella cipher, Copiale cipher, Shugborough inscription, Tamam Shud, Lorenz cipher, Purple cipher, JN 25, Navajo code',
 }},
 
-{ id: 'wheels', kind: 'wild', text: 'Things with wheels', a: {
+{ id: 'wheels', kind: 'wild', text: 'Things with wheels', qualifiers: ['toy', 'electric'], a: {
   c: 'Car, Bicycle=bike, Bus, Truck=lorry, Train, Skateboard, Motorcycle=motorbike',
   f: 'Scooter, Wheelchair, Stroller=pram=buggy=pushchair, Shopping cart=trolley=shopping trolley, Wagon, Roller skates=rollerskates, Tricycle=trike, Van, Airplane=plane=aeroplane, Tractor, Wheelbarrow, Suitcase=luggage, Office chair=chair, Taxi, Ambulance, Fire truck=fire engine, Cart',
   u: 'Golf cart, Go kart=kart, Rollerblades=inline skates, Unicycle, Segway, Hoverboard, Motorhome=rv=camper, Caravan=trailer, Tram=streetcar, Subway=metro=underground, Forklift, Crane, Digger, Dump truck, Cement mixer=concrete mixer, Garbage truck=bin lorry, Tow truck, Police car, Limousine=limo, Pickup truck=pickup, Jeep, Lawn mower=lawnmower, Hand truck=dolly, Toy car, Remote control car=rc car, Ferris wheel, Monster truck, Race car=racecar, Food truck, Ice cream truck=ice cream van, Semi truck=semi=18 wheeler=big rig, Mobile home, Hospital bed, Gurney=stretcher, Bed, Cannon',

@@ -27,6 +27,7 @@
     transitionMs: 3500,
     invalidPenaltySecs: 1,          // open question 3: invalid costs time, not altitude
     maxAcceptedPerLeg: 30,
+    maxQualifiedPerLeg: 3,          // qualified answers ("womens soccer") per leg; they score at the base tier
     minSubmitGapMs: 150,
     extraTimeFactor: 1.5,           // accessibility setting
     chainStep: 0.05,
@@ -202,11 +203,21 @@
     return { cat, entries, exact, comp, forms };
   }
 
-  // Stages 1–3 of the matching pipeline. Returns
-  // { entry, via: 'exact'|'alias'|'fuzzy' } | { ambiguous: true } | null
-  function match(index, input) {
+  // The matching pipeline. Returns
+  //   { entry, via: 'exact'|'alias'|'fuzzy', norm }                       a listed answer
+  //   { entry, via, norm, qualifier, canon }                               a qualified answer (stage 4)
+  //   { ambiguous: true, norm } | null
+  // opts.noFuzzy skips stage 3 (used when mapping the judge's canonical).
+  function match(index, input, opts) {
     const norm = typeof input === 'string' ? normalize(input) : '';
     if (!norm) return null;
+    const hit = matchListed(index, norm, opts);
+    if (hit) return hit;
+    return matchQualified(index, norm, opts);
+  }
+
+  // Stages 1–3: the category's own list.
+  function matchListed(index, norm, opts) {
     const keys = candidateKeys(norm);
     const bare = stripAffixes(norm, index.cat);
     if (bare !== norm) keys.push(...candidateKeys(bare));
@@ -217,6 +228,7 @@
         return { entry, via: k === entry.norm ? 'exact' : 'alias', norm };
       }
     }
+    if (opts && opts.noFuzzy) return null;
     // Stage 3: fuzzy, only when exactly one answer qualifies.
     const hits = new Set();
     for (const [form, id] of index.forms) {
@@ -228,6 +240,53 @@
     if (hits.size === 1) return { entry: index.entries[[...hits][0]], via: 'fuzzy', norm };
     if (hits.size > 1) return { ambiguous: true, norm };
     return null;
+  }
+
+  // Stage 4: qualifiers. A category may list generic qualifiers (cat.qualifiers,
+  // normalized, e.g. ['womens', 'indoor']). Only when the list itself finds
+  // nothing, one leading qualifier is stripped and the rest is matched with
+  // stages 1–3. No stacking, no qualifier on its own. The result keeps the base
+  // entry (so it scores at the base tier) plus the qualifier, which together
+  // form the dedupe key.
+  function qualifierList(cat) {
+    const qs = (cat && Array.isArray(cat.qualifiers) ? cat.qualifiers : []).map(normalize).filter(Boolean);
+    return qs.sort((a, b) => b.length - a.length);
+  }
+  function matchQualified(index, norm, opts) {
+    const qs = qualifierList(index.cat);
+    const leads = (x) => qs.some((q) => x === q || x.startsWith(q + ' '));
+    for (const q of qs) {
+      if (!norm.startsWith(q + ' ')) continue;
+      const rest = norm.slice(q.length + 1).trim();
+      // No stacking: "dark dark green" or "womens youth soccer" never qualify,
+      // even when the rest happens to be a listed answer.
+      if (!rest || leads(rest)) return null;
+      const base = matchListed(index, rest, opts);
+      if (!base || !base.entry || leads(base.entry.norm)) return null;
+      return { entry: base.entry, via: base.via, norm, qualifier: q, canon: qualifiedCanon(q, base.entry.canon) };
+    }
+    return null;
+  }
+  // Display names for qualifiers whose readable form differs from the normalized one.
+  const QUAL_DISPLAY = { womens: 'Women\u2019s', mens: 'Men\u2019s', girls: 'Girls\u2019', boys: 'Boys\u2019', childrens: 'Children\u2019s', kids: 'Kids\u2019' };
+  function qualifiedCanon(q, canon) {
+    const head = QUAL_DISPLAY[q] || (q.charAt(0).toUpperCase() + q.slice(1));
+    // "Soccer" → "soccer", but keep "NASCAR", "Formula 1" readable.
+    const tail = /^[A-Z][a-z]/.test(canon) ? canon.charAt(0).toLowerCase() + canon.slice(1) : canon;
+    return head + ' ' + tail;
+  }
+  // Dedupe key for an accepted answer: the entry id, plus the qualifier if any.
+  function answerKey(eid, q) { return eid == null ? null : q ? eid + '|' + q : String(eid); }
+  // What happens to a hit on (eid, q) given the leg's answers so far:
+  //   { kind: 'dup', prior } already found · { kind: 'limit' } past maxQualifiedPerLeg · { kind: 'new' }
+  // `skip` is an answer to ignore (the pending one being resolved by the judge).
+  function hitOutcome(answers, eid, q, skip) {
+    const key = answerKey(eid, q);
+    const ok = (answers || []).filter((a) => a !== skip && a.s === 'ok');
+    const prior = key == null ? null : ok.find((a) => answerKey(a.eid, a.q) === key);
+    if (prior) return { kind: 'dup', prior };
+    if (q && ok.filter((a) => a.q).length >= CONFIG.maxQualifiedPerLeg) return { kind: 'limit' };
+    return { kind: 'new' };
   }
 
   // ---------------------------------------------------------------------------
@@ -426,7 +485,7 @@
 
   const ENGINE = {
     CONFIG, normalize, pluralVariants, candidateKeys, editDistance, fuzzyAllowance,
-    stripAffixes, buildIndex, match, tierFromCommonness, chainBonus, answerGain, legEffective,
+    stripAffixes, buildIndex, match, qualifierList, qualifiedCanon, answerKey, hitOutcome, tierFromCommonness, chainBonus, answerGain, legEffective,
     finalAltitude, milestoneFor, nextMilestone, airPercent, setClockOffset, clockOffset,
     nowDate, localDateStr, dayIndex,
     puzzleNumber, hashStr, rng, shuffled, dailyCategories, judgeEligible, judgePrompt,

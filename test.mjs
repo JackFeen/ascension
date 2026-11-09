@@ -84,6 +84,49 @@ none('europe', 'Mali');
 none('fruits', 'carrot');
 none('usstates', 'Puerto Rico');
 
+// ---- qualifiers (stage 4): a leading generic qualifier on a listed answer
+{
+  const q = (cat, input, base, qual) => {
+    const m = E.match(idx[cat], input);
+    ok(m && m.entry && m.entry.canon === base && m.qualifier === qual, `${cat}: "${input}" should qualify ${qual} + ${base}, got ${m && m.entry ? (m.qualifier || '-') + ' + ' + m.entry.canon : JSON.stringify(m)}`);
+    return m;
+  };
+  const m1 = q('sports', "women's soccer", 'Soccer', 'womens');
+  ok(m1 && m1.canon === 'Women’s soccer', 'qualified canonical reads well: ' + (m1 && m1.canon));
+  q('sports', 'womens socer', 'Soccer', 'womens');            // fuzzy on the base word
+  q('colors', 'dark purple', 'Purple', 'dark');
+  q('fruits', 'dried mangoes', 'Mango', 'dried');             // plural on the base
+  // explicit entries win over a qualified reading
+  has('sports', 'beach volleyball', 'Beach volleyball');
+  ok(!E.match(idx.sports, 'beach volleyball').qualifier, 'listed entry is not reported as qualified');
+  // qualified answers keep the base tier
+  const soccer = E.match(idx.sports, 'soccer').entry;
+  ok(m1 && m1.entry.tier === soccer.tier, 'qualified tier equals base tier');
+  // must-reject: qualifier alone, stacked, qualifier + non-answer, categories without qualifiers
+  for (const [cat, input] of [['sports', 'womens'], ['sports', 'womens youth soccer'], ['sports', 'womens asdfgh'], ['sports', 'youth womens soccer'],
+    ['colors', 'dark dark green'], ['colors', 'light'], ['colors', 'dark potato'], ['fruits', 'dried dried mango'], ['jobs', 'head zzq'],
+    ['animals', 'womens horse'], ['capitals', 'dark paris']]) none(cat, input);
+  ok(CATS.filter((c) => !c.qualifiers).every((c) => E.qualifierList(c).length === 0), 'no qualifiers without a qualifiers field');
+  const bare = E.buildIndex(Object.assign({}, CATS.find((c) => c.id === 'sports'), { qualifiers: undefined }));
+  ok(!E.match(bare, 'womens soccer'), 'a category without a qualifiers field never qualifies');
+  // dedupe on (base, qualifier) and the per-leg cap
+  const sid = soccer.id, bid = E.match(idx.sports, 'basketball').entry.id;
+  const leg = [{ s: 'ok', eid: sid }];
+  ok(E.hitOutcome(leg, sid, null).kind === 'dup', 'plain repeat is a duplicate');
+  ok(E.hitOutcome(leg, sid, 'womens').kind === 'new', 'qualified form is distinct from its base');
+  leg.push({ s: 'ok', eid: sid, q: 'womens' });
+  ok(E.hitOutcome(leg, sid, 'womens').kind === 'dup', "women's soccer twice is a duplicate");
+  ok(E.match(idx.sports, "women's soccer").qualifier === E.match(idx.sports, 'womens soccer').qualifier, "women's / womens share one key");
+  leg.push({ s: 'ok', eid: bid, q: 'womens' }, { s: 'ok', eid: bid, q: 'college' }, { s: 'rejected', eid: null });
+  ok(E.CONFIG.maxQualifiedPerLeg === 3, 'variant cap is 3');
+  ok(E.hitOutcome(leg, sid, 'youth').kind === 'limit', 'a 4th qualified answer hits the variant limit');
+  ok(E.hitOutcome(leg, bid, null).kind === 'new', 'plain answers are not limited by the variant cap');
+  ok(E.hitOutcome(leg, sid, 'youth', leg[3]).kind === 'new', 'the answer being resolved is ignored when counting');
+  // the judge's canonical maps without fuzzy matching
+  ok(!E.match(idx.sports, 'womens socer', { noFuzzy: true }), 'noFuzzy skips fuzzy in qualified matching too');
+  ok(E.match(idx.sports, "Women's Soccer", { noFuzzy: true }).qualifier === 'womens', 'judge canonical maps onto a qualified form');
+}
+
 const elements = idx.elements.entries.length;
 ok(elements === 118, 'elements count ' + elements);
 const iau = idx.constellations.entries.filter((e) => !/triangle|belt|pleiades|square|teapot|hyades|argo|cross$|keystone|sickle|coathanger|cascade|coffin|quadrans|felis|noctua|antinous|cerberus|gallus|rangifer|poniatovii|machina|officina|solarium/i.test(e.canon) || /^crux|triangulum/i.test(e.canon)).length;

@@ -694,6 +694,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
     transitionMs: 3500,
     invalidPenaltySecs: 1,          // open question 3: invalid costs time, not altitude
     maxAcceptedPerLeg: 30,
+    maxQualifiedPerLeg: 3,          // qualified answers ("womens soccer") per leg; they score at the base tier
     minSubmitGapMs: 150,
     extraTimeFactor: 1.5,           // accessibility setting
     chainStep: 0.05,
@@ -869,11 +870,21 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
     return { cat, entries, exact, comp, forms };
   }
 
-  // Stages 1–3 of the matching pipeline. Returns
-  // { entry, via: 'exact'|'alias'|'fuzzy' } | { ambiguous: true } | null
-  function match(index, input) {
+  // The matching pipeline. Returns
+  //   { entry, via: 'exact'|'alias'|'fuzzy', norm }                       a listed answer
+  //   { entry, via, norm, qualifier, canon }                               a qualified answer (stage 4)
+  //   { ambiguous: true, norm } | null
+  // opts.noFuzzy skips stage 3 (used when mapping the judge's canonical).
+  function match(index, input, opts) {
     const norm = typeof input === 'string' ? normalize(input) : '';
     if (!norm) return null;
+    const hit = matchListed(index, norm, opts);
+    if (hit) return hit;
+    return matchQualified(index, norm, opts);
+  }
+
+  // Stages 1–3: the category's own list.
+  function matchListed(index, norm, opts) {
     const keys = candidateKeys(norm);
     const bare = stripAffixes(norm, index.cat);
     if (bare !== norm) keys.push(...candidateKeys(bare));
@@ -884,6 +895,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
         return { entry, via: k === entry.norm ? 'exact' : 'alias', norm };
       }
     }
+    if (opts && opts.noFuzzy) return null;
     // Stage 3: fuzzy, only when exactly one answer qualifies.
     const hits = new Set();
     for (const [form, id] of index.forms) {
@@ -895,6 +907,53 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
     if (hits.size === 1) return { entry: index.entries[[...hits][0]], via: 'fuzzy', norm };
     if (hits.size > 1) return { ambiguous: true, norm };
     return null;
+  }
+
+  // Stage 4: qualifiers. A category may list generic qualifiers (cat.qualifiers,
+  // normalized, e.g. ['womens', 'indoor']). Only when the list itself finds
+  // nothing, one leading qualifier is stripped and the rest is matched with
+  // stages 1–3. No stacking, no qualifier on its own. The result keeps the base
+  // entry (so it scores at the base tier) plus the qualifier, which together
+  // form the dedupe key.
+  function qualifierList(cat) {
+    const qs = (cat && Array.isArray(cat.qualifiers) ? cat.qualifiers : []).map(normalize).filter(Boolean);
+    return qs.sort((a, b) => b.length - a.length);
+  }
+  function matchQualified(index, norm, opts) {
+    const qs = qualifierList(index.cat);
+    const leads = (x) => qs.some((q) => x === q || x.startsWith(q + ' '));
+    for (const q of qs) {
+      if (!norm.startsWith(q + ' ')) continue;
+      const rest = norm.slice(q.length + 1).trim();
+      // No stacking: "dark dark green" or "womens youth soccer" never qualify,
+      // even when the rest happens to be a listed answer.
+      if (!rest || leads(rest)) return null;
+      const base = matchListed(index, rest, opts);
+      if (!base || !base.entry || leads(base.entry.norm)) return null;
+      return { entry: base.entry, via: base.via, norm, qualifier: q, canon: qualifiedCanon(q, base.entry.canon) };
+    }
+    return null;
+  }
+  // Display names for qualifiers whose readable form differs from the normalized one.
+  const QUAL_DISPLAY = { womens: 'Women\u2019s', mens: 'Men\u2019s', girls: 'Girls\u2019', boys: 'Boys\u2019', childrens: 'Children\u2019s', kids: 'Kids\u2019' };
+  function qualifiedCanon(q, canon) {
+    const head = QUAL_DISPLAY[q] || (q.charAt(0).toUpperCase() + q.slice(1));
+    // "Soccer" → "soccer", but keep "NASCAR", "Formula 1" readable.
+    const tail = /^[A-Z][a-z]/.test(canon) ? canon.charAt(0).toLowerCase() + canon.slice(1) : canon;
+    return head + ' ' + tail;
+  }
+  // Dedupe key for an accepted answer: the entry id, plus the qualifier if any.
+  function answerKey(eid, q) { return eid == null ? null : q ? eid + '|' + q : String(eid); }
+  // What happens to a hit on (eid, q) given the leg's answers so far:
+  //   { kind: 'dup', prior } already found · { kind: 'limit' } past maxQualifiedPerLeg · { kind: 'new' }
+  // `skip` is an answer to ignore (the pending one being resolved by the judge).
+  function hitOutcome(answers, eid, q, skip) {
+    const key = answerKey(eid, q);
+    const ok = (answers || []).filter((a) => a !== skip && a.s === 'ok');
+    const prior = key == null ? null : ok.find((a) => answerKey(a.eid, a.q) === key);
+    if (prior) return { kind: 'dup', prior };
+    if (q && ok.filter((a) => a.q).length >= CONFIG.maxQualifiedPerLeg) return { kind: 'limit' };
+    return { kind: 'new' };
   }
 
   // ---------------------------------------------------------------------------
@@ -1093,7 +1152,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
 
   const ENGINE = {
     CONFIG, normalize, pluralVariants, candidateKeys, editDistance, fuzzyAllowance,
-    stripAffixes, buildIndex, match, tierFromCommonness, chainBonus, answerGain, legEffective,
+    stripAffixes, buildIndex, match, qualifierList, qualifiedCanon, answerKey, hitOutcome, tierFromCommonness, chainBonus, answerGain, legEffective,
     finalAltitude, milestoneFor, nextMilestone, airPercent, setClockOffset, clockOffset,
     nowDate, localDateStr, dayIndex,
     puzzleNumber, hashStr, rng, shuffled, dailyCategories, judgeEligible, judgePrompt,
@@ -1117,7 +1176,7 @@ DA_CATS.push(
   l: 'Spurtle, Mezzaluna, Chinois, Bain marie, Tagine, Tamis, Tortilla press, Ravioli cutter, Cherry pitter, Molcajete, Suribachi, Comal, Madeleine pan, Pie weights=baking beans, Proofing basket=banneton, Oven thermometer, Salamander, Dumbwaiter, Scullery, Aga, Hot plate, Samovar, Cruet, Tureen=soup tureen, Muddler, Mandoline slicer, Couscoussier, Takoyaki pan, Tamagoyaki pan, Bamboo steamer, Rice paddle, Tawa, Karahi, Idli steamer, Pressure canner, Sous chef, Kitchen porter',
 }},
 
-{ id: 'fruits', kind: 'broad', text: 'Fruits', a: {
+{ id: 'fruits', kind: 'broad', text: 'Fruits', qualifiers: ['dried'], a: {
   c: 'Apple, Banana, Orange, Strawberry, Grape, Pear, Pineapple, Watermelon',
   f: 'Mango, Peach, Cherry, Blueberry, Lemon, Kiwi=kiwifruit=kiwi fruit, Raspberry, Plum, Lime, Melon, Grapefruit, Coconut, Cantaloupe',
   u: 'Apricot, Blackberry, Pomegranate, Papaya, Nectarine, Avocado, Tangerine, Clementine, Fig, Honeydew=honeydew melon, Passion fruit=passionfruit, Cranberry, Tomato, Dragon fruit=pitaya=pitahaya, Lychee=litchi, Date, Mandarin, Guava, Persimmon',
@@ -1126,7 +1185,7 @@ DA_CATS.push(
   l: 'Black sapote=chocolate pudding fruit, Akebi, Hala fruit, Monstera deliciosa, Pulasan, Salal, Ilama, Mangaba, Pequi, Rollinia, Mabolo=velvet apple, Ice cream bean, Kepel, Kei apple, Hackberry, Chokecherry, Barberry, Ugni, Muntries, Davidson plum, Quandong, Lilly pilly, Bignay, Duku, Cempedak, Marang, Abiu, Canistel=egg fruit, Pitomba, Grumichama, Noni, Safou, Kiwiberry, Wineberry, Thimbleberry, Crowberry, Bearberry',
 }},
 
-{ id: 'vegetables', kind: 'broad', text: 'Vegetables', a: {
+{ id: 'vegetables', kind: 'broad', text: 'Vegetables', qualifiers: ['baby', 'purple', 'white'], a: {
   c: 'Carrot, Potato, Broccoli, Lettuce, Tomato, Onion, Cucumber, Corn=sweetcorn=maize=corn on the cob',
   f: 'Pea=peas, Spinach, Celery, Pepper=bell pepper=capsicum, Cabbage, Cauliflower, Green bean=bean=string bean=french bean, Garlic, Mushroom, Zucchini=courgette, Kale, Asparagus, Eggplant=aubergine, Sweet potato',
   u: 'Radish, Beet=beetroot, Squash, Butternut squash, Pumpkin, Brussels sprout=brussel sprout=sprout, Artichoke, Leek, Turnip, Parsnip, Okra, Avocado, Chili=chili pepper=chilli=jalapeno, Arugula=rocket, Bok choy=pak choi=bok choi, Spring onion=green onion=scallion, Shallot, Chickpea=garbanzo=garbanzo bean, Lentil, Edamame, Ginger, Olive, Yam, Red onion, Cherry tomato, Romaine=romaine lettuce=cos lettuce, Iceberg lettuce=iceberg',
@@ -1162,7 +1221,7 @@ DA_CATS.push(
   l: 'Solenodon, Olm, Hellbender, Hoatzin, Takahe, Kea, Quetzal, Potoo, Frogmouth, Blobfish, Dumbo octopus, Goblin shark, Frilled shark, Gulper eel, Oarfish, Sunfish=mola, Leafy seadragon, Pistol shrimp, Mantis shrimp, Coconut crab, Yeti crab, Glass frog, Purple frog, Arapaima, Zorilla, Tenrec, Colugo, Cuscus, Kowari, Dunnart, Antechinus, Planigale, Bandicoot, Bettong, Potoroo, Pademelon, Kultarr, Mulgara, Ningaui, Gundi, Agouti, Paca, Pacarana, Viscacha, Tuco-tuco, Degu, Hutia, Mara, Jaguarundi, Kodkod, Oncilla, Tayra, Grison, Serow, Goral, Tahr, Bharal=blue sheep, Argali, Urial, Mouflon, Addax, Dibatag, Beira, Klipspringer, Steenbok, Suni, Duiker, Sitatunga, Lechwe, Puku, Topi, Hartebeest, Bontebok, Sengi=elephant shrew, Desman, Ringtail, Cacomistle, Olingo, Linsang, Kiang, Onager, Chiru',
 }},
 
-{ id: 'sports', kind: 'broad', text: 'Sports', a: {
+{ id: 'sports', kind: 'broad', text: 'Sports', qualifiers: ['womens', 'mens', 'youth', 'junior', 'college', 'amateur', 'professional'], a: {
   c: 'Football=american football=gridiron, Soccer=association football, Basketball, Baseball, Tennis, Golf, Hockey=ice hockey, Swimming',
   f: 'Volleyball, Rugby, Cricket, Boxing, Running=jogging, Track and field=athletics=track, Cycling=biking=bike racing, Skiing, Badminton, Table tennis=ping pong, Bowling=ten pin bowling, Wrestling, Softball, Surfing, Lacrosse, Gymnastics',
   u: 'Snowboarding, Skateboarding, Karate, Judo, Taekwondo, Fencing, Archery, Rowing, Sailing, Diving, Water polo, Field hockey, Handball, Squash, Racquetball, Pickleball, Polo, Horse racing, Horse riding=equestrian=show jumping=dressage, Rock climbing=climbing=bouldering, Marathon, Triathlon, Motocross, Formula 1=f1=formula one=motor racing=car racing, NASCAR, Darts, Snooker, Pool=billiards, Kickboxing, MMA=mixed martial arts=ufc, Figure skating=ice skating=skating, Curling, Bobsled=bobsleigh, Luge, Weightlifting, Powerlifting, Kayaking, Canoeing, Rafting=white water rafting, Dodgeball, Ultimate frisbee=ultimate=frisbee',
@@ -1171,7 +1230,7 @@ DA_CATS.push(
   l: 'Chess boxing, Kin-ball, Wife carrying, Cheese rolling, Bog snorkelling, Toe wrestling, Stone skipping, Extreme ironing, Sepak raga, Calcio storico, Kemari, Hornussen, Schwingen, Kabaddi circle, Lucha libre, Pesapallo, Lapta, Gorodki, Kubb, Mölkky=molkky, Bossaball volley, Elephant polo, Yak polo, Camel racing, Ostrich racing, Pole climbing, Mallakhamb, Kho kho, Gilli danda, Jallikattu, Naadam, Buzkashi polo, Hurling on horseback, Pato horseback',
 }},
 
-{ id: 'jobs', kind: 'broad', text: 'Jobs', a: {
+{ id: 'jobs', kind: 'broad', text: 'Jobs', qualifiers: ['assistant', 'head', 'senior', 'junior', 'trainee'], a: {
   c: 'Doctor, Teacher, Nurse, Lawyer=attorney, Firefighter=fireman, Police officer=policeman=cop=police, Chef=cook, Engineer',
   f: 'Dentist, Pilot, Farmer, Scientist, Accountant, Artist, Mechanic, Plumber, Electrician, Carpenter, Programmer=software engineer=developer=coder=software developer, Waiter=waitress=server, Cashier, Writer=author, Actor=actress, Singer, Musician, Vet=veterinarian, Pharmacist, Banker, Architect, Soldier, Baker',
   u: 'Astronaut, Journalist=reporter, Photographer, Designer, Librarian, Janitor=cleaner=custodian, Secretary, Receptionist, Manager, Salesperson=salesman=sales rep, Barber, Hairdresser=hairstylist, Butcher, Bus driver, Taxi driver=cab driver, Truck driver=trucker, Driver, Lifeguard, Coach, Judge, Mail carrier=postman=mailman=postal worker, Builder=construction worker, Painter, Surgeon, Psychologist, Therapist, Professor, Principal=headteacher, Dancer, Athlete, Model, Tailor, Florist, Gardener=landscaper, Fisherman, Miner, Sailor, Bartender, Barista, Consultant, CEO, Clerk, Welder, Zookeeper, Product manager, Data scientist, Analyst, Paramedic, President',
@@ -1180,7 +1239,7 @@ DA_CATS.push(
   l: 'Cooper, Fletcher, Bowyer, Cordwainer, Chandler, Ostler, Wheelwright, Thatcher, Saddler, Farrier, Lexicographer, Horologist, Etymologist, Muezzin, Verger, Sexton, Stevedore=longshoreman=docker, Boatswain=bosun, Purser, Docent, Milliner, Haberdasher, Taxidermist, Falconer, Lighthouse keeper, Gondolier, Luthier, Ombudsman, Knacker, Fuller, Tanner, Chiropodist, Herbalist, Apothecary, Scrivener, Town crier, Lamplighter, Knocker upper, Rat catcher, Ice cutter, Pinsetter, Switchboard operator, Lector, Elevator operator, Cartwright, Wainwright, Sawyer, Collier, Drover, Swineherd, Cowherd, Goatherd, Ploughman, Reeve, Bailie, Squire, Steward of the household, Seneschal, Chamberlain, Herald, Jester, Troubadour, Minstrel, Scribe',
 }},
 
-{ id: 'colors', kind: 'broad', text: 'Colors', a: {
+{ id: 'colors', kind: 'broad', text: 'Colors', qualifiers: ['light', 'dark', 'pale', 'deep', 'bright', 'neon', 'pastel', 'metallic'], a: {
   c: 'Red, Blue, Green, Yellow, Orange, Purple, Pink, Black, White',
   f: 'Brown, Gray=grey, Violet, Indigo, Gold, Silver, Teal, Turquoise, Navy=navy blue, Beige, Maroon, Magenta, Cyan',
   u: 'Lavender, Lilac, Crimson, Scarlet, Burgundy, Olive, Lime, Mint, Peach, Coral, Cream, Tan, Ivory, Khaki, Mauve, Aqua, Sky blue, Royal blue, Fuchsia, Plum, Rose, Salmon, Charcoal, Bronze, Copper, Amber, Emerald, Jade, Ruby, Sapphire, Light blue, Dark blue, Dark green, Light green, Off white',
@@ -1392,7 +1451,7 @@ DA_CATS.push(
   l: 'Puluc, Patolli, Bul, Pallanguzhi, Ganjifa, Chaturanga, Shatranj, Tablut, Alquerque, Fanorona, Bao, Oware, Awale, Kalah, Konane, Mu torere, Zamma, Seega, Hounds and Jackals, Mehen, Twenty squares, Latrunculi, Tabula, Duodecim scripta, Rithmomachia, Brandubh, Fidchell, Gwyddbwyll, Halatafl, Kriegspiel, Fairy chess, Bughouse, Crazyhouse, Fischer random=chess960, Arimaa, Tak, Onitama, Gipf, Zertz, Dvonn, Yinsh, Tamsk, Punct, Lines of Action, Amazons, Havannah, Twixt, Renju, Connect6, Abalone, Pylos, Quarto, Quixo, Gobblet',
 }},
 
-{ id: 'cheeses', kind: 'mid', lane: 'culture', text: 'Cheeses', suffix: ['cheese'], a: {
+{ id: 'cheeses', kind: 'mid', lane: 'culture', text: 'Cheeses', suffix: ['cheese'], qualifiers: ['smoked', 'aged'], a: {
   c: 'Cheddar, Mozzarella, Swiss, Parmesan=parmigiano=parmigiano reggiano, Brie, American cheese=american',
   f: 'Gouda, Feta, Blue cheese=blue, Cream cheese, Provolone, Ricotta, Colby, Monterey Jack=jack, Pepper Jack, Camembert, Goat cheese=chevre, Cottage cheese, Gruyere, Havarti, Muenster=munster, String cheese, Halloumi, Mascarpone',
   u: 'Stilton, Gorgonzola, Roquefort, Manchego, Emmental=emmentaler, Edam, Pecorino=pecorino romano, Romano, Asiago, Fontina, Burrata, Paneer, Queso fresco, Cotija, Oaxaca=queso oaxaca, Velveeta, Colby Jack, Jarlsberg, Wensleydale, Red Leicester, Double Gloucester, Boursin, Babybel, Laughing Cow, Raclette, Comte, Bocconcini, Neufchatel, Limburger, Quark, Smoked gouda, Mild cheddar, Sharp cheddar, Vintage cheddar, Queso, Nacho cheese, Processed cheese, Cheese whiz=cheez whiz, Squeeze cheese, Goats cheese',
@@ -1401,7 +1460,7 @@ DA_CATS.push(
   l: 'Pule, Caciocavallo podolico, Bitto storico, Moose cheese, Camel cheese, Yak cheese=chhurpi, Kalari, Rubing, Rushan, Byaslag, Aaruul, Kurt, Suluguni, Imeruli, Chechil, Brinza, Lighvan, Motal, Tulum, Mihalic, Kasar, Ezine, Lor, Lavash cheese, Akawi, Jibneh, Shanklish, Kashkaval, Sirene, Urda, Kajmak, Paski sir, Tounj, Livanjski, Travnicki, Vlasic, Njeguski, Pljevaljski, Sjenicki, Lepotica, Mohant, Bovski, Tolminc, Nanos, Liptov, Parenica, Korbacik, Ostiepok, Redykolka, Bundz',
 }},
 
-{ id: 'spices', kind: 'mid', lane: 'culture', text: 'Herbs and spices', a: {
+{ id: 'spices', kind: 'mid', lane: 'culture', text: 'Herbs and spices', qualifiers: ['ground', 'dried', 'fresh', 'smoked', 'whole'], a: {
   c: 'Black pepper=pepper, Cinnamon, Basil, Oregano, Garlic, Paprika',
   f: 'Parsley, Thyme, Rosemary, Ginger, Cumin, Nutmeg, Mint, Chili powder=chilli powder=chili, Turmeric, Cilantro=coriander, Dill, Sage, Cayenne=cayenne pepper, Curry powder=curry, Vanilla, Bay leaf=bay leaves=bay',
   u: 'Cloves=clove, Allspice, Cardamom, Saffron, Chives, Tarragon, Fennel seed=fennel, Mustard seed=mustard, Anise=aniseed, Star anise, Garam masala, Onion powder, Garlic powder, Red pepper flakes=chili flakes=crushed red pepper, Lemongrass, Sesame seeds=sesame, Poppy seeds, Caraway, Marjoram, Lavender, Peppermint, Spearmint, Mace, Horseradish, Wasabi, Celery seed, Smoked paprika, Italian seasoning, Herbes de Provence, Old Bay, Chinese five spice=five spice, Zaatar=za atar, Sumac, Cajun seasoning=cajun spice, Pumpkin spice, Coriander seed',
@@ -1410,7 +1469,7 @@ DA_CATS.push(
   l: 'Silphium, Spikenard, Galbanum, Costus, Ambergris, Spruce tips, Douglas fir tips, Sweet cicely, Alexanders, Sea fennel, Pennyroyal, Tansy, Costmary, Mugwort, Wormwood, Southernwood, Elecampane, Bergamot herb, Clary sage, Bog myrtle=sweet gale, Meadowsweet, Agrimony, Yarrow leaf, Wild bergamot, Sweet goldenrod, Spicebush, Sassafras leaf=file powder, Bay rum, Allspice leaf, Cinnamon leaf, Cassia bud, Nutmeg flower, Clove bud, Anise hyssop, Lemon catnip, Calamint, Nepitella, Mentuccia, Pipirrana, Ruda, Huacatay, Paico, Muna, Chincho',
 }},
 
-{ id: 'desserts', kind: 'mid', lane: 'culture', text: 'Desserts', a: {
+{ id: 'desserts', kind: 'mid', lane: 'culture', text: 'Desserts', qualifiers: ['chocolate', 'mini', 'vegan'], a: {
   c: 'Ice cream, Cake, Cookie=biscuit, Brownie, Pie, Chocolate',
   f: 'Cheesecake, Cupcake, Pudding, Donut=doughnut, Apple pie, Muffin, Tiramisu, Jello=jelly=gelatin, Sundae, Milkshake, Candy=sweets, Fudge, Pastry, Mousse=chocolate mousse, Creme brulee, Banana split, Sorbet, Frozen yogurt=froyo, Chocolate cake',
   u: 'Macaron=macarons, Eclair, Cannoli, Baklava, Churros=churro, Crepe=crepes, Gelato, Trifle, Panna cotta, Pavlova, Apple strudel=strudel, Cobbler, Crumble=apple crumble, Key lime pie, Pumpkin pie, Pecan pie, Lemon meringue pie=lemon meringue, Carrot cake, Red velvet cake=red velvet, Black forest cake=black forest gateau, Angel food cake, Pound cake, Sponge cake, Swiss roll=jelly roll, Rice pudding, Bread pudding, Custard, Flan=creme caramel, Profiteroles=cream puffs, Mochi, Popsicle=ice lolly, Strawberry shortcake=shortcake, Cinnamon roll, Scone, Snickerdoodle, Smores, Truffles=chocolate truffles, Toffee, Caramel, Marshmallow, Cotton candy=candy floss, Parfait, Souffle, Tart=fruit tart, Lava cake=molten chocolate cake, Ice cream sandwich, Waffles, Pancakes, Funnel cake',
@@ -1506,7 +1565,7 @@ DA_CATS.push(
   l: 'Steam cracking, Catalytic cracking, Fluid catalytic cracker, Hydrocracking, Kerosene, Diesel, Bitumen, Shale, Fracking, Tectonic plates, Fault line, San Andreas Fault, Mid Atlantic Ridge, Rift valley, Lunar surface, Mars surface, Europa ice, Enceladus, Sound barrier, Glass ceiling, Code of silence, Omerta, Cold fusion, Fermats last theorem, Riemann hypothesis, Navier Stokes, Collatz conjecture, Kryptos sculpture, Beale ciphers, Dorabella cipher, Copiale cipher, Shugborough inscription, Tamam Shud, Lorenz cipher, Purple cipher, JN 25, Navajo code',
 }},
 
-{ id: 'wheels', kind: 'wild', text: 'Things with wheels', a: {
+{ id: 'wheels', kind: 'wild', text: 'Things with wheels', qualifiers: ['toy', 'electric'], a: {
   c: 'Car, Bicycle=bike, Bus, Truck=lorry, Train, Skateboard, Motorcycle=motorbike',
   f: 'Scooter, Wheelchair, Stroller=pram=buggy=pushchair, Shopping cart=trolley=shopping trolley, Wagon, Roller skates=rollerskates, Tricycle=trike, Van, Airplane=plane=aeroplane, Tractor, Wheelbarrow, Suitcase=luggage, Office chair=chair, Taxi, Ambulance, Fire truck=fire engine, Cart',
   u: 'Golf cart, Go kart=kart, Rollerblades=inline skates, Unicycle, Segway, Hoverboard, Motorhome=rv=camper, Caravan=trailer, Tram=streetcar, Subway=metro=underground, Forklift, Crane, Digger, Dump truck, Cement mixer=concrete mixer, Garbage truck=bin lorry, Tow truck, Police car, Limousine=limo, Pickup truck=pickup, Jeep, Lawn mower=lawnmower, Hand truck=dolly, Toy car, Remote control car=rc car, Ferris wheel, Monster truck, Race car=racecar, Food truck, Ice cream truck=ice cream van, Semi truck=semi=18 wheeler=big rig, Mobile home, Hospital bed, Gurney=stretcher, Bed, Cannon',
@@ -2143,13 +2202,18 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     const ix = G.index && G.index[G.legIdx];
     if (!ix || G.screen !== 'play') { el.innerHTML = '<p class="dev-note">Shows the current leg\'s full answer list during a climb.</p>'; return; }
     const leg = H.curLeg();
-    const found = new Set(leg ? leg.answers.filter((a) => a.s === 'ok' && a.eid != null).map((a) => a.eid) : []);
+    const found = new Set(leg ? leg.answers.filter((a) => a.s === 'ok' && a.eid != null && !a.q).map((a) => a.eid) : []);
+    const variants = leg ? leg.answers.filter((a) => a.s === 'ok' && a.q).map((a) => a.c) : [];
+    const quals = H.E.qualifierList(ix.cat);
     el.innerHTML = `<p class="dev-note"><strong>${esc(ix.cat.text)}</strong>: ${found.size} of ${ix.entries.length} found. Found answers are bold, underlined and ticked.</p>`
       + H.C.tiers.map((t, i) => {
         const list = ix.entries.filter((e) => e.tier === i);
         const got = list.filter((e) => found.has(e.id)).length;
         return `<h4 class="t${i}">${H.ICON[i]}${t.name} <span class="dev-note">${got}/${list.length}</span></h4><p>${list.map((e) => found.has(e.id) ? `<span class="got">✓ ${esc(e.canon)}</span>` : esc(e.canon)).join(', ') || '—'}</p>`;
-      }).join('');
+      }).join('')
+      + `<h4>Qualifiers <span class="dev-note">${variants.length}/${H.C.maxQualifiedPerLeg} used this leg</span></h4>`
+      + `<p>${quals.length ? quals.map(esc).join(', ') + ' (one in front of any answer above; scores at that answer\'s rank)' : 'None for this category.'}</p>`
+      + (variants.length ? `<p>Found: ${variants.map((c) => `<span class="got">✓ ${esc(c)}</span>`).join(', ')}</p>` : '');
   }
 
   // autoplay bot
@@ -2250,6 +2314,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     if (!r.norm) return 'empty after normalizing';
     if (!r.m) return 'no match (rejected, or sent to the checker if it is on)';
     if (r.m.ambiguous) return 'ambiguous fuzzy match: ' + r.competitors.map((e) => `${e.canon} (${H.tierName(e.tier)})`).join(', ');
+    if (r.m.qualifier) return `qualified → ${r.m.canon} · base ${r.m.entry.canon} (${r.m.via}) · ${H.tierName(r.m.entry.tier)}`;
     return `${r.m.via} → ${r.m.entry.canon} · ${H.tierName(r.m.entry.tier)}`;
   }
   function analyseNow() {
@@ -2263,8 +2328,14 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
       ['normalize()', JSON.stringify(r.norm)],
       ['candidateKeys()', r.keys.map((k) => JSON.stringify(k)).join(', ') || '—'],
       ['Affix-stripped', r.bare && r.bare !== r.norm ? `${JSON.stringify(r.bare)} → ${r.bareKeys.map((k) => JSON.stringify(k)).join(', ')}` : '—'],
+      ['Qualifiers', ix ? (H.E.qualifierList(ix.cat).join(', ') || 'none for this category') : '—'],
       ['Match', ix ? resultText(r) : '—'],
     ];
+    if (r.m && r.m.qualifier) {
+      const rest = r.norm.slice(r.m.qualifier.length + 1);
+      rows.push(['Qualifier step', `stripped ${JSON.stringify(r.m.qualifier)} → base ${JSON.stringify(rest)} → ${r.m.entry.canon} (${r.m.via})`]);
+      rows.push(['Dedupe key', H.E.answerKey(r.m.entry.id, r.m.qualifier)]);
+    }
     if (r.m && r.m.entry) {
       const e = r.m.entry;
       rows.push(['Entry', `#${e.id} ${e.canon}${e.aliases.length ? ' (aliases: ' + e.aliases.join(', ') + ')' : ''}`]);
@@ -2272,8 +2343,10 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
       if (dbgCat === 'current' && leg && G.state === 'leg') {
         const raw = H.E.answerGain(e.tier, leg.chain, H.legPos(G.legIdx));
         const eff = H.E.legEffective(leg.raw + raw) - H.E.legEffective(leg.raw);
-        const dupe = leg.answers.some((a) => a.s === 'ok' && a.eid === e.id);
-        rows.push(['Would gain', dupe ? 'nothing: already found this leg' : `+${fmt(raw)} raw · +${fmt(eff)} m effective (chain ${leg.chain})`]);
+        const key = H.E.answerKey(e.id, r.m.qualifier);
+        const dupe = leg.answers.some((a) => a.s === 'ok' && H.E.answerKey(a.eid, a.q) === key);
+        const capped = !dupe && r.m.qualifier && leg.answers.filter((a) => a.s === 'ok' && a.q).length >= H.C.maxQualifiedPerLeg;
+        rows.push(['Would gain', dupe ? 'nothing: already found this leg' : capped ? 'nothing: variant limit reached this leg' : `+${fmt(raw)} raw · +${fmt(eff)} m effective (chain ${leg.chain})`]);
       } else rows.push(['Base gain', `+${H.C.tiers[e.tier].gain} m before chain and leg multipliers`]);
     }
     out.innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
@@ -2291,7 +2364,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     const text = d.text != null ? d.text : d.ans ? d.ans.t : '';
     const r = analyse(text, ix);
     const e = { t: new Date(), kind: d.kind, text, match: ix ? resultText(r) : '—', cat: ix ? ix.cat.text : '' };
-    if (d.kind === 'ok') Object.assign(e, { canon: d.ans.c, tier: d.ans.tier, raw: d.rawGain, eff: d.eff, via: d.ans.k === 'judge' ? 'checker' : r.m && r.m.via });
+    if (d.kind === 'ok') Object.assign(e, { canon: d.ans.c, tier: d.ans.tier, raw: d.rawGain, eff: d.eff, via: d.ans.k === 'judge' ? 'checker' : d.ans.q ? 'qualified (' + d.ans.q + ')' : r.m && r.m.via });
     if (d.kind === 'dup') e.canon = d.ans.c || d.ans.t;
     if (d.kind === 'rejected') e.penalized = d.penalized;
     if (d.kind === 'judged') { e.decision = d.decision; e.verdict = d.verdict; }
@@ -2304,6 +2377,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     switch (e.kind) {
       case 'ok': return `${head} → ACCEPTED via ${e.via || 'seed'} → ${e.canon} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`;
       case 'dup': return `${head} → DUPLICATE of ${e.canon} (no penalty)`;
+      case 'variant-limit': return `${head} → VARIANT LIMIT reached (no points, no penalty) · ${e.match}`;
       case 'rejected': return `${head} → REJECTED${e.penalized ? ' · −1 s' : ''} · ${e.match}`;
       case 'pending': return `${head} → sent to the answer checker`;
       case 'judged': return `${head} → checker verdict ${JSON.stringify(e.verdict)} → ${e.decision.kind}${e.decision.kind === 'accept' ? ' as ' + H.tierName(e.decision.tier) : e.decision.kind === 'reject' ? (e.decision.penalize ? ' with −1 s' : ' without penalty') : ' (unchecked)'}`;
@@ -3735,9 +3809,14 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     if (leg.answers.filter((a) => a.s === 'ok').length >= C.maxAcceptedPerLeg) return setFeedback('Leg limit reached: 30 answers.', 'dup');
     const m = E.match(G.index[G.legIdx], text);
     if (m && m.entry) {
-      const dupe = leg.answers.find((a) => a.s === 'ok' && a.eid === m.entry.id);
-      if (dupe) return duplicate(dupe, text);
-      return accept(leg, G.legIdx, { t: text, n: norm, eid: m.entry.id, c: m.entry.canon, tier: m.entry.tier, k: 'seed' });
+      const q = m.qualifier || null;
+      // Qualified answers ("womens soccer") score at the base tier, a few per leg.
+      const out = E.hitOutcome(leg.answers, m.entry.id, q);
+      if (out.kind === 'dup') return duplicate(out.prior, text);
+      if (out.kind === 'limit') return variantLimit(text);
+      const a = { t: text, n: norm, eid: m.entry.id, c: q ? m.canon : m.entry.canon, tier: m.entry.tier, k: 'seed' };
+      if (q) a.q = q;
+      return accept(leg, G.legIdx, a);
     }
     const prior = leg.answers.find((a) => a.n === norm);
     if (prior && (prior.s === 'ok' || prior.s === 'pending')) return duplicate(prior, text);
@@ -3864,6 +3943,14 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     announce(`${text} is not a match${note ? ', minus one second' : ''}`);
   }
 
+  // Past the per-leg qualifier cap: like a duplicate (no points, no penalty, chain kept).
+  function variantLimit(text) {
+    setFeedback(`Variant limit reached: ${C.maxQualifiedPerLeg} per leg.`, 'dup');
+    Sound.play('dup');
+    announce(`${text}: variant limit reached, no points, no penalty`);
+    devEmit('answer', { kind: 'variant-limit', text });
+  }
+
   function duplicate(a, text) {
     pulse(a);
     setFeedback(`Already found: ${a.c || a.t}`, 'dup');
@@ -3889,13 +3976,19 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     devEmit('answer', { kind: 'judged', ans, verdict, decision: d });
     const el = legIdx === G.legIdx ? chipFor(ans) : null;
     if (d.kind === 'accept') {
-      let eid = null, canon = d.canonical || ans.t, tier = d.tier;
-      const m = d.canonical ? E.match(G.index[legIdx], d.canonical) : null;
-      if (m && m.entry && m.via !== 'fuzzy') { eid = m.entry.id; canon = m.entry.canon; tier = m.entry.tier; }
+      let eid = null, q = null, canon = d.canonical || ans.t, tier = d.tier;
+      // Map the judge's canonical back onto the list (or a qualified form of a
+      // listed answer), never through fuzzy matching.
+      const m = d.canonical ? E.match(G.index[legIdx], d.canonical, { noFuzzy: true }) : null;
+      if (m && m.entry) { eid = m.entry.id; q = m.qualifier || null; canon = q ? m.canon : m.entry.canon; tier = m.entry.tier; }
       const key = E.normalize(canon);
-      const dupe = leg.answers.find((a) => a !== ans && a.s === 'ok' && ((eid != null && a.eid === eid) || E.normalize(a.c || '') === key));
+      const out = E.hitOutcome(leg.answers, eid, q, ans);
+      const dupe = out.kind === 'dup' ? out.prior : leg.answers.find((a) => a !== ans && a.s === 'ok' && E.normalize(a.c || '') === key);
       if (dupe) { ans.s = 'dup'; if (el) el.remove(); pulse(dupe); save(); return; }
-      accept(leg, legIdx, { t: ans.t, n: ans.n, eid, c: canon, tier, k: 'judge' }, ans);
+      if (out.kind === 'limit') { ans.s = 'dup'; if (el) el.remove(); if (legIdx === G.legIdx && G.state === 'leg') variantLimit(ans.t); save(); return; }
+      const a = { t: ans.t, n: ans.n, eid, c: canon, tier, k: 'judge' };
+      if (q) a.q = q;
+      accept(leg, legIdx, a, ans);
       return;
     }
     if (d.kind === 'reject') {
@@ -4050,7 +4143,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     for (const i of order) {
       if (gems.length >= 4) break;
       const ix = E.buildIndex(cats[i]);
-      const found = new Set((r.legs[i] ? r.legs[i].answers : []).filter((a) => a.s === 'ok').map((a) => a.eid));
+      const found = new Set((r.legs[i] ? r.legs[i].answers : []).filter((a) => a.s === 'ok' && !a.q).map((a) => a.eid));
       const pool = ix.entries.filter((e) => (e.tier === 2 || e.tier === 3) && !found.has(e.id));
       if (pool.length) gems.push({ e: pool[Math.floor(rng() * pool.length)], cat: cats[i].text });
     }
@@ -4132,6 +4225,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
       'Each category is a timed leg. Type an answer and press Enter. Keep going until time runs out.',
       `Rarer valid answers climb higher. Each answer in a row adds a ${Math.round(C.chainStep * 100)}% bonus, up to ${Math.round(C.chainMax * 100)}%.`,
       `A wrong answer costs ${pen} second${pen === 1 ? '' : 's'} and resets that bonus. Repeats cost nothing.`,
+      `Some categories accept a variant of an answer, like “women’s soccer” in Sports. A variant scores like the answer it’s based on, up to ${C.maxQualifiedPerLeg} per leg.`,
       `The air thins: timers shrink from ${Math.max(...secs)} to ${Math.min(...secs)} seconds, but later legs score up to ${Math.max(...mults)}×.`,
       `Each leg counts in full up to ${fmt(C.legFullUpTo)} m, then at ${Math.round(C.legOverRate * 100)}%, to a limit of ${fmt(C.legCap)} m.`,
     ].map((t) => `<li>${t}</li>`).join('');

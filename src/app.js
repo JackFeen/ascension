@@ -1122,9 +1122,14 @@
     if (leg.answers.filter((a) => a.s === 'ok').length >= C.maxAcceptedPerLeg) return setFeedback('Leg limit reached: 30 answers.', 'dup');
     const m = E.match(G.index[G.legIdx], text);
     if (m && m.entry) {
-      const dupe = leg.answers.find((a) => a.s === 'ok' && a.eid === m.entry.id);
-      if (dupe) return duplicate(dupe, text);
-      return accept(leg, G.legIdx, { t: text, n: norm, eid: m.entry.id, c: m.entry.canon, tier: m.entry.tier, k: 'seed' });
+      const q = m.qualifier || null;
+      // Qualified answers ("womens soccer") score at the base tier, a few per leg.
+      const out = E.hitOutcome(leg.answers, m.entry.id, q);
+      if (out.kind === 'dup') return duplicate(out.prior, text);
+      if (out.kind === 'limit') return variantLimit(text);
+      const a = { t: text, n: norm, eid: m.entry.id, c: q ? m.canon : m.entry.canon, tier: m.entry.tier, k: 'seed' };
+      if (q) a.q = q;
+      return accept(leg, G.legIdx, a);
     }
     const prior = leg.answers.find((a) => a.n === norm);
     if (prior && (prior.s === 'ok' || prior.s === 'pending')) return duplicate(prior, text);
@@ -1251,6 +1256,14 @@
     announce(`${text} is not a match${note ? ', minus one second' : ''}`);
   }
 
+  // Past the per-leg qualifier cap: like a duplicate (no points, no penalty, chain kept).
+  function variantLimit(text) {
+    setFeedback(`Variant limit reached: ${C.maxQualifiedPerLeg} per leg.`, 'dup');
+    Sound.play('dup');
+    announce(`${text}: variant limit reached, no points, no penalty`);
+    devEmit('answer', { kind: 'variant-limit', text });
+  }
+
   function duplicate(a, text) {
     pulse(a);
     setFeedback(`Already found: ${a.c || a.t}`, 'dup');
@@ -1276,13 +1289,19 @@
     devEmit('answer', { kind: 'judged', ans, verdict, decision: d });
     const el = legIdx === G.legIdx ? chipFor(ans) : null;
     if (d.kind === 'accept') {
-      let eid = null, canon = d.canonical || ans.t, tier = d.tier;
-      const m = d.canonical ? E.match(G.index[legIdx], d.canonical) : null;
-      if (m && m.entry && m.via !== 'fuzzy') { eid = m.entry.id; canon = m.entry.canon; tier = m.entry.tier; }
+      let eid = null, q = null, canon = d.canonical || ans.t, tier = d.tier;
+      // Map the judge's canonical back onto the list (or a qualified form of a
+      // listed answer), never through fuzzy matching.
+      const m = d.canonical ? E.match(G.index[legIdx], d.canonical, { noFuzzy: true }) : null;
+      if (m && m.entry) { eid = m.entry.id; q = m.qualifier || null; canon = q ? m.canon : m.entry.canon; tier = m.entry.tier; }
       const key = E.normalize(canon);
-      const dupe = leg.answers.find((a) => a !== ans && a.s === 'ok' && ((eid != null && a.eid === eid) || E.normalize(a.c || '') === key));
+      const out = E.hitOutcome(leg.answers, eid, q, ans);
+      const dupe = out.kind === 'dup' ? out.prior : leg.answers.find((a) => a !== ans && a.s === 'ok' && E.normalize(a.c || '') === key);
       if (dupe) { ans.s = 'dup'; if (el) el.remove(); pulse(dupe); save(); return; }
-      accept(leg, legIdx, { t: ans.t, n: ans.n, eid, c: canon, tier, k: 'judge' }, ans);
+      if (out.kind === 'limit') { ans.s = 'dup'; if (el) el.remove(); if (legIdx === G.legIdx && G.state === 'leg') variantLimit(ans.t); save(); return; }
+      const a = { t: ans.t, n: ans.n, eid, c: canon, tier, k: 'judge' };
+      if (q) a.q = q;
+      accept(leg, legIdx, a, ans);
       return;
     }
     if (d.kind === 'reject') {
@@ -1437,7 +1456,7 @@
     for (const i of order) {
       if (gems.length >= 4) break;
       const ix = E.buildIndex(cats[i]);
-      const found = new Set((r.legs[i] ? r.legs[i].answers : []).filter((a) => a.s === 'ok').map((a) => a.eid));
+      const found = new Set((r.legs[i] ? r.legs[i].answers : []).filter((a) => a.s === 'ok' && !a.q).map((a) => a.eid));
       const pool = ix.entries.filter((e) => (e.tier === 2 || e.tier === 3) && !found.has(e.id));
       if (pool.length) gems.push({ e: pool[Math.floor(rng() * pool.length)], cat: cats[i].text });
     }
@@ -1519,6 +1538,7 @@
       'Each category is a timed leg. Type an answer and press Enter. Keep going until time runs out.',
       `Rarer valid answers climb higher. Each answer in a row adds a ${Math.round(C.chainStep * 100)}% bonus, up to ${Math.round(C.chainMax * 100)}%.`,
       `A wrong answer costs ${pen} second${pen === 1 ? '' : 's'} and resets that bonus. Repeats cost nothing.`,
+      `Some categories accept a variant of an answer, like “women’s soccer” in Sports. A variant scores like the answer it’s based on, up to ${C.maxQualifiedPerLeg} per leg.`,
       `The air thins: timers shrink from ${Math.max(...secs)} to ${Math.min(...secs)} seconds, but later legs score up to ${Math.max(...mults)}×.`,
       `Each leg counts in full up to ${fmt(C.legFullUpTo)} m, then at ${Math.round(C.legOverRate * 100)}%, to a limit of ${fmt(C.legCap)} m.`,
     ].map((t) => `<li>${t}</li>`).join('');
