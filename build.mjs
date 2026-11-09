@@ -1,11 +1,13 @@
-// Inlines engine, data and app into the shell.
+// Inlines engine, data, dev mode and app into the shell.
 //   dist/game.html  — page body for the claude.ai artifact (the host adds the document skeleton)
 //   index.html      — complete standalone page at the repo root (GitHub Pages serves it)
 import fs from 'node:fs';
 const read = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
 const shell = read('./src/shell.html');
 const data = ['./src/data-broad.js', './src/data-mid.js', './src/data-hard-wild.js'].map(read).join('\n');
-const parts = { '/*@ENGINE*/': read('./src/engine.js'), '/*@DATA*/': data, '/*@APP*/': read('./src/app.js') };
+// Dev mode: the published lock (salt + hash only), its pure core, then the tools UI.
+const dev = ['./src/dev-lock.js', './src/dev-core.js', './src/dev.js'].map(read).join('\n');
+const parts = { '/*@ENGINE*/': read('./src/engine.js'), '/*@DATA*/': data, '/*@DEV*/': dev, '/*@APP*/': read('./src/app.js') };
 let out = shell;
 for (const [k, v] of Object.entries(parts)) {
   if (/<\/script/i.test(v)) throw new Error('script terminator inside ' + k);

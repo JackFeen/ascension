@@ -21,11 +21,13 @@
   // ===========================================================================
   const KEY = 'daily-ascent:v1';
   const JKEY = 'daily-ascent:judge:v1';
-  const Store = {
+  const DEV_KEY = 'daily-ascent:dev:v1';   // dev mode's own save; never touches KEY
+  const makeStore = (key) => ({
+    key,
     data: {},
     load() {
       let d = null;
-      try { d = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { d = null; }
+      try { d = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { d = null; }
       if (!d || typeof d !== 'object') d = {};
       d.settings = Object.assign({ sound: false, reduced: null, extra: false }, d.settings);
       d.rounds = d.rounds && typeof d.rounds === 'object' ? d.rounds : {};
@@ -39,8 +41,14 @@
       }
       this.data = d;
     },
-    save() { try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch (e) { /* private mode */ } },
-  };
+    save() { try { localStorage.setItem(key, JSON.stringify(this.data)); } catch (e) { /* private mode */ } },
+    clear() { try { localStorage.removeItem(key); } catch (e) { /* blocked */ } this.load(); },
+  });
+  // `Store` is the active save. It is the real one except during a dev climb,
+  // when it points at DevStore so nothing a dev run does reaches KEY.
+  const RealStore = makeStore(KEY);
+  const DevStore = makeStore(DEV_KEY);
+  let Store = RealStore;
 
   // ===========================================================================
   // Tier icons — shape + color + label, never color alone
@@ -59,7 +67,8 @@
   // ===========================================================================
   const Sound = {
     ctx: null, master: null, windSrc: null, windGain: null, windFilter: null, noiseBuf: null, nextGust: 0,
-    get on() { return !!Store.data.settings.sound; },
+    force: false,   // dev mode's sound buttons play even with sound off
+    get on() { return this.force || !!Store.data.settings.sound; },
     ensure() {
       if (!this.ctx) {
         const AC = window.AudioContext || window.webkitAudioContext;
@@ -157,7 +166,7 @@
     let view = 'overview', rect = null, snap = true;
     let climb = C.startAlt, climbTarget = C.startAlt, ghost = null;
     let moving = false, cheerUntil = 0, reduced = false, time = 0, last = performance.now();
-    let onFrame = null;
+    let onFrame = null, skyOverride = null;
     const bursts = [], confetti = [], flakes = [], streaks = [];
 
     // --- ground profile: monotone cubic through (p, altitude) points -------
@@ -398,7 +407,7 @@
 
     // --- the frame ------------------------------------------------------------------
     function draw(dt) {
-      const timeAlt = clamp(climb, C.startAlt, C.summitAlt);
+      const timeAlt = clamp(skyOverride != null ? skyOverride : climb, C.startAlt, C.summitAlt);
       const sky = skyAt(timeAlt);
       AMB = sky.amb; HAZE = sky.bot;
       const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -691,6 +700,8 @@
       setClimb(a, opts) { climbTarget = clamp(a, C.startAlt, C.summitAlt); if (opts && opts.snap) { climb = climbTarget; snap = true; } },
       setGhost(a) { ghost = a || null; },
       setReduced(v) { reduced = !!v; },
+      setSkyOverride(a) { skyOverride = a == null ? null : clamp(Number(a), C.startAlt, C.summitAlt); },
+      get skyOverride() { return skyOverride; },
       onFrame(fn) { onFrame = fn; },
       get alt() { return climb; },
       burst(tier) {
@@ -807,6 +818,7 @@
   const G = {
     screen: 'home', state: 'idle', mode: 'daily', today: '', puzzle: 1, cats: [], index: [], round: null,
     legIdx: 0, aid: 0, lastSubmit: 0, peek: false, lastSec: -1, pauseUntil: 0,
+    dev: null,   // dev climb tool state (mode 'dev' only), see the dev mode section
   };
   const ui = {
     home: $('#home'), play: $('#play'), results: $('#results'), app: $('#app'),
@@ -815,9 +827,15 @@
     legs: $('#legs'), live: $('#sr-live'),
   };
   const announce = (t) => { ui.live.textContent = ''; setTimeout(() => { ui.live.textContent = t; }, 30); };
-  const legConf = (i) => (G.mode === 'practice' ? { secs: 20, mult: 1 } : C.legs[i]);
+  // Dev climbs run legs forever; each leg uses one position (0–6) of the normal
+  // pattern for its timer, multiplier and category pool. Daily legs: pos = index.
+  const legPos = (i) => (G.mode === 'dev' && G.round && G.round.legs[i] ? G.round.legs[i].pos : i);
+  const legConf = (i) => (G.mode === 'practice' ? { secs: 20, mult: 1 } : C.legs[legPos(i)]);
   const curLeg = () => G.round && G.round.legs[G.legIdx];
-  const save = () => { if (G.mode === 'daily') Store.save(); };
+  const save = () => { if (G.mode === 'daily' || G.mode === 'dev') Store.save(); };
+  // Dev mode listens here once unlocked; with no listener this does nothing.
+  let devListener = null;
+  const devEmit = (type, data) => { if (devListener) { try { devListener(type, data); } catch (e) { /* dev UI only */ } } };
 
   function show(screen) {
     for (const s of ['home', 'play', 'results']) ui[s].hidden = s !== screen;
@@ -842,10 +860,20 @@
   function totalAltitude() {
     const r = G.round;
     if (!r) return C.startAlt;
+    if (G.mode === 'dev') return devLap().alt;
     let sum = 0;
     r.legs.forEach((l) => { if (l) sum += E.legEffective(l.raw); });
     return Math.min(C.summitAlt, C.startAlt + sum);
   }
+  // Dev climbs: uncapped total climbed (plus any offset from the move tools).
+  function devTotal() {
+    const r = G.round;
+    if (!r) return 0;
+    let sum = r.offset || 0;
+    r.legs.forEach((l) => { if (l) sum += E.legEffective(l.raw); });
+    return Math.max(0, sum);
+  }
+  function devLap(total) { return window.DA_DEV_CORE.lapState(total == null ? devTotal() : total, C.startAlt, C.summitAlt); }
 
   // ---------------------------------------------------------------- streaks/stats
   function updateStreak(date) {
@@ -879,7 +907,7 @@
     G.today = E.localDateStr();
     G.puzzle = E.puzzleNumber(G.today);
     $('#home-num').textContent = 'No. ' + G.puzzle;
-    $('#home-date').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    $('#home-date').textContent = E.nowDate().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     const r = Store.data.rounds[G.today];
     const done = !!(r && r.completed);
     const best = bestAltitude();
@@ -911,9 +939,10 @@
     ui.input.focus({ preventScroll: true });
   }
   function renderLegDots() {
+    const at = legPos(G.legIdx);   // dev climbs: the position in the 7-leg pattern
     [...ui.legs.children].forEach((li, i) => {
-      li.classList.toggle('done', i < G.legIdx || (i === G.legIdx && G.state === 'settle'));
-      li.classList.toggle('current', i === G.legIdx && G.state !== 'settle');
+      li.classList.toggle('done', i < at || (i === at && G.state === 'settle'));
+      li.classList.toggle('current', i === at && G.state !== 'settle');
     });
   }
   async function countdown() {
@@ -928,6 +957,10 @@
   }
 
   function beginDaily() {
+    if (G.mode === 'dev') return;
+    // A fake calendar date must never create or finish a real round.
+    if (E.clockOffset()) { devEmit('notice', 'The fake clock is on. Clear it to play the real daily climb.'); return; }
+    devEmit('daily-start');
     G.today = E.localDateStr();
     const existing = Store.data.rounds[G.today];
     if (existing && existing.completed) return showResults(existing);
@@ -962,18 +995,18 @@
 
   function startLeg(i) {
     G.legIdx = i;
-    const conf = legConf(i);
+    let pos = i;
+    if (G.mode === 'dev') pos = devPrepareLeg(i);
+    const conf = G.mode === 'dev' ? C.legs[pos] : legConf(i);
     const secs = conf.secs * (G.round.extra ? C.extraTimeFactor : 1);
     const t = now();
     G.round.legs[i] = { catId: G.cats[i].id, start: t, deadline: t + secs * 1000, total: secs * 1000, raw: 0, chain: 0, invalid: 0, judged: 0, answers: [] };
+    if (G.mode === 'dev') { G.round.legs[i].pos = pos; if (G.dev.paused) G.dev.pausedAt = t; }
     save();
     G.state = 'leg';
     G.lastSec = -1;
     clearSpotlight();
-    ui.category.textContent = G.cats[i].text;
-    ui.category.classList.remove('veiled');
-    $('#leg-label').textContent = G.mode === 'practice' ? 'Practice climb' : `Leg ${i + 1} of 7`;
-    $('#leg-mult').textContent = `${Math.round(secs)} s  ×${conf.mult}`;
+    setLegHeader(i, secs, conf.mult);
     ui.chips.innerHTML = '';
     ui.feedback.textContent = '';
     ui.feedback.className = 'feedback';
@@ -983,16 +1016,26 @@
     renderLegDots();
     setNight();
     Sound.play('go');
-    announce(`${G.mode === 'practice' ? 'Practice' : 'Leg ' + (i + 1) + ' of 7'}: ${G.cats[i].text}. ${Math.round(secs)} seconds.`);
+    const who = G.mode === 'practice' ? 'Practice' : G.mode === 'dev' ? `Dev leg ${i + 1}` : `Leg ${i + 1} of 7`;
+    announce(`${who}: ${G.cats[i].text}. ${Math.round(secs)} seconds.`);
+    devEmit('leg-start', i);
+  }
+  function setLegHeader(i, secs, mult) {
+    ui.category.textContent = G.cats[i].text;
+    ui.category.classList.remove('veiled');
+    $('#leg-label').textContent = G.mode === 'practice' ? 'Practice climb' : G.mode === 'dev' ? `Dev leg ${i + 1} · pattern ${legPos(i) + 1} of 7` : `Leg ${i + 1} of 7`;
+    $('#leg-mult').textContent = `${Math.round(secs)} s  ×${mult}`;
   }
   function setNight() {
     const alt = Scene.alt;
-    const night = (G.screen === 'play' && G.mode === 'daily' && (G.legIdx >= 5 || alt >= 8000)) || (G.screen === 'results' && G.round && G.round.final >= 8000);
+    let night = (G.screen === 'play' && G.mode === 'daily' && (G.legIdx >= 5 || alt >= 8000)) || (G.screen === 'results' && G.mode === 'daily' && G.round && G.round.final >= 8000);
+    if (G.mode === 'dev' && G.dev) night = G.dev.night != null ? G.dev.night : (G.screen === 'play' && (legPos(G.legIdx) >= 5 || alt >= 8000));
     ui.app.classList.toggle('night', !!night);
   }
 
   // ---------------------------------------------------------------- per frame
   Scene.onFrame((alt) => {
+    devTick();
     if (G.screen === 'play') {
       ui.alt.innerHTML = fmt(alt) + '<small>m</small>';
       ui.air.textContent = 'Air ' + E.airPercent(alt) + '%';
@@ -1000,27 +1043,29 @@
       ui.next.innerHTML = nx ? `Next: <b>${esc(nx.short)}</b> in ${fmt(nx.alt - alt)} m` : '<b>On the summit</b>';
       if (G.state === 'leg') {
         const leg = curLeg();
-        const rem = Math.max(0, leg.deadline - Math.max(now(), G.pauseUntil));
-        const k = rem / leg.total;
+        const paused = devPaused();
+        const rem = Math.max(0, leg.deadline - Math.max(paused ? G.dev.pausedAt : now(), G.pauseUntil));
+        const k = Math.min(1, rem / leg.total);
         ui.fill.style.setProperty('--k', k.toFixed(4));
         ui.fill.style.transform = `scaleX(${k.toFixed(4)})`;
-        const sec = Math.ceil(rem / 1000);
-        if (sec !== G.lastSec) { ui.secs.textContent = sec; if (sec <= 3 && sec > 0 && G.lastSec !== -1) Sound.play('tick'); G.lastSec = sec; }
-        ui.timer.classList.toggle('urgent', rem <= 3000);
-        if (rem <= 0) endLeg();
+        const inf = G.mode === 'dev' && G.dev.infinite;
+        const sec = inf ? '∞' : Math.ceil(rem / 1000);
+        if (sec !== G.lastSec) { ui.secs.textContent = sec; if (!inf && sec <= 3 && sec > 0 && G.lastSec !== -1) Sound.play('tick'); G.lastSec = sec; }
+        ui.timer.classList.toggle('urgent', !inf && rem <= 3000);
+        if (rem <= 0 && !paused) endLeg();
       }
     }
   });
-  setInterval(() => { if (G.state === 'leg') { const leg = curLeg(); if (leg && now() >= leg.deadline) endLeg(); } }, 200);
+  setInterval(() => { devTick(); if (G.state === 'leg' && !devPaused()) { const leg = curLeg(); if (leg && now() >= leg.deadline) endLeg(); } }, 200);
   setInterval(() => {
     Sound.wind(Scene.alt, G.screen === 'play' || G.screen === 'home' || G.screen === 'results');
     const ms = msToMidnight();
     const txt = clock(ms);
     const a = $('#next-time'); if (a) a.textContent = txt;
     const b = $('#res-next'); if (b) b.textContent = hm(ms);
-    if (E.localDateStr() !== G.today && (G.state === 'idle' || G.state === 'results') && G.mode !== 'practice') renderHome();
+    if (E.localDateStr() !== G.today && (G.state === 'idle' || G.state === 'results') && G.mode === 'daily') renderHome();
   }, 1000);
-  function msToMidnight() { const d = new Date(); const m = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1); return m - d; }
+  function msToMidnight() { const d = E.nowDate(); const m = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1); return m - d; }
   function hm(ms) { const m = Math.max(0, Math.ceil(ms / 60000)); return Math.floor(m / 60) + 'h ' + (m % 60) + 'm'; }
   function clock(ms) { const s = Math.max(0, Math.floor(ms / 1000)); return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map((x) => String(x).padStart(2, '0')).join(':'); }
 
@@ -1065,6 +1110,7 @@
     const leg = curLeg();
     const t = now();
     if (t < G.pauseUntil) return;   // spotlight up: keep the typed text for after
+    if (devPaused()) return;          // dev pause: same, keep the text
     if (t > leg.deadline) return;
     if (t - G.lastSubmit < C.minSubmitGapMs) return;
     const text = raw.trim();
@@ -1077,18 +1123,18 @@
     const m = E.match(G.index[G.legIdx], text);
     if (m && m.entry) {
       const dupe = leg.answers.find((a) => a.s === 'ok' && a.eid === m.entry.id);
-      if (dupe) return duplicate(dupe);
+      if (dupe) return duplicate(dupe, text);
       return accept(leg, G.legIdx, { t: text, n: norm, eid: m.entry.id, c: m.entry.canon, tier: m.entry.tier, k: 'seed' });
     }
     const prior = leg.answers.find((a) => a.n === norm);
-    if (prior && (prior.s === 'ok' || prior.s === 'pending')) return duplicate(prior);
+    if (prior && (prior.s === 'ok' || prior.s === 'pending')) return duplicate(prior, text);
     if (!(prior && prior.s === 'rejected') && Judge.ready() && E.judgeEligible(text) && leg.judged < C.judge.maxPerLeg) return judgeAnswer(leg, text, norm);
     reject(leg, text, norm, true);
   }
 
   function accept(leg, legIdx, a, existing) {
     const before = E.legEffective(leg.raw);
-    const rawGain = E.answerGain(a.tier, leg.chain, legIdx);
+    const rawGain = E.answerGain(a.tier, leg.chain, legPos(legIdx));
     leg.chain += 1;
     leg.raw += rawGain;
     const eff = E.legEffective(leg.raw) - before;
@@ -1102,7 +1148,8 @@
       if (G.state === 'leg' && eff < rawGain) setFeedback(E.legEffective(leg.raw) >= C.legCap ? `Leg limit reached: ${fmt(C.legCap)} m this leg.` : `Past ${fmt(C.legFullUpTo)} m this leg: further gains count at ${Math.round(C.legOverRate * 100)}%.`);
       else if (G.state === 'leg') setFeedback('');
     }
-    Scene.setClimb(totalAltitude());
+    const lapUp = G.mode === 'dev' && devLap().lap > devLap(devTotal() - eff).lap;
+    if (lapUp) devLapUp(); else Scene.setClimb(totalAltitude());
     Sound.play('t' + ans.tier);
     Scene.burst(ans.tier);
     const live = legIdx === G.legIdx && G.screen === 'play';
@@ -1113,6 +1160,7 @@
     else if (live) gainPop(ans, eff);
     announce(`${ans.c}, ${tierName(ans.tier)}, plus ${eff} meters`);
     setNight();
+    devEmit('answer', { kind: 'ok', ans, rawGain, eff, legIdx });
   }
 
   function flash(kind) {
@@ -1135,15 +1183,23 @@
   // Mountaineer and Sherpa finds freeze the leg and put the answer centre stage.
   // The clock is held (deadline pushed back by the pause), Enter is ignored, and
   // the input keeps focus so the keyboard stays up.
-  function spotlight(ans, eff) {
-    const ms = C.tiers[ans.tier].pause;
+  // Holds the leg clock for `ms`: the deadline moves back by the new pause time
+  // and G.pauseUntil freezes the timer display. Overlapping holds extend.
+  function holdClock(ms) {
     const leg = curLeg();
     const t = now();
     const from = Math.max(t, G.pauseUntil);
     const until = Math.max(G.pauseUntil, t + ms);
-    leg.deadline += until - from;
+    if (leg) leg.deadline += until - from;
     G.pauseUntil = until;
     save();
+    return until;
+  }
+  // o.noHold: show the overlay without holding the clock (dev effect triggers).
+  function spotlight(ans, eff, o) {
+    const ms = C.tiers[ans.tier].pause;
+    const t = now();
+    const until = o && o.noHold ? t + ms : holdClock(ms);
     const box = $('#spot');
     box.className = `overlay spot t${ans.tier}`;
     $('#spot-rank').innerHTML = `${ICON[ans.tier]}<span>${tierName(ans.tier)}</span>`;
@@ -1179,8 +1235,14 @@
     leg.invalid += 1;
     if (norm) leg.answers.push({ id: ++G.aid, t: text, n: norm, s: 'rejected' });
     let note = '';
-    if (penalize && G.state === 'leg' && leg === curLeg()) { leg.deadline -= C.invalidPenaltySecs * 1000; note = ' · −1 s'; ui.secs.classList.add('hit'); setTimeout(() => ui.secs.classList.remove('hit'), 600); }
+    if (penalize && G.state === 'leg' && leg === curLeg()) { leg.deadline -= C.invalidPenaltySecs * 1000; note = ' · −1 s'; }
     save();
+    rejectFx(text, note);
+    devEmit('answer', { kind: 'rejected', text, norm, penalized: !!note });
+  }
+  // The wrong-answer feedback on its own: shake, red line, thud, buzz.
+  function rejectFx(text, note) {
+    if (note) { ui.secs.classList.add('hit'); setTimeout(() => ui.secs.classList.remove('hit'), 600); }
     ui.input.classList.remove('shake'); void ui.input.offsetWidth; ui.input.classList.add('shake');
     clearTimeout(G.shakeT); G.shakeT = setTimeout(() => ui.input.classList.remove('shake'), 420);
     setFeedback(`“${text}” isn’t a match${note}`, 'bad');
@@ -1189,10 +1251,11 @@
     announce(`${text} is not a match${note ? ', minus one second' : ''}`);
   }
 
-  function duplicate(a) {
+  function duplicate(a, text) {
     pulse(a);
     setFeedback(`Already found: ${a.c || a.t}`, 'dup');
     Sound.play('dup');
+    devEmit('answer', { kind: 'dup', ans: a, text });
   }
 
   function judgeAnswer(leg, text, norm) {
@@ -1201,6 +1264,7 @@
     leg.answers.push(ans);
     ui.chips.prepend(chipEl(ans));
     setFeedback('Checking “' + text + '”…');
+    devEmit('answer', { kind: 'pending', text, norm, ans });
     const legIdx = G.legIdx, cat = G.cats[legIdx], round = G.round;
     Judge.check(cat, text, norm).then((v) => resolveJudged(round, legIdx, ans, v));
   }
@@ -1209,6 +1273,7 @@
     if (round !== G.round || ans.s !== 'pending') return;
     const leg = round.legs[legIdx];
     const d = E.interpretVerdict(verdict);
+    devEmit('answer', { kind: 'judged', ans, verdict, decision: d });
     const el = legIdx === G.legIdx ? chipFor(ans) : null;
     if (d.kind === 'accept') {
       let eid = null, canon = d.canonical || ans.t, tier = d.tier;
@@ -1249,21 +1314,30 @@
     renderLegDots();
     Sound.play('end');
     const pending = () => leg.answers.some((a) => a.s === 'pending');
+    const round = G.round;
     if (pending()) {
       showTransition({ checking: true });
       const until = now() + C.judge.settleWaitMs;
       while (pending() && now() < until) await sleep(120);
       leg.answers.forEach((a) => { if (a.s === 'pending') a.s = 'unchecked'; });
     }
+    if (G.round !== round || G.state !== 'settle') return;   // a dev climb ended or reloaded meanwhile
     leg.eff = E.legEffective(leg.raw);
     leg.ended = now();
     save();
     if (G.mode === 'practice') return finishPractice();
-    if (G.legIdx >= 6) return finishRound();
+    if (G.mode !== 'dev' && G.legIdx >= 6) return finishRound();
+    if (G.mode === 'dev' && G.dev.skipTransition) {   // dev "jump to leg": straight on
+      G.dev.skipTransition = false;
+      $('#transition').hidden = true;
+      startLeg(G.legIdx + 1);
+      return layoutScene();
+    }
     G.state = 'transition';
     G.peek = true; layoutScene();
     showTransition({});
     await sleep(C.transitionMs);
+    if (G.round !== round || G.state !== 'transition') return;
     G.peek = false;
     $('#transition').hidden = true;
     startLeg(G.legIdx + 1);
@@ -1276,7 +1350,7 @@
     const alt = totalAltitude();
     const nx = E.nextMilestone(alt);
     const nxt = G.legIdx + 1;
-    $('#tr-eyebrow').textContent = o.checking ? 'Time' : `Leg ${G.legIdx + 1} complete`;
+    $('#tr-eyebrow').textContent = o.checking ? 'Time' : `${G.mode === 'dev' ? 'Dev leg' : 'Leg'} ${G.legIdx + 1} complete`;
     $('#tr-gain').innerHTML = o.checking ? 'Checking<small>…</small>' : `+${fmt(E.legEffective(leg.raw))}<small> m</small>`;
     const found = leg.answers.filter((a) => a.s === 'ok');
     const rare = found.reduce((m, a) => Math.max(m, a.tier), -1);
@@ -1285,16 +1359,17 @@
     $('#tr-next-row').hidden = !nx;
     $('#tr-next').hidden = !nx;
     if (nx) { $('#tr-next-dist').textContent = fmt(nx.alt - alt) + ' m to go'; $('#tr-next').textContent = nx.name; }
-    const showLeg = !o.checking && nxt < 7 && G.mode === 'daily';
+    const showLeg = !o.checking && ((nxt < 7 && G.mode === 'daily') || G.mode === 'dev');
     $('#tr-leg-row').hidden = !showLeg;
     if (showLeg) {
-      const c = C.legs[nxt];
-      $('#tr-leg').textContent = nxt >= 5 ? `Leg ${nxt + 1}, summit push` : `Leg ${nxt + 1}`;
+      const np = G.mode === 'dev' ? devNextPos() : nxt;
+      const c = C.legs[np];
+      $('#tr-leg').textContent = G.mode === 'dev' ? `Dev leg ${nxt + 1} · pattern ${np + 1}` : nxt >= 5 ? `Leg ${nxt + 1}, summit push` : `Leg ${nxt + 1}`;
       $('#tr-leg-info').textContent = `${Math.round(c.secs * (G.round.extra ? C.extraTimeFactor : 1))} s  ×${c.mult}`;
     }
     const acts = $('#tr-actions'); acts.hidden = true; acts.innerHTML = '';
     tr.hidden = false;
-    if (!o.checking) announce(`Leg ${G.legIdx + 1} complete. Plus ${fmt(E.legEffective(leg.raw))} meters. Altitude ${fmt(alt)} meters.`);
+    if (!o.checking) announce(`${G.mode === 'dev' ? 'Dev leg' : 'Leg'} ${G.legIdx + 1} complete. Plus ${fmt(E.legEffective(leg.raw))} meters. Altitude ${fmt(alt)} meters.`);
   }
 
   function finishPractice() {
@@ -1539,6 +1614,365 @@
     if (e.key === 'Enter' && G.screen === 'home' && document.activeElement === document.body) beginDaily();
   });
 
+  // ===========================================================================
+  // Dev mode (password-locked; the tools live in src/dev.js)
+  // Everything here runs only in G.mode 'dev' or when src/dev.js calls it after
+  // an unlock. A dev climb is the normal game with endless legs and laps, saved
+  // to DevStore; it never writes the real save, streak or daily round.
+  // ===========================================================================
+  const findCat = (id) => ALL.find((c) => c.id === id);
+  const devPaused = () => G.mode === 'dev' && !!G.dev && G.dev.paused;
+  const devActive = () => G.mode === 'dev' && !!G.round && !G.round.completed;
+  const devLegLive = () => devActive() && G.state === 'leg' && !!curLeg();
+
+  function ensureDev() {
+    if (!G.dev) G.dev = { speed: 1, freeze: false, night: null, nextPos: null, nextCat: null };
+    Object.assign(G.dev, { paused: false, pausedAt: 0, holdAtPause: 0, infinite: false, skipTransition: false, lastTick: now() });
+    return G.dev;
+  }
+
+  // Wall-clock speed, freeze and infinite time work by moving the leg deadline.
+  function devTick() {
+    if (G.mode !== 'dev' || !G.dev) return;
+    const d = G.dev, t = now(), dt = t - (d.lastTick || t);
+    d.lastTick = t;
+    if (G.state !== 'leg' || d.paused || dt <= 0) return;
+    const leg = curLeg();
+    if (!leg) return;
+    if (d.freeze || d.infinite) { leg.deadline += dt; return; }
+    if (d.speed !== 1 && t >= G.pauseUntil) leg.deadline -= (d.speed - 1) * dt;
+  }
+
+  function devNextPos() {
+    if (G.dev.nextPos != null) return G.dev.nextPos;
+    const legs = G.round.legs, last = legs[legs.length - 1];
+    return last ? (last.pos + 1) % 7 : 0;
+  }
+  function devPrepareLeg(i) {
+    const d = G.dev;
+    const pos = devNextPos();
+    d.nextPos = null;
+    d.infinite = false;
+    if (!G.cats[i]) {
+      const prev = i > 0 && G.cats[i - 1] ? G.cats[i - 1].id : null;
+      G.cats[i] = (d.nextCat && findCat(d.nextCat)) || devPickCat(pos, prev);
+      d.nextCat = null;
+      G.index[i] = E.buildIndex(G.cats[i]);
+    }
+    return pos;
+  }
+  // Each pool is dealt in shuffled cycles, so every category comes up once per
+  // cycle and never twice in a row.
+  function devPickCat(pos, prevId) {
+    const kind = C.legKinds[pos], d = G.dev;
+    const ids = DATA.categories.filter((c) => c.kind === kind).map((c) => c.id).sort();
+    const perm = (cycle) => E.shuffled(ids, E.hashStr(`dev:${d.seed}:${kind}:${cycle}`));
+    const q = d.queues[kind] || (d.queues[kind] = { cycle: 0, at: 0, perm: perm(0) });
+    for (let guard = 0; guard < ids.length * 2 + 2; guard++) {
+      if (q.at >= q.perm.length) { q.cycle += 1; q.at = 0; q.perm = perm(q.cycle); }
+      const id = q.perm[q.at++];
+      if (id !== prevId || ids.length === 1) return findCat(id);
+    }
+    return findCat(ids[0]);
+  }
+
+  // Passing the summit: hold the clock, climb to the top, plant the flag,
+  // celebrate, then drop back to Lukla and climb on to where the total says.
+  function devLapUp() {
+    const st = devLap(), d = G.dev;
+    if (G.state === 'leg') holdClock(2200);
+    const instant = isReduced();
+    Scene.setClimb(C.summitAlt, instant ? { snap: true } : undefined);
+    Scene.confetti();
+    Sound.play('t4');
+    announce(`Summit. Lap ${st.lap} begins.`);
+    devEmit('lap', st.lap);
+    clearTimeout(d.lapT1); clearTimeout(d.lapT2);
+    d.lapT1 = setTimeout(() => { if (G.mode === 'dev') Scene.setClimb(C.summitAlt, { snap: true }); }, instant ? 0 : 1000);
+    d.lapT2 = setTimeout(() => {
+      if (G.mode !== 'dev' || !G.round) return;
+      Scene.setClimb(C.startAlt, { snap: true });
+      Scene.setClimb(totalAltitude(), instant ? { snap: true } : undefined);
+      setNight();
+    }, 2000);
+  }
+
+  function startDev() {
+    if (devActive()) return;
+    if (!['idle', 'results'].includes(G.state)) return;
+    closeDialogs();
+    const settings = Object.assign({}, RealStore.data.settings);
+    Store = DevStore;
+    DevStore.load();
+    DevStore.data.settings = settings;
+    if (settings.sound) Sound.ensure();
+    G.mode = 'dev';
+    const d = ensureDev();
+    d.queues = {};
+    d.seed = Math.floor(Math.random() * 1e9);
+    G.cats = []; G.index = [];
+    G.round = { v: 2, dev: true, startedAt: now(), extra: !!settings.extra, legs: [], offset: 0, completed: false };
+    DevStore.data.devRound = G.round;
+    DevStore.save();
+    G.legIdx = 0; G.state = 'countdown';
+    Scene.setClimb(C.startAlt, { snap: true });
+    Scene.setGhost(null);
+    enterPlay();
+    devEmit('dev-start');
+    const round = G.round;
+    countdown().then(() => { if (G.round === round && G.state === 'countdown' && !round.completed) startLeg(0); });
+  }
+
+  function finishDev(o) {
+    if (G.mode !== 'dev' || !G.round) return;
+    const r = G.round, d = ensureDev();
+    clearTimeout(d.lapT1); clearTimeout(d.lapT2);
+    clearSpotlight();
+    $('#transition').hidden = true;
+    $('#countdown').hidden = true;
+    G.peek = false;
+    r.legs.forEach((l) => {
+      if (!l) return;
+      l.answers.forEach((a) => { if (a.s === 'pending') a.s = 'unchecked'; });
+      if (!l.ended) { l.eff = E.legEffective(l.raw); l.ended = now(); }
+    });
+    r.completed = true;
+    r.finishedAt = now();
+    if (o && o.forfeit) r.forfeited = true;
+    G.state = 'results';
+    save();
+    showDevResults(r);
+    devEmit('dev-end');
+  }
+
+  function showDevResults(r) {
+    const st = devLap();
+    const answers = [];
+    r.legs.forEach((l) => l && l.answers.forEach((a) => { if (a.s === 'ok') answers.push(Object.assign({ cat: (findCat(l.catId) || { text: l.catId }).text }, a)); }));
+    const legsPlayed = r.legs.filter(Boolean).length;
+    const rows = C.tiers.map((t, i) => {
+      const mine = answers.filter((a) => a.tier === i).sort((a, b) => b.raw - a.raw);
+      const top = mine[0];
+      return `<li class="find"><span class="badge t${i}">${ICON[i]}${t.name}</span>${top ? `<span class="chip t${i}"><span class="txt">${esc(top.c)}</span></span><span class="where">${esc(top.cat)} · ${mine.length} found</span>` : '<span class="where">None found</span>'}</li>`;
+    }).join('');
+    $('#sheet').innerHTML = `
+      <header class="res-head">
+        <p class="eyebrow">Dev climb · not saved to your real stats</p>
+        <h2 class="res-mile">Lap ${st.lap}</h2>
+        <p class="res-alt">${fmt(st.total)}<small> m climbed</small></p>
+        <p class="res-note">Ended at ${fmt(st.alt)} m on lap ${st.lap}.</p>
+      </header>
+      ${r.forfeited ? '<p class="forfeit">Simulated reload: this dev climb was forfeited and scored on the answers entered.</p>' : ''}
+      <section aria-label="The climb"><div class="res-foot">
+        <div class="fact"><dt>Laps done</dt><dd>${st.lap - 1}</dd></div>
+        <div class="fact"><dt>Legs played</dt><dd>${legsPlayed}</dd></div>
+        <div class="fact"><dt>Answers</dt><dd>${answers.length}</dd></div>
+      </div></section>
+      <section aria-label="Best find per rank"><h3>Best find per rank</h3><ul class="finds">${rows}</ul></section>
+      <div class="res-actions"><button class="btn btn-primary" id="btn-dev-again">New dev climb</button><button class="btn btn-ghost" id="btn-dev-home">Back to base</button></div>`;
+    $('#sheet').scrollTop = 0;
+    show('results');
+    Scene.setGhost(null);
+    Scene.setClimb(totalAltitude(), { snap: true });
+    setNight();
+    $('#btn-dev-again').onclick = startDev;
+    $('#btn-dev-home').onclick = exitDev;
+    announce(`Dev climb ended. ${fmt(st.total)} meters climbed over ${legsPlayed} legs, lap ${st.lap}.`);
+    $('.res-mile').setAttribute('tabindex', '-1');
+    $('.res-mile').focus({ preventScroll: true });
+  }
+
+  function exitDev() {
+    if (devActive()) finishDev();
+    if (G.dev) { clearTimeout(G.dev.lapT1); clearTimeout(G.dev.lapT2); G.dev.paused = false; }
+    Store = RealStore;
+    G.mode = 'daily';
+    G.round = null; G.cats = []; G.index = [];
+    renderHome();
+    devEmit('dev-exit');
+  }
+
+  function resumeDev(r) {
+    G.mode = 'dev';
+    G.round = r;
+    ensureDev();
+    G.cats = r.legs.map((l) => l && findCat(l.catId));
+    G.index = G.cats.map((c) => c && E.buildIndex(c));
+    r.legs.forEach((l) => l && l.answers.forEach((a) => { if (a.s === 'pending') a.s = 'unchecked'; }));
+    G.legIdx = Math.max(0, r.legs.length - 1);
+    Scene.setClimb(totalAltitude(), { snap: true });
+    G.state = 'countdown';
+    enterPlay();
+    const leg = r.legs[G.legIdx];
+    if (leg && !leg.ended && leg.deadline > now()) {
+      G.state = 'leg';
+      G.lastSec = -1;
+      setLegHeader(G.legIdx, leg.total / 1000, C.legs[leg.pos].mult);
+      leg.answers.filter((a) => a.s === 'ok').forEach((a) => ui.chips.prepend(chipEl(a)));
+      renderLegDots(); setNight();
+      devEmit('leg-start', G.legIdx);
+    } else if (leg && !leg.ended) { G.state = 'leg'; endLeg(); }
+    else startLeg(leg ? G.legIdx + 1 : 0);
+  }
+
+  // Tears the climb down, re-reads the dev save from storage and then either
+  // forfeits it (like a real reload) or resumes it (like an artifact hot reload).
+  function devSimulateReload(kind) {
+    if (!devActive()) return 'Start a dev climb first.';
+    save();
+    clearSpotlight();
+    clearTimeout(G.dev.lapT1); clearTimeout(G.dev.lapT2);
+    $('#transition').hidden = true;
+    $('#countdown').hidden = true;
+    G.state = 'idle'; G.peek = false; G.round = null;
+    DevStore.load();
+    const r = DevStore.data.devRound;
+    if (!r || !Array.isArray(r.legs)) { exitDev(); return 'The dev save could not be read back. Storage may be blocked here.'; }
+    G.dev.paused = false;
+    if (kind === 'forfeit') {
+      G.round = r;
+      finishDev({ forfeit: true });
+      return 'Reloaded from the dev save: the climb was forfeited and scored as it stood.';
+    }
+    resumeDev(r);
+    return 'Reloaded from the dev save: the climb resumed where it was.';
+  }
+
+  // ---------------------------------------------------------------- dev tools
+  function devPause(on) {
+    if (G.mode !== 'dev' || !G.dev) return false;
+    const d = G.dev, want = on == null ? !d.paused : !!on;
+    if (want === d.paused) return d.paused;
+    const t = now();
+    if (want) { d.paused = true; d.pausedAt = t; d.holdAtPause = G.pauseUntil; }
+    else {
+      const leg = curLeg();
+      // Credit the paused time, minus any part a spotlight hold already covered.
+      if (leg && G.state === 'leg') leg.deadline += Math.max(0, t - Math.max(d.pausedAt, Math.min(d.holdAtPause || 0, t)));
+      d.paused = false;
+      d.lastTick = t;
+      save();
+    }
+    announce(want ? 'Paused' : 'Resumed');
+    devEmit('pause', d.paused);
+    return d.paused;
+  }
+  function devEndLegNow(skipTransition) {
+    if (!devLegLive()) return false;
+    if (G.dev.paused) devPause(false);
+    G.dev.infinite = false;
+    if (skipTransition) G.dev.skipTransition = true;
+    curLeg().deadline = now();
+    endLeg();
+    return true;
+  }
+  function devAddTime(ms) {
+    if (!devLegLive()) return false;
+    const leg = curLeg();
+    leg.deadline += ms;
+    const rem = leg.deadline - Math.max(now(), G.pauseUntil);
+    if (rem > leg.total) leg.total = rem;
+    save();
+    return true;
+  }
+  function devSetAltitude(a) {
+    if (!devActive()) return false;
+    const st = devLap();
+    const alt = clamp(Number(a) || C.startAlt, C.startAlt, C.summitAlt - 0.5);
+    G.round.offset = (G.round.offset || 0) + ((st.lap - 1) * st.span + (alt - C.startAlt) - st.total);
+    Scene.setClimb(totalAltitude());
+    setNight(); save();
+    return true;
+  }
+  function devSetLap(n) {
+    if (!devActive()) return false;
+    const st = devLap();
+    const lap = Math.max(1, Math.round(Number(n) || 1));
+    G.round.offset = (G.round.offset || 0) + (lap - st.lap) * st.span;
+    save();
+    return true;
+  }
+  function devFireRank(tier) {
+    Sound.force = true; Sound.play('t' + tier); Sound.force = false;
+    Scene.burst(tier);
+    if (tier === 2) buzz(15);
+    if (tier === 3) { flash('m'); buzz([15, 40, 25]); }
+    if (tier === 4) { Scene.confetti(); flash('s'); buzz([20, 50, 20, 50, 40]); }
+    const ix = G.index[G.legIdx];
+    const pick = ix && ix.entries.find((e) => e.tier === tier);
+    const fake = { id: -1, c: pick ? pick.canon : 'Test find', tier };
+    const eff = C.tiers[tier].gain;
+    if (G.screen === 'play') {
+      if (C.tiers[tier].pause) spotlight(fake, eff, { noHold: true });
+      else gainPop(fake, eff);
+    }
+    announce(`Effect test: ${tierName(tier)}`);
+  }
+  function devPlaySound(kind) { Sound.force = true; Sound.play(kind); Sound.force = false; }
+  function devPlantFlag() {
+    Scene.setClimb(C.summitAlt, { snap: true });
+    Scene.burst(4); Scene.confetti();
+    devPlaySound('t4');
+  }
+  function devSubmit(text) {
+    if (!devLegLive()) return false;
+    const keep = ui.input.value;
+    ui.input.value = text;
+    submit();
+    ui.input.value = keep;
+    return true;
+  }
+  function withStore(store, fn) { const prev = Store; Store = store; try { return fn(); } finally { Store = prev; } }
+  function devResetRealSave(withJudge) {
+    if (G.mode === 'daily' && G.round && !G.round.completed && G.screen === 'play') return 'Finish or leave the daily climb first.';
+    RealStore.clear();
+    if (withJudge) { try { localStorage.removeItem(JKEY); } catch (e) { /* blocked */ } Judge.cache = {}; }
+    if (Store === RealStore) { applyMotion(); applySound(); }
+    if (G.mode === 'daily' && (G.screen === 'home' || G.screen === 'results')) renderHome();
+    return 'Deleted the real save' + (withJudge ? ' and the answer-checker cache.' : '.');
+  }
+  function devResetDevSave() {
+    DevStore.clear();
+    if (devActive()) { DevStore.data.settings = Object.assign({}, RealStore.data.settings); DevStore.data.devRound = G.round; DevStore.save(); }
+    return 'Deleted the dev save.';
+  }
+
+  let devHookObj = null;
+  function devHooks() {
+    if (devHookObj) return devHookObj;
+    devHookObj = {
+      E, C, ALL, DATA, ICON, Scene, Sound, Judge, RealStore, DevStore, G, ui, KEY, JKEY, DEV_KEY,
+      get store() { return Store; },
+      listen(fn) { devListener = fn; },
+      fmt, esc, tierName, announce, isReduced, renderJudge, renderHome, curLeg, legPos,
+      devTotal, devLap, devActive, devLegLive,
+      startDev, finishDev, exitDev, simulateReload: devSimulateReload,
+      pause: devPause, endLegNow: devEndLegNow, addTime: devAddTime,
+      setSpeed(x) { if (!G.dev) ensureDev(); G.dev.speed = x; G.dev.lastTick = now(); },
+      setFreeze(on) { if (!G.dev) ensureDev(); G.dev.freeze = !!on; },
+      setInfinite(on) { if (!devLegLive()) return false; G.dev.infinite = !!on; return true; },
+      jumpLeg(pos) { if (!G.dev) ensureDev(); G.dev.nextPos = pos; if (devLegLive()) devEndLegNow(true); },
+      setNextCat(id) { if (!G.dev) ensureDev(); G.dev.nextCat = id || null; },
+      setAltitude: devSetAltitude, setLap: devSetLap,
+      setNight(v) { if (!G.dev) ensureDev(); G.dev.night = v; setNight(); },
+      fireRank: devFireRank, playSound: devPlaySound, plantFlag: devPlantFlag,
+      confetti() { Scene.confetti(); }, rejectFx() { rejectFx('zzq', ' · −1 s'); },
+      submit: devSubmit,
+      openStatsWith(store) { withStore(store, openStats); },
+      recordClimbToday(store) { return withStore(store, () => { updateStreak(E.localDateStr()); store.save(); return Object.assign({}, store.data.streak); }); },
+      liveStreakOf(store) { return withStore(store, liveStreak); },
+      resetRealSave: devResetRealSave, resetDevSave: devResetDevSave,
+    };
+    return devHookObj;
+  }
+  // Hands src/dev.js a way to get the hooks. It asks only after a correct password.
+  function devInit() {
+    const D = window.DA_DEV;
+    if (devInit.done || !D || typeof D.init !== 'function') return;
+    devInit.done = true;
+    try { D.init(devHooks); } catch (e) { /* dev mode is optional */ }
+  }
+
   // ---------------------------------------------------------------- boot
   function resumeRound(r) {
     G.mode = 'daily'; G.round = r; G.today = r.date; G.puzzle = r.puzzle;
@@ -1571,7 +2005,7 @@
     let forfeitToday = null;
     for (const [date, r] of Object.entries(Store.data.rounds)) {
       if (!r || r.completed) continue;
-      if (date === G.today && hot && hot.resume) { resumeRound(r); Judge.init(); return; }
+      if (date === G.today && hot && hot.resume) { resumeRound(r); Judge.init(); devInit(); return; }
       r.legs.forEach((l) => l && l.answers.forEach((a) => { if (a.s === 'pending') a.s = 'unchecked'; }));
       r.completed = true; r.forfeited = true;
       r.final = E.finalAltitude(r.legs.map((l) => (l ? l.raw : 0)));
@@ -1583,6 +2017,7 @@
     if (forfeitToday) showResults(forfeitToday);
     else if (!Store.data.seenIntro) { openDialog('#dlg-help'); Store.data.seenIntro = true; Store.save(); }
     Judge.init();
+    devInit();
   }
 
   const hot = window.claude && window.claude.hot;

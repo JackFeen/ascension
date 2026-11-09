@@ -280,8 +280,16 @@
   // ---------------------------------------------------------------------------
   // Dates and the daily puzzle
   // ---------------------------------------------------------------------------
+  // Dev mode's fake clock shifts "now" for calendar purposes only (puzzle
+  // number, streaks, the midnight countdown). Leg timers never use it. The
+  // offset is 0 unless dev mode sets it, and it is never persisted.
+  let clockOffsetMs = 0;
+  function setClockOffset(ms) { clockOffsetMs = Number(ms) || 0; }
+  function clockOffset() { return clockOffsetMs; }
+  function nowDate() { return new Date(Date.now() + clockOffsetMs); }
+
   function localDateStr(d) {
-    const dt = d || new Date();
+    const dt = d || nowDate();
     const y = dt.getFullYear(), m = dt.getMonth() + 1, day = dt.getDate();
     return y + '-' + String(m).padStart(2, '0') + '-' + String(day).padStart(2, '0');
   }
@@ -418,8 +426,9 @@
 
   const ENGINE = {
     CONFIG, normalize, pluralVariants, candidateKeys, editDistance, fuzzyAllowance,
-    buildIndex, match, tierFromCommonness, chainBonus, answerGain, legEffective,
-    finalAltitude, milestoneFor, nextMilestone, airPercent, localDateStr, dayIndex,
+    stripAffixes, buildIndex, match, tierFromCommonness, chainBonus, answerGain, legEffective,
+    finalAltitude, milestoneFor, nextMilestone, airPercent, setClockOffset, clockOffset,
+    nowDate, localDateStr, dayIndex,
     puzzleNumber, hashStr, rng, shuffled, dailyCategories, judgeEligible, judgePrompt,
     interpretVerdict,
   };
