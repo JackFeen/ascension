@@ -129,7 +129,7 @@ daily-ascent/
 8. **Adding or removing a category reshuffles the deal for every date**, because the permutations depend on pool contents. Today's puzzle can change for players mid-day. Ship content changes just after midnight, or move to a fixed calendar (see roadmap). `test.mjs` pins a SHA-256 of the deal for puzzles 1–365, so a category change fails it on purpose: update the hash only when you mean to reshuffle. Adding, removing or retiering *answers* never changes the deal.
 9. **Changing `CONFIG.epoch` renumbers every puzzle and reshuffles the deal.**
 10. **An answer's `eid` is its position in that category's `buildIndex()` entries.** Reordering or inserting answers changes ids. Stored rounds use `eid` only for in-round dedupe and the "missed gems" list, so the damage is cosmetic. Don't build features that rely on `eid` across data versions.
-11. **`test.mjs` hardcodes a few CONFIG values**: Crawler gain 55, Sherpa 500, the five rank names, the leg cap at 750/950/1000, the leg timers (30/30/25/25/25/20/20) and multipliers, and `maxQualifiedPerLeg` = 3. Update the tests when you retune.
+11. **`test.mjs` hardcodes a few CONFIG values**: Crawler gain 55, Sherpa 500, the five rank names, the leg cap at 750/950/1000, the leg timers (30/30/25/25/25/20/20) and multipliers, `maxQualifiedPerLeg` = 3 and the `CONFIG.correct` defaults. Update the tests when you retune.
 12. **Never put answers in share text or any future leaderboard** (spoilers).
 13. **Colors go through CSS tokens.** The `.night` class swaps panel tokens. Canvas colors are separate constants inside `Scene` and don't follow the page theme.
 14. **Accessibility is not optional.**
@@ -166,7 +166,8 @@ There is no framework, bundler or runtime dependency, and the source is about 3,
 keydown Enter on #answer ─▶ submit()
    guards: G.state==='leg', before leg.deadline, ≥ minSubmitGapMs since the last submit, < 30 accepted answers
    E.normalize(text) ─▶ E.match(G.index[leg], text)
-        exact form → alias → singular/plural variants → affix-stripped ("Mt", "tree") → fuzzy (only if exactly one candidate)
+        exact form → alias → singular/plural variants → affix-stripped ("Mt", "tree")
+        → autocorrect (closest listed answer within its allowance, a clear winner; typos, keyboard slips, sound-alikes, word by word; §6.3)
         → qualified (one leading qualifier on a listed answer: "women's soccer"); see §6.3
    E.hitOutcome(leg.answers, eid, qualifier): dedupe key is (entry, qualifier); a 4th qualified answer → variantLimit()
    ├─ hit, not yet found ─▶ accept(): gain = E.answerGain(tier, leg.chain, legIdx); leg.raw += gain
@@ -214,6 +215,7 @@ The engine is pure: no DOM and no storage. It exports `window.DA_ENGINE`, or `mo
 | `countdownSecs` / `transitionMs` | 3 / 3500 | 3-2-1 before leg 1; pause between legs |
 | `invalidPenaltySecs` | 1 | Time lost per wrong answer |
 | `maxAcceptedPerLeg` / `minSubmitGapMs` | 30 / 150 | Anti-scripting guards |
+| `correct.*` | keyboardCost 0.5, doubleLetterCost 0.5, soundCost 1, soundMinLen 7, margin 1, shortLen 4, minRatio 0.6, maxRatio 1.4 | Autocorrect tuning (§6.3) |
 | `maxQualifiedPerLeg` | 3 | Qualified answers ("women's soccer", "dark purple") that can score per leg. Past it: "Variant limit reached", no penalty, chain unchanged |
 | `extraTimeFactor` | 1.5 | Accessibility setting; noted on results |
 | `chainStep` / `chainMax` | 0.05 / 0.25 | +5% per consecutive valid answer, up to +25%. A wrong answer resets it |
@@ -250,9 +252,16 @@ Singular/plural folding is **not** applied to the stored key. Instead, `candidat
 ### 6.3 Matching: `buildIndex(cat)` and `match(index, input)`
 
 - `buildIndex` parses the tier strings into `entries` (`{id, canon, tier, norm, aliases}`). It builds two maps, `exact` (normalized form → id) and `comp` (the same form with spaces removed, so "ice cream" matches "icecream"), plus a `forms` list for fuzzy matching. Forms with a category's affixes stripped are also added (§7).
-- `match` tries the input's candidate keys against `exact`, then `comp`. It also tries the affix-stripped input. If nothing hits, it falls back to fuzzy matching: optimal-string-alignment distance ≤1 for forms of 5–8 characters, ≤2 for 9 or more, and nothing below 5. It accepts only if **exactly one** entry qualifies; more than one returns `{ambiguous: true}`.
+- `match` tries the input's candidate keys against `exact`, then `comp`. It also tries the affix-stripped input. If nothing hits, it runs **autocorrect** (stage 3, `corrections()`), which scores the input against every listed form (canonical names and aliases; `buildIndex` precomputes each form's shape in `prepped`):
+  - **Cost** (`correctionDistance()`): a weighted optimal-string-alignment distance. Each edit costs 1, except swapping in a QWERTY neighbour after the first letter (`keyboardCost`, 0.5) and adding or dropping a repeated letter ("bananna", "brocoli": `doubleLetterCost`, 0.5).
+  - **Allowance** by the form's length (`fuzzyAllowance()`): 3 letters or fewer never correct, 4 letters allow one 0.5 fix, 5–8 allow 1, 9+ allow 2.
+  - **Sound-alikes** (forms of `soundMinLen` 7+ letters): when the input's `phoneticKey()` equals the form's, the cost (the lower of the typed spelling and the `respell()`ed one) may run `soundCost` past the allowance, staying under allowance + 2. The key is Metaphone-like and written in-house: ph→f, ck/q→k, soft c→s, other c→k, x→ks, silent gh, initial kn/gn/wr/ps, tch→ch, dg→j, hu+vowel→w, repeated letters collapsed, vowels and y dropped after the first letter, and each consonant cluster reduced to its sorted letters, so "fuschia"/"fuchsia" and "daschund"/"dachshund" share a key.
+  - **Word by word**: when the input and a form have the same number of words, each word is judged against its own allowance (3-letter words must match exactly) and the costs add up ("weelchiar baskeball").
+  - **Guardrails**: the first letter must match, be a keyboard neighbour or sound the same (c/k/s, f/p, j/g, i/y, or the same respelled first letter); the input must be 60–140% of the form's length.
+  - **Winner**: the lowest-cost entry wins if no other entry is within `margin` (1) of it, or if it is the only close one that sounds like the input ("saxaphone" → Saxophone, not Daxophone). Otherwise `{ambiguous: true}` ("staplet": stapler or staples).
+  - Exact and listed matches always win, because stage 3 runs only when stages 1–2 find nothing. `{noFuzzy: true}` skips stage 3 entirely.
 - **Qualifiers** (stage 4, only for categories with a `qualifiers` field, and only when stages 1–3 found nothing, so explicit list entries always win): if the input starts with one of the category's qualifiers followed by a space, the rest is matched with stages 1–3, fuzzy included. A hit returns that base entry with `qualifier` (the normalized qualifier, e.g. `womens`) and `canon` (the display form, e.g. "Women’s soccer"). Exactly one qualifier is stripped: if the rest, or the base entry itself, starts with a qualifier, there is no match ("mens womens soccer", "light light blue"). `match(index, input, {noFuzzy: true})` skips the fuzzy stage everywhere (used by `resolveJudged()`).
-- It returns `{entry, via: 'exact'|'alias'|'fuzzy', norm, qualifier?, canon?}`, `{ambiguous, norm}` or `null`.
+- It returns `{entry, via: 'exact'|'alias'|'fuzzy', norm, fix?, cost?, qualifier?, canon?}`, `{ambiguous, norm}` or `null`. Corrected hits keep `via: 'fuzzy'` and add `fix` (`'typo'|'keyboard'|'sound'|'words'`) and `cost`. `correctionCost(input, form)` → `{cost, fix, allowed, allow, reason}` and `corrections(index, norm, explain)` (every entry ranked, for the dev debugger) are exported.
 - Helpers: `qualifierList(cat)` (normalized, longest first), `qualifiedCanon(q, canon)`, `answerKey(eid, q)` (`"eid|q"`, the dedupe key) and `hitOutcome(answers, eid, q)` → `{kind: 'new'|'dup'|'limit'}`. A qualified answer scores at its base entry's tier and counts toward the chain like any hit; it never appears in "missed gems".
 
 ### 6.4 Scoring
@@ -354,7 +363,8 @@ Leg   = { catId, start, deadline, total /* ms */, raw, chain, invalid, judged,
           answers: [Answer], eff, ended }
 Answer = { id, t /* typed */, n /* normalized */, s: 'ok'|'pending'|'rejected'|'unchecked'|'dup',
            eid /* seed entry id or null */, c /* canonical shown */, tier, k: 'seed'|'judge',
-           raw /* raw gain */, g /* effective gain */ }
+           raw /* raw gain */, g /* effective gain */,
+           q? /* qualifier */, x? /* autocorrect fix: 'typo'|'keyboard'|'sound'|'words' */ }
 ```
 
 `Store.load()` migrates `v: 1` rounds (saved with the old six tiers) onto the five ranks.
@@ -429,7 +439,7 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 - `beginDaily()` → `enterPlay()` → `countdown()` → the round is created → `startLeg(0)`.
 - `startLeg(i)` sets the deadline, category text, leg label, the night class through `setNight()`, and an announcement.
 - **Per-frame handler** (`Scene.onFrame(...)`): the HUD altitude, Air %, the "Next: … in … m" plate, the timer bar (`--k` scale) and seconds, and the urgent state in the last 3 s. It calls `endLeg()` when time is up.
-- **Answers:** `submit()`, `accept()`, `reject()`, `duplicate()`, `variantLimit()` (a 4th qualified answer: "Variant limit reached", dup sound, no penalty), `judgeAnswer()`, `resolveJudged()`. Qualified answers store `q` (the qualifier) and show the qualified canon on the chip. Chips are created with `chipEl()`/`fillChip()` and prepended (newest first). CSS fades older ones.
+- **Answers:** `submit()`, `accept()`, `reject()`, `duplicate()`, `variantLimit()` (a 4th qualified answer: "Variant limit reached", dup sound, no penalty), `judgeAnswer()`, `resolveJudged()`. Qualified answers store `q` (the qualifier) and show the qualified canon on the chip. Autocorrected answers store `x` (the fix kind) and their chip shows the listed name with a small "you typed …" line underneath (`.chip.fixed`); screen readers hear "Corrected to Fuchsia. Climber, plus 200 meters". They score at the entry's full tier. Chips are created with `chipEl()`/`fillChip()` and prepended (newest first). CSS fades older ones.
 - **Find feedback** (scales with rank): every rank gets a chime and a canvas burst. Crawler–Climber also get `gainPop()`, a floating "+N m" over the answer box (bigger per rank); Climber chips pop harder and the climber cheers.
 - **Spotlight** (`spotlight()` / `clearSpotlight()`, `#spot` overlay): Mountaineer and Sherpa freeze the leg for `tiers[].pause` ms and show the rank, the answer huge, a counting-up "+N m" and the category. The clock is **held, not spent**: `leg.deadline` is pushed back by the pause, `G.pauseUntil` freezes the timer display, and `submit()` ignores Enter (keeping the typed text) until it clears. The input keeps focus. Mountaineer adds a purple flash; Sherpa adds a gold flash, spinning rays, prayer-flag confetti, a screen quake and strong haptics. Overlapping spotlights extend rather than stack.
 - **End of leg:** `endLeg()` → `showTransition()`, or `finishPractice()`, or `finishRound()` → `showResults(round, {fresh})`.
@@ -485,10 +495,13 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
   - qualifier rules: qualified matches and their display canon, explicit entries winning, no stacking, base-tier scoring, (entry, qualifier) dedupe and the per-leg variant cap
   - leg timers (30/30/25/25/25/20/20) with multipliers, extra time, countdown, transitions and penalty unchanged
   - `MUST_ACCEPT` (every category, 5–8 answers) and `MUST_REJECT`
+  - autocorrect: `MUST_CORRECT` (52 real misspellings in 39 categories, covering typo, keyboard, sound and word-by-word fixes) and `MUST_NOT_CORRECT` (short words, gibberish, too-short inputs, exact answers near another, an ambiguous pair), plus the helpers and CONFIG defaults
+
+  It also prints an informational **autocorrect near-pairs report** (answers one slip apart, with the ones where both are Crawler or Hiker listed) and the **autocorrect speed** in the largest category (target under 3 ms per `match()`).
 
   It then prints per-category tier counts and a **calibration Monte Carlo**. The calibration uses four player archetypes (casual, solid, strong, expert) with guessed answer speeds and tier mixes, and reports how many rounds land in each band (below Base Camp, Base Camp, Camp 1–2, Camp 2–Death Zone, Death Zone, Summit). Treat it as a sanity check until real play data exists.
 - **`npm test`** also checks dev mode: lap math (wrap at the summit, uncapped total, lap count), the constant-time compare, the lock's shape, that a wrong password fails, and (only when `dev.local.mjs` exists) that the private password matches `src/dev-lock.js`.
-- **`npm run smoke`** builds a sandboxed iframe, speeds up the CONFIG, plays all 7 legs typing seed answers plus one invalid answer per leg, and asserts that chip counts match, the results and share text appear, and a reload shows "View Results". Then, if `dev.local.mjs` exists, it opens `?dev`, checks a wrong password is refused, unlocks, pauses (the clock must hold), runs the autoplay bot until lap 2, ends the climb and asserts `daily-ascent:v1` is byte-for-byte unchanged. It fails on any page error.
+- **`npm run smoke`** builds a sandboxed iframe, speeds up the CONFIG, plays all 7 legs typing seed answers plus one invalid answer per leg, and asserts that chip counts match, the results and share text appear, and a reload shows "View Results". Then, if `dev.local.mjs` exists, it opens `?dev`, checks a wrong password is refused, unlocks, pauses (the clock must hold), runs the autoplay bot until lap 2, ends the climb and asserts `daily-ascent:v1` is byte-for-byte unchanged. During the dev lap the bot misspells every third answer, and the smoke checks that the log shows corrected answers and that the debugger explains "fuschia" → Fuchsia. It fails on any page error.
 - **Manual checks the scripts can't do:**
   - real phone keyboards (iOS Safari, Android Chrome); the keyboard must stay up between legs
   - artifact consent for answer checking
@@ -525,6 +538,7 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 | Report-an-answer button | §5.5 | Not built | Needs a backend review queue |
 | Content volume | MVP: 30 days | 49 categories = 7 days of unique deals, then reshuffled cycles | Content pipeline (§7.3) still to build |
 | Answer variants | Not covered | Per-category `qualifiers` (§6.3, §7): one leading word makes a listed answer a distinct variant ("women's soccer"), scored at the base tier, at most 3 per leg | Players typed real variants and were penalized; listing every "adjective + answer" combination would bloat the lists, and the cap stops farming |
+| Autocorrect | §5.3 stage 3: edit distance 1 (5–8 letters) or 2 (longer), only with exactly one candidate | Silent correction on Enter: weighted typo cost, keyboard slips, repeated letters, sound-alikes, word by word, with a clear-winner margin (§6.3). Corrections score at the full tier and show "you typed …" on the tag | Players who know an answer shouldn't lose time to spelling. No visible autofill or suggestions: they would leak the answer bank and reward guessing over knowledge |
 | Leg timers | 20 s for every leg, shrinking later | 30, 30, 25, 25, 25, 20, 20 (+10 s each, 175 s total); nothing else retuned | More time per category, so the bigger word lists have room to pay off. The unchanged calibration sim now gives about 33% summits (target 5%), so a retune is due |
 
 ---
@@ -550,6 +564,7 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 - The calibration simulation uses guessed player behavior. It assumes a constant answer rate, so it overstates what longer timers add; even so, after the +10 s timers it gives about 33% summits against the 5% target. Retune the leg cap, gains or multipliers before shipping the timers to `main`.
 - Canvas colors ignore the light/dark page theme (by design: the sky is the theme).
 - `eid` is not stable across data edits (see gotcha 10).
+- Autocorrect can't tell two real answers one slip apart (waiter/writer, shirt/skirt, Monet/Manet); exact answers always win, and a typo between them usually comes back ambiguous. `npm test` prints these near pairs. It also shows duplicate-looking entries such as Goat cheese / Goats cheese, worth merging in a data pass.
 - The overview milestone labels can crowd on very small screens (Lukla/Tea House, Camp 1/Camp 2).
 - Dev mode is client-side too. The password check is real (PBKDF2, no plaintext anywhere public) but anyone who can edit the page or its storage can reach the same code. Dev mode only changes the viewer's own browser, so that's acceptable.
 - `app.js` is about 1,850 lines in one IIFE. If it grows much more, split it into modules (`scene.js`, `judge.js`, `flow.js`) and extend `build.mjs` to concatenate them. Keep the `DA_ENGINE` / `DA_CATS` globals.
@@ -587,9 +602,9 @@ An infinite version of the game plus tools for testing changes. It ships in ever
 | --- | --- |
 | Time | Pause/resume (Alt+P), freeze timer (sticky), infinite time this leg, speed 0.5×/1×/2×/4×, end leg now, ±5 s |
 | Move | Jump to pattern leg 1–7, altitude slider, teleport to any milestone, set lap, scrub the sky's time of day (`Scene.setSkyOverride`), night panels auto/on/off |
-| Content | Queue the next leg's category (searchable, all 49 + practice), autoplay bot (rank or mix, 1–6/s, a wrong answer every N), live cheat sheet for the current leg (also lists the category's qualifiers, the variants found and "N/3 used this leg"; the bot types plain answers only), preview any date or puzzle number's 7 categories |
+| Content | Queue the next leg's category (searchable, all 49 + practice), autoplay bot (rank or mix, 1–6/s, a wrong answer every N, a typo every N: drops a doubled letter or swaps in a keyboard neighbour so autocorrect gets exercised), live cheat sheet for the current leg (also lists the category's qualifiers, the variants found and "N/3 used this leg"; the bot types plain answers only), preview any date or puzzle number's 7 categories |
 | Effects | Each rank's full find feedback (no score change; spotlight uses `noHold`), every `Sound.play` kind (plays even with sound off via `Sound.force`), summit flag, confetti, wrong-answer shake (`rejectFx`) |
-| Debugger | Live analysis of the answer box or a test box against any category: raw, `normalize()`, `candidateKeys()`, affix-stripped forms, the category's qualifiers, the qualifier step (stripped qualifier and base form, or why it didn't apply), match (`via`, ambiguous competitors, none), entry, dedupe key (`eid|qualifier`), would-gain (zero for a duplicate or past the variant cap). A timestamped submission log with Copy; qualified hits are labelled "qualified (q)" and variant-limit hits get their own line |
+| Debugger | Live analysis of the answer box or a test box against any category: raw, `normalize()`, `candidateKeys()`, affix-stripped forms, the category's qualifiers, the qualifier step (stripped qualifier and base form, or why it didn't apply), match (`via` or "corrected (fix)", ambiguous competitors, none), a Correction section (the input's phonetic key; the top 3 candidates with form, cost, fix kind, allowance, key, and in or out with the reason; the margin check; the verdict), entry, dedupe key (`eid|qualifier`), would-gain (zero for a duplicate or past the variant cap). A timestamped submission log with Copy; qualified hits are labelled "qualified (q)", corrected hits read "corrected (sound): fuschia → Fuchsia", and variant-limit hits get their own line |
 | Checker | Mocks `Judge` everywhere (never calls `window.claude`, never writes the verdict cache): state off/prompt/on/denied/rate-limited (60 s), default verdict, a queue of next verdicts, response delay up to 10 s (past the 7 s settle wait → "unchecked"). Verdicts go through `interpretVerdict()`/`resolveJudged()` |
 | Save & dates | Fake clock (calendar only, via `E.setClockOffset`; never persisted), simulate a mid-climb reload (forfeit or resume, re-read from the dev save), dev save streak/rest days/last date, generate fake past rounds, open Stats with the dev save, record a climb today, reset dev save, read-only real save + verdict cache JSON, reset real save (confirm dialog lists exactly what goes) |
 | Perf | FPS meter with frame-time graph, hide UI (Alt+H, or tap the canvas to restore), screenshot of the mountain canvas (download, or a dialog to save it from when framed) |

@@ -16,7 +16,7 @@ Moving to your own domain later: add a `CNAME` file in GitHub Pages settings. To
 
 | File | What it is |
 | --- | --- |
-| `src/engine.js` | Config, normalization, matching (exact → alias → fuzzy → qualified variants), scoring, daily deal, judge prompt. No DOM. |
+| `src/engine.js` | Config, normalization, matching (exact → alias → autocorrect for typos and sound-alikes → qualified variants), scoring, daily deal, judge prompt. No DOM. |
 | `src/data-*.js` | The answer bank: 49 categories plus a practice one, about 26,400 answers, scored across five climber ranks (Crawler, Hiker, Climber, Mountaineer, Sherpa). |
 | `src/app.js` | Canvas mountain, sound, answer checking, game flow, results, stats. |
 | `src/shell.html` | Markup and styles. |

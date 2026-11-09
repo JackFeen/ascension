@@ -380,6 +380,53 @@ for (const [cat, list] of Object.entries(MUST_REJECT)) for (const input of list)
   ok(!m || !m.entry, `${cat}: must reject "${input}", got ${m && m.entry ? (m.qualifier ? m.qualifier + ' + ' : '') + m.entry.canon : ''}`);
 }
 
+// ---- autocorrect collision report (informational): pairs of different answers in
+// one category whose listed forms are a single slip apart (correction cost ≤ 1).
+// A slip on one of them can land on the other or come back ambiguous.
+{
+  const rows = [];
+  for (const c of CATS) {
+    const ix = idx[c.id];
+    const buckets = new Map();
+    for (const f of ix.prepped) {
+      if (f.len < E.CONFIG.correct.shortLen + 1) continue;
+      const k = f.first;
+      if (!buckets.has(k)) buckets.set(k, []);
+      buckets.get(k).push(f);
+    }
+    const pairs = new Map();
+    for (const list of buckets.values()) {
+      for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+        const a = list[i], b = list[j];
+        if (a.id === b.id || Math.abs(a.len - b.len) > 1) continue;
+        if (E.correctionDistance(a.norm, b.norm, 1) <= 1) {
+          const key = Math.min(a.id, b.id) + '|' + Math.max(a.id, b.id);
+          if (!pairs.has(key)) pairs.set(key, [ix.entries[a.id], ix.entries[b.id]]);
+        }
+      }
+    }
+    const common = [...pairs.values()].filter(([x, y]) => x.tier <= 1 && y.tier <= 1);
+    rows.push({ id: c.id, n: pairs.size, common, sample: [...pairs.values()].slice(0, 3) });
+  }
+  rows.sort((x, y) => y.n - x.n);
+  console.log('\nautocorrect near pairs (forms one slip apart), top 10:');
+  for (const r of rows.slice(0, 10)) console.log(`  ${r.id.padEnd(14)} ${String(r.n).padStart(3)}  e.g. ${r.sample.map(([x, y]) => x.canon + '/' + y.canon).join(', ')}`);
+  const commonAll = rows.flatMap((r) => r.common.map(([x, y]) => `${r.id}: ${x.canon}/${y.canon}`));
+  console.log(`  both answers Crawler or Hiker: ${commonAll.length ? commonAll.join('; ') : 'none'}`);
+}
+
+// ---- autocorrect speed (informational): ms per match() in the largest category
+{
+  const big = CATS.reduce((m, c) => (idx[c.id].entries.length > idx[m.id].entries.length ? c : m), CATS[0]);
+  const inputs = idx[big.id].entries.slice(0, 40).map((e) => e.norm.length > 5 ? e.norm.slice(0, 2) + e.norm[3] + e.norm[2] + e.norm.slice(4) : e.norm + 'x');
+  inputs.push('qwertyuiop', 'zzzzzz', 'madagaskar', 'svalbrad');
+  const t0 = process.hrtime.bigint();
+  let n = 0;
+  for (let r = 0; r < 25; r++) for (const w of inputs) { E.match(idx[big.id], w); n++; }
+  const ms = Number(process.hrtime.bigint() - t0) / 1e6 / n;
+  console.log(`autocorrect speed: ${ms.toFixed(2)} ms per match() in ${big.id} (${idx[big.id].entries.length} answers, target < 3 ms)`);
+}
+
 // ---- calibration Monte Carlo (players are archetypes with tier mixes)
 function simulate(profile, n = 4000) {
   const r = E.rng(42);
