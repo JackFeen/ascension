@@ -301,6 +301,7 @@
     if (t.id === 'dev-alt') act('goto-alt', t);
     else if (t.id === 'dev-bot-rank') { bot.rank = t.value; }
     else if (t.id === 'dev-bot-wrong') { bot.wrongEvery = Math.max(0, Math.round(Number(t.value) || 0)); }
+    else if (t.id === 'dev-bot-typo') { bot.typoEvery = Math.max(0, Math.round(Number(t.value) || 0)); }
     else if (t.id === 'dev-mock-state') { mock.state = t.value; if (mock.on) applyMockState(); renderTab(); }
     else if (t.id === 'dev-mock-default') { mock.dflt = t.value; }
     else if (t.id === 'dev-mock-comm') { mock.comm = Number(t.value); }
@@ -476,7 +477,8 @@
       <p class="dev-note">Types seed answers through the real submit path during a dev climb. It pauses with the game.</p>
       <div class="dev-row">
         <label>Rank <select class="dev-in" id="dev-bot-rank"><option value="mix"${bot.rank === 'mix' ? ' selected' : ''}>Random mix</option>${H.C.tiers.map((t, i) => `<option value="${i}"${bot.rank === String(i) ? ' selected' : ''}>${t.name}</option>`).join('')}</select></label>
-        <label>Wrong every <input class="dev-in" type="number" id="dev-bot-wrong" min="0" step="1" value="${bot.wrongEvery}"> <span class="dev-note">(0 = never)</span></label></div>
+        <label>Wrong every <input class="dev-in" type="number" id="dev-bot-wrong" min="0" step="1" value="${bot.wrongEvery}"> <span class="dev-note">(0 = never)</span></label>
+        <label>Typo every <input class="dev-in" type="number" id="dev-bot-typo" min="0" step="1" value="${bot.typoEvery}"> <span class="dev-note">(0 = never; misspells a real answer)</span></label></div>
       <div class="dev-row"><label for="dev-bot-rate">Speed</label><input class="dev-in" type="range" id="dev-bot-rate" min="1" max="6" step="1" value="${bot.rate}"><output id="dev-bot-rate-out" for="dev-bot-rate">${bot.rate}/s</output>
         ${btn('bot', bot.on ? 'Stop bot' : 'Start bot', { cls: bot.on ? 'on' : 'primary', pressed: bot.on })}</div>
       <h3>Cheat sheet</h3>
@@ -522,7 +524,29 @@
   }
 
   // autoplay bot
-  const bot = { on: false, rank: 'mix', rate: 4, wrongEvery: 0, n: 0, timer: null };
+  const bot = { on: false, rank: 'mix', rate: 4, wrongEvery: 0, typoEvery: 0, n: 0, timer: null };
+  // One realistic slip: drop one of a doubled letter, or swap a later letter for a QWERTY neighbour.
+  const KB_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+  function kbNeighbour(ch) {
+    for (let r = 0; r < 3; r++) {
+      const c = KB_ROWS[r].indexOf(ch);
+      if (c < 0) continue;
+      const opts = [KB_ROWS[r][c - 1], KB_ROWS[r][c + 1]].filter(Boolean);
+      return opts[Math.floor(Math.random() * opts.length)];
+    }
+    return null;
+  }
+  function misspell(word) {
+    const w = word.toLowerCase();
+    const dbl = [];
+    for (let i = 1; i < w.length; i++) if (w[i] === w[i - 1] && /[a-z]/.test(w[i])) dbl.push(i);
+    if (dbl.length && Math.random() < 0.5) { const i = dbl[Math.floor(Math.random() * dbl.length)]; return w.slice(0, i) + w.slice(i + 1); }
+    const spots = [];
+    for (let i = 2; i < w.length - 1; i++) if (kbNeighbour(w[i])) spots.push(i);
+    if (!spots.length) return w;
+    const i = spots[Math.floor(Math.random() * spots.length)];
+    return w.slice(0, i) + kbNeighbour(w[i]) + w.slice(i + 1);
+  }
   function startBot() {
     clearInterval(bot.timer);
     bot.on = true;
@@ -544,13 +568,16 @@
     if (bot.wrongEvery > 0 && bot.n % bot.wrongEvery === 0) { H.submit('zzq' + Math.random().toString(36).slice(2, 6)); return; }
     const found = new Set(leg.answers.filter((a) => a.s === 'ok').map((a) => a.eid));
     let pool = ix.entries.filter((e) => !found.has(e.id));
+    const typo = bot.typoEvery > 0 && bot.n % bot.typoEvery === 0;
+    if (typo) { const long = pool.filter((e) => H.E.normalize(e.canon).replace(/ /g, '').length >= 6); if (long.length) pool = long; }
     if (bot.rank !== 'mix') {
       const r = Number(bot.rank);
       const exact = pool.filter((e) => e.tier === r), lower = pool.filter((e) => e.tier < r);
       pool = exact.length ? exact : lower.length ? lower : pool;
     }
     if (!pool.length) return;
-    H.submit(pool[Math.floor(Math.random() * pool.length)].canon);
+    const pick = pool[Math.floor(Math.random() * pool.length)].canon;
+    H.submit(typo ? misspell(pick) : pick);
   }
 
   // ---------------------------------------------------------------- effects
@@ -604,23 +631,23 @@
     out.bare = E.stripAffixes(norm, ix.cat);
     if (out.bare !== norm) out.bareKeys = E.candidateKeys(out.bare);
     out.m = E.match(ix, text);
-    if (out.m && out.m.ambiguous) {
-      const ids = new Set();
-      for (const [form, id] of ix.forms) {
-        const allow = E.fuzzyAllowance(form.length);
-        if (!allow || Math.abs(form.length - norm.length) > allow) continue;
-        if (E.editDistance(norm, form, allow) <= allow) ids.add(id);
-      }
-      out.competitors = [...ids].map((id) => ix.entries[id]);
+    // Stage 3 (autocorrect) runs only when the list itself has no match.
+    const listed = E.match(ix, text, { noFuzzy: true });
+    if (!(listed && listed.entry && !listed.qualifier)) {
+      const base = out.m && out.m.qualifier ? norm.slice(out.m.qualifier.length + 1) : norm;
+      out.corr = E.corrections(ix, base, true);
+      out.corrInput = base;
     }
+    if (out.m && out.m.ambiguous && out.corr) out.competitors = out.corr.ranked.filter((r) => r.allowed).slice(0, 4).map((r) => r.entry);
     return out;
   }
   function resultText(r) {
     if (!r.norm) return 'empty after normalizing';
     if (!r.m) return 'no match (rejected, or sent to the checker if it is on)';
-    if (r.m.ambiguous) return 'ambiguous fuzzy match: ' + r.competitors.map((e) => `${e.canon} (${H.tierName(e.tier)})`).join(', ');
-    if (r.m.qualifier) return `qualified → ${r.m.canon} · base ${r.m.entry.canon} (${r.m.via}) · ${H.tierName(r.m.entry.tier)}`;
-    return `${r.m.via} → ${r.m.entry.canon} · ${H.tierName(r.m.entry.tier)}`;
+    if (r.m.ambiguous) return 'ambiguous: too close to call between ' + r.competitors.map((e) => `${e.canon} (${H.tierName(e.tier)})`).join(', ');
+    const how = r.m.fix ? `corrected (${r.m.fix})` : r.m.via;
+    if (r.m.qualifier) return `qualified → ${r.m.canon} · base ${r.m.entry.canon} (${how}) · ${H.tierName(r.m.entry.tier)}`;
+    return `${how} → ${r.m.entry.canon} · ${H.tierName(r.m.entry.tier)}`;
   }
   function analyseNow() {
     const out = $('#dev-dbg-out');
@@ -636,6 +663,23 @@
       ['Qualifiers', ix ? (H.E.qualifierList(ix.cat).join(', ') || 'none for this category') : '—'],
       ['Match', ix ? resultText(r) : '—'],
     ];
+    if (ix && r.norm) {
+      if (!r.corr) rows.push(['Correction', 'not needed: the list matched directly']);
+      else {
+        const K = H.C.correct, c = r.corr;
+        const fmtC = (x) => (x === Infinity ? '∞' : String(Math.round(x * 100) / 100));
+        rows.push(['Correction input', `${JSON.stringify(r.corrInput)} · phonetic key ${JSON.stringify(c.key)}`]);
+        c.ranked.slice(0, 3).forEach((x, i) => rows.push([`Candidate ${i + 1}`,
+          `${x.entry.canon} via ${JSON.stringify(x.form)} · cost ${fmtC(x.cost)}${x.fix ? ' (' + x.fix + ')' : ''} · allowance ${fmtC(x.allow)} · key ${JSON.stringify(x.formKey)} · ${x.allowed ? 'within' : 'out: ' + x.reason}`]));
+        if (!c.ranked.length) rows.push(['Candidates', 'none']);
+        const ok = c.ranked.filter((x) => x.allowed);
+        rows.push(['Margin check', ok.length < 2 ? (ok.length ? 'only one candidate within its allowance' : '—')
+          : `runner-up ${ok[1].entry.canon} is ${fmtC(ok[1].cost - ok[0].cost)} behind (needs ${K.margin}, or the winner alone sounds the same)`]);
+        const v = c.verdict;
+        rows.push(['Verdict', v && v.entry ? `corrected to ${v.entry.canon} (${v.fix})` : v && v.ambiguous ? `ambiguous between ${v.ambiguous.map((e) => e.canon).join(' and ')}`
+          : `no candidate${c.ranked[0] ? ' (closest ' + c.ranked[0].entry.canon + ': ' + (c.ranked[0].reason || 'over the allowance') + ')' : ''}`]);
+      }
+    }
     if (r.m && r.m.qualifier) {
       const rest = r.norm.slice(r.m.qualifier.length + 1);
       rows.push(['Qualifier step', `stripped ${JSON.stringify(r.m.qualifier)} → base ${JSON.stringify(rest)} → ${r.m.entry.canon} (${r.m.via})`]);
@@ -669,7 +713,7 @@
     const text = d.text != null ? d.text : d.ans ? d.ans.t : '';
     const r = analyse(text, ix);
     const e = { t: new Date(), kind: d.kind, text, match: ix ? resultText(r) : '—', cat: ix ? ix.cat.text : '' };
-    if (d.kind === 'ok') Object.assign(e, { canon: d.ans.c, tier: d.ans.tier, raw: d.rawGain, eff: d.eff, via: d.ans.k === 'judge' ? 'checker' : d.ans.q ? 'qualified (' + d.ans.q + ')' : r.m && r.m.via });
+    if (d.kind === 'ok') Object.assign(e, { canon: d.ans.c, tier: d.ans.tier, raw: d.rawGain, eff: d.eff, fix: d.ans.x || null, via: d.ans.k === 'judge' ? 'checker' : d.ans.q ? 'qualified (' + d.ans.q + ')' : r.m && r.m.via });
     if (d.kind === 'dup') e.canon = d.ans.c || d.ans.t;
     if (d.kind === 'rejected') e.penalized = d.penalized;
     if (d.kind === 'judged') { e.decision = d.decision; e.verdict = d.verdict; }
@@ -680,7 +724,9 @@
   function logLine(e) {
     const head = `${clockStr(e.t)}  ${JSON.stringify(e.text)}`;
     switch (e.kind) {
-      case 'ok': return `${head} → ACCEPTED via ${e.via || 'seed'} → ${e.canon} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`;
+      case 'ok': return e.fix
+        ? `${clockStr(e.t)}  corrected (${e.fix}): ${e.text} → ${e.canon}${e.via && e.via.startsWith('qualified') ? ' · ' + e.via : ''} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`
+        : `${head} → ACCEPTED via ${e.via || 'seed'} → ${e.canon} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`;
       case 'dup': return `${head} → DUPLICATE of ${e.canon} (no penalty)`;
       case 'variant-limit': return `${head} → VARIANT LIMIT reached (no points, no penalty) · ${e.match}`;
       case 'rejected': return `${head} → REJECTED${e.penalized ? ' · −1 s' : ''} · ${e.match}`;

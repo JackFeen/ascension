@@ -108,19 +108,28 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
     await d.click('#dev-tab-content');
     await d.selectOption('#dev-bot-rank', '2');
     await d.evaluate(() => { const r = document.querySelector('#dev-bot-rate'); r.value = '6'; r.dispatchEvent(new Event('input', { bubbles: true })); });
+    await d.fill('#dev-bot-typo', '3'); await d.dispatchEvent('#dev-bot-typo', 'change');   // every 3rd answer misspelled
     await d.click('[data-act="bot"]');
     try {
       await d.waitForFunction(() => /Lap 2/.test(document.querySelector('#dev-hud').textContent), null, { timeout: 120000 });
       await page.waitForTimeout(400);
       await page.screenshot({ path: path.join(SHOTS, 'dev-lap2.png') });
     } catch (e) { fail('dev climb never reached lap 2: ' + await d.textContent('#dev-hud')); }
+    // autocorrect: the bot's typos were corrected, and the debugger explains a correction
+    await d.click('#dev-tab-debug');
+    if (!/corrected \(/.test(await d.textContent('#dev-dbg-log'))) fail('the typo bot produced no corrected answers');
+    await d.selectOption('#dev-dbg-cat', 'colors');
+    await d.fill('#dev-dbg-in', 'fuschia');
+    const dbg = await d.textContent('#dev-dbg-out');
+    if (!/corrected to Fuchsia \(sound\)/.test(dbg)) fail('debugger did not explain the fuschia correction: ' + dbg.slice(0, 300));
+    await page.screenshot({ path: path.join(SHOTS, 'dev-debugger.png') });
     await d.click('#dev-acts [data-act="end-climb"]');
     await d.waitForSelector('#results:not([hidden])', { timeout: 5000 });
     if (!/Dev climb/.test(await d.textContent('#sheet'))) fail('no dev results summary');
     const realAfter = await d.evaluate(() => localStorage.getItem('daily-ascent:v1'));
     if (realBefore !== realAfter) fail('dev mode changed the real save');
     if (!(await d.evaluate(() => !!localStorage.getItem('daily-ascent:dev:v1')))) fail('dev climb did not use the dev save');
-    console.log('dev mode: unlocked, paused, lapped and left the real save alone');
+    console.log('dev mode: unlocked, paused, lapped with typos corrected, debugger explained a correction, and left the real save alone');
   }
 
   if (errors.length) fail('page errors:\n' + errors.join('\n'));
