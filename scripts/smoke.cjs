@@ -123,13 +123,30 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
     const dbg = await d.textContent('#dev-dbg-out');
     if (!/corrected to Fuchsia \(sound\)/.test(dbg)) fail('debugger did not explain the fuschia correction: ' + dbg.slice(0, 300));
     await page.screenshot({ path: path.join(SHOTS, 'dev-debugger.png') });
+    // answer bank: the Answers tab lists every answer with its rank
+    await d.click('#dev-tab-answers');
+    await d.selectOption('#dev-ans-cat', 'islands');
+    const want = await d.evaluate(() => DA_ENGINE.buildIndex(DA_CATS.find((c) => c.id === 'islands')).entries.length);
+    const cap = await d.textContent('.dev-ans-table caption');
+    if (!cap.includes(`${want.toLocaleString('en-US')} of ${want.toLocaleString('en-US')} answers`)) fail(`Answers tab count is off: "${cap}" (want ${want})`);
+    // search "ice" (only Iceland, a Crawler), then Sherpa only: every visible row must be Sherpa
+    await d.fill('#dev-ans-q', 'ice');
+    if ((await d.$$eval('.dev-ans-table tbody tr', (r) => r.length)) < 1) fail('Answers search for "ice" found nothing');
+    for (const i of [0, 1, 2, 3]) await d.click(`[data-act="ans-rank"][data-v="${i}"]`);
+    const onlySherpa = async () => (await d.$$eval('.dev-ans-table tbody tr', (r) => r.map((x) => x.dataset.tier))).every((t) => t === '4');
+    if (!(await onlySherpa())) fail('Answers rank filter let a non-Sherpa row through ("ice")');
+    // and a search that does have Sherpa answers, so the filter is checked on real rows
+    await d.fill('#dev-ans-q', 'island');
+    const n = await d.$$eval('.dev-ans-table tbody tr', (r) => r.length);
+    if (!n || !(await onlySherpa())) fail(`Answers rank filter: ${n} rows for "island", not all Sherpa`);
+    await page.screenshot({ path: path.join(SHOTS, 'dev-answers.png') });
     await d.click('#dev-acts [data-act="end-climb"]');
     await d.waitForSelector('#results:not([hidden])', { timeout: 5000 });
     if (!/Dev climb/.test(await d.textContent('#sheet'))) fail('no dev results summary');
     const realAfter = await d.evaluate(() => localStorage.getItem('daily-ascent:v1'));
     if (realBefore !== realAfter) fail('dev mode changed the real save');
     if (!(await d.evaluate(() => !!localStorage.getItem('daily-ascent:dev:v1')))) fail('dev climb did not use the dev save');
-    console.log('dev mode: unlocked, paused, lapped with typos corrected, debugger explained a correction, and left the real save alone');
+    console.log('dev mode: unlocked, paused, lapped with typos corrected, debugger explained a correction, answer bank listed and filtered, and left the real save alone');
   }
 
   if (errors.length) fail('page errors:\n' + errors.join('\n'));

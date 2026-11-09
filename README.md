@@ -45,7 +45,7 @@ Add an object to one of the `src/data-*.js` files:
 
 ## Dev mode
 
-A password-locked infinite climb with testing tools: pause and speed controls, laps past the summit, jumping to any leg, altitude or category, an autoplay bot, effect triggers, an answer debugger, a fake answer checker, a fake clock, save-data tools, an FPS meter and screenshots. Open it with `?dev` in the URL or by tapping the "Daily Ascent" wordmark five times. Dev climbs use their own save and never touch your real streak or stats.
+A password-locked infinite climb with testing tools: pause and speed controls, laps past the summit, jumping to any leg, altitude or category, an autoplay bot, a browsable answer bank with every answer's rank and score, effect triggers, an answer debugger, a fake answer checker, a fake clock, save-data tools, an FPS meter and screenshots. Open it with `?dev` in the URL or by tapping the "Daily Ascent" wordmark five times. Dev climbs use their own save and never touch your real streak or stats.
 
 The password lives only in `dev.local.mjs` at the repo root, which is git-ignored and must never be committed. `npm run dev-lock` turns it into `src/dev-lock.js`, which holds just a salt and a hash. Details are in [`CLAUDE.md`](CLAUDE.md) §15.
 
