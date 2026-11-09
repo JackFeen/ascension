@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 const dir = path.dirname(new URL(import.meta.url).pathname);
 const ctx = { console, module: undefined };
@@ -174,6 +175,106 @@ for (let d = 1; d <= 120; d++) {
   if (d <= 3) console.log('day', d, ids.join(', '));
 }
 ok(seen.size === DATA.categories.length, 'all categories dealt: ' + seen.size);
+
+// ---- deal unchanged by the word-list expansion: puzzles 1-365 must match the
+// pre-expansion deal (the deal depends on category ids, kinds and lanes, never on answers)
+{
+  const deal = [];
+  for (let d = 1; d <= 365; d++) deal.push(E.dailyCategories(DATA, d).map((c) => c.id).join(','));
+  const hash = crypto.createHash('sha256').update(JSON.stringify(deal)).digest('hex');
+  ok(hash === '672df2266a0dc0913a8b2d6c0a7db5638be88287015772535eb69f5e1bb46b5e', 'deal for puzzles 1-365 unchanged (sha256 ' + hash.slice(0, 12) + ')');
+}
+
+// ---- must-accept: every category keeps these answers (listed or qualified, never via fuzzy)
+const MUST_ACCEPT = {
+  kitchen: ["spatula", "mandoline", "salad spinner", "mortar and pestle", "dutch oven", "zester", "sous vide", "tagine"],
+  fruits: ["apple", "mangosteen", "rambutan", "cloudberry", "feijoa", "salak", "jabuticaba", "dried mango"],
+  vegetables: ["carrot", "kohlrabi", "romanesco", "salsify", "celeriac", "okra", "fiddlehead", "baby carrots"],
+  body: ["elbow", "philtrum", "clavicle", "uvula", "septum", "achilles tendon", "pinna", "hyoid"],
+  clothing: ["jeans", "cardigan", "kimono", "sarong", "dashiki", "poncho", "cummerbund", "balaclava"],
+  animals: ["dog", "okapi", "axolotl", "pangolin", "aye aye", "quokka", "narwhal", "fossa"],
+  sports: ["soccer", "wheelchair basketball", "sitting volleyball", "goalball", "boccia", "sepak takraw", "kabaddi", "women's soccer"],
+  colors: ["red", "chartreuse", "vermilion", "cerulean", "puce", "gamboge", "dark purple", "neon green"],
+  jobs: ["teacher", "actuary", "farrier", "cooper", "chandler", "sommelier", "phlebotomist", "assistant manager"],
+  beach: ["sand", "sandcastle", "lifeguard", "flip flops", "boogie board", "windbreak", "sea glass", "groyne"],
+  bathroom: ["toilet", "loofah", "bidet", "plunger", "shower caddy", "bath mat", "pumice stone", "toothbrush holder"],
+  office: ["stapler", "hole punch", "lanyard", "whiteboard", "rolodex", "paper shredder", "post it notes", "filing cabinet"],
+  breakfast: ["pancakes", "eggs benedict", "shakshuka", "congee", "kedgeree", "granola", "huevos rancheros", "full english"],
+  toolbox: ["hammer", "spirit level", "allen key", "stud finder", "hacksaw", "awl", "chisel", "tape measure"],
+  africa: ["nigeria", "ivory coast", "eswatini", "swaziland", "cabo verde", "drc", "sao tome and principe"],
+  europe: ["france", "czechia", "holland", "vatican", "north macedonia", "moldova", "liechtenstein"],
+  asia: ["japan", "myanmar", "burma", "east timor", "kyrgyzstan", "uae", "bhutan"],
+  usstates: ["texas", "new york", "rhode island", "mass", "north dakota", "wyoming", "hawaii"],
+  islands: ["hawaii", "madagascar", "svalbard", "tristan da cunha", "lampedusa", "socotra", "skye", "bora bora"],
+  languages: ["english", "swahili", "quechua", "basque", "tagalog", "yoruba", "wolof", "esperanto"],
+  eurocities: ["paris", "bruges", "ljubljana", "tallinn", "porto", "graz", "bratislava", "split"],
+  dogs: ["labrador", "basenji", "xoloitzcuintli", "vizsla", "puli", "saluki", "borzoi", "shiba inu"],
+  birds: ["robin", "hoopoe", "shoebill", "kakapo", "lammergeier", "bee eater", "frigatebird", "oystercatcher"],
+  sea: ["shark", "nudibranch", "sea cucumber", "anglerfish", "manatee", "narwhal", "cuttlefish", "sea pen"],
+  flowers: ["rose", "protea", "hellebore", "edelweiss", "gardenia", "bird of paradise", "cosmos", "foxglove"],
+  insects: ["ant", "mantis", "earwig", "lacewing", "cicada", "stick insect", "silverfish", "weta"],
+  trees: ["oak", "baobab", "sequoia", "rowan", "hornbeam", "jacaranda", "ginkgo", "oak tree"],
+  dinosaurs: ["t rex", "stegosaurus", "spinosaurus", "parasaurolophus", "therizinosaurus", "pachycephalosaurus", "microraptor", "carnotaurus"],
+  instruments: ["piano", "theremin", "sitar", "didgeridoo", "hurdy gurdy", "kora", "erhu", "oud"],
+  cars: ["ford", "toyota", "lamborghini", "koenigsegg", "pagani", "skoda", "lada", "rivian"],
+  games: ["chess", "monopoly", "catan", "go", "mahjong", "pandemic", "carcassonne", "ticket to ride"],
+  cheeses: ["cheddar", "brie", "roquefort", "manchego", "halloumi", "epoisses", "taleggio", "smoked gouda"],
+  spices: ["cinnamon", "sumac", "saffron", "asafoetida", "grains of paradise", "fenugreek", "za'atar", "ground cumin"],
+  desserts: ["cheesecake", "tiramisu", "baklava", "pavlova", "mochi", "cannoli", "eton mess", "chocolate mousse"],
+  heroes: ["batman", "spider-man", "wonder woman", "black panther", "ms marvel", "moon knight", "squirrel girl", "hellboy"],
+  elements: ["oxygen", "gold", "tungsten", "wolfram", "aluminium", "aluminum", "oganesson"],
+  constellations: ["orion", "ursa major", "big dipper", "cassiopeia", "southern cross", "camelopardalis", "norma"],
+  capitals: ["london", "ulaanbaatar", "ouagadougou", "thimphu", "canberra", "sacramento", "edinburgh", "kyoto"],
+  mountains: ["everest", "kilimanjaro", "mt kenya", "denali", "aconcagua", "eiger", "matterhorn", "krakatoa"],
+  painters: ["van gogh", "monet", "artemisia gentileschi", "caravaggio", "frida kahlo", "hokusai", "vermeer", "basquiat"],
+  composers: ["mozart", "beethoven", "hildegard von bingen", "saint saens", "janacek", "satie", "sibelius", "purcell"],
+  greekmyth: ["zeus", "athena", "persephone", "prometheus", "tiresias", "medusa", "atalanta", "chiron"],
+  cracked: ["egg", "safe", "enigma code", "liberty bell", "geode", "knuckles", "cold case", "creme brulee"],
+  wheels: ["car", "wheelchair", "penny farthing", "tuk tuk", "batmobile", "mars rover", "toy car", "electric scooter"],
+  pairs: ["socks", "chopsticks", "salt and pepper", "romeo and juliet", "bonnie and clyde", "castor and pollux", "binary stars", "pocket aces"],
+  keys: ["piano", "typewriter", "map", "florida", "concertina", "monkey", "janitor", "periodic table"],
+  holes: ["swiss cheese", "donut", "colander", "golf course", "great blue hole", "pinhole camera", "honeycomb", "cenote"],
+  scales: ["fish", "snake", "piano", "kettle", "pangolin", "limescale", "beaufort scale", "smaug"],
+  fly: ["bird", "plane", "helicopter", "time", "sputnik", "spitfire", "hang glider", "frisbee"],
+  icecream: ["vanilla", "chocolate", "pistachio", "mocha", "black sesame", "ube", "earl grey", "pumpkin spice"],
+};
+for (const c of CATS) ok(MUST_ACCEPT[c.id] && MUST_ACCEPT[c.id].length >= 5, c.id + ': has a must-accept list');
+for (const [cat, list] of Object.entries(MUST_ACCEPT)) for (const input of list) {
+  const m = E.match(idx[cat], input);
+  ok(m && m.entry && m.via !== 'fuzzy', `${cat}: must accept "${input}"`);
+}
+
+// ---- must-reject: wrong answers, stacked or unknown qualifiers
+const MUST_REJECT = {
+  sports: ["pizza", "womens pizza", "indoor golfing", "mens womens soccer", "womens womens soccer", "youth pro soccer"],
+  colors: ["dog", "dark dog", "light light blue", "pale neon pink"],
+  jobs: ["pizza", "assistant senior manager"],
+  fruits: ["potato", "dried dried apricot"],
+  vegetables: ["banana", "chocolate"],
+  spices: ["sugar", "ground beef"],
+  dinosaurs: ["woolly mammoth", "dodo", "godzilla"],
+  languages: ["klingon numbers", "french fries", "morse"],
+  cars: ["mustang", "civic"],
+  heroes: ["joker", "thanos", "lex luthor"],
+  capitals: ["los angeles", "chicago", "manchester"],
+  africa: ["dubai", "jamaica"],
+  usstates: ["puerto rico", "ontario"],
+  elements: ["unobtainium", "kryptonite", "water"],
+  constellations: ["milky way", "andromeda galaxy"],
+  greekmyth: ["thor", "odin", "anubis"],
+  birds: ["bat", "pterodactyl"],
+  trees: ["rose", "daisy"],
+  insects: ["dolphin", "granite"],
+  desserts: ["chocolate pizza", "mini mini cupcake"],
+  cheeses: ["butter", "smoked aged cheddar"],
+  keys: ["banana", "cheese"],
+  fly: ["penguin", "ostrich", "kiwi bird"],
+  icecream: ["gasoline", "cardboard"],
+};
+for (const [cat, list] of Object.entries(MUST_REJECT)) for (const input of list) {
+  const m = E.match(idx[cat], input);
+  ok(!m || !m.entry, `${cat}: must reject "${input}", got ${m && m.entry ? (m.qualifier ? m.qualifier + ' + ' : '') + m.entry.canon : ''}`);
+}
 
 // ---- calibration Monte Carlo (players are archetypes with tier mixes)
 function simulate(profile, n = 4000) {

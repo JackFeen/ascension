@@ -16,13 +16,13 @@ Moving to your own domain later: add a `CNAME` file in GitHub Pages settings. To
 
 | File | What it is |
 | --- | --- |
-| `src/engine.js` | Config, normalization, matching (exact → alias → fuzzy), scoring, daily deal, judge prompt. No DOM. |
-| `src/data-*.js` | The answer bank: 49 categories plus a practice one, about 12,700 answers, scored across five climber ranks (Crawler, Hiker, Climber, Mountaineer, Sherpa). |
+| `src/engine.js` | Config, normalization, matching (exact → alias → fuzzy → qualified variants), scoring, daily deal, judge prompt. No DOM. |
+| `src/data-*.js` | The answer bank: 49 categories plus a practice one, about 26,400 answers, scored across five climber ranks (Crawler, Hiker, Climber, Mountaineer, Sherpa). |
 | `src/app.js` | Canvas mountain, sound, answer checking, game flow, results, stats. |
 | `src/shell.html` | Markup and styles. |
 | `build.mjs` | `node build.mjs` writes `index.html` (the playable page, committed for GitHub Pages) and `dist/game.html` (Claude artifact body, git-ignored). |
 | `src/dev-*.js`, `src/dev.js` | Dev mode: the published lock (salt + hash), lap math and password check, and the tools UI. |
-| `test.mjs` | `npm test` checks every answer and alias, matching edge cases, scoring, 120 days of deals, and a calibration simulation. |
+| `test.mjs` | `npm test` checks every answer and alias, must-accept and must-reject lists for every category, matching and qualifier edge cases, timers, scoring, 120 days of deals, that the deal for puzzles 1–365 hasn't changed, and a calibration simulation. |
 | `scripts/smoke.cjs` | `npm run smoke` plays a full climb in headless Chromium inside a sandboxed iframe (needs `npm install && npx playwright install chromium`). |
 
 ## Tuning
@@ -41,7 +41,7 @@ Add an object to one of the `src/data-*.js` files:
 }},
 ```
 
-`kind` is `broad` (legs 1–2), `mid` (legs 3, 4, 6; also set `lane` to `geo`, `nature` or `culture`), `wild` (leg 5) or `hard` (leg 7). Each pool is dealt in cycles with no repeats, so adding categories lengthens the time before any category comes back.
+`kind` is `broad` (legs 1–2), `mid` (legs 3, 4, 6; also set `lane` to `geo`, `nature` or `culture`), `wild` (leg 5) or `hard` (leg 7). Each pool is dealt in cycles with no repeats, so adding categories lengthens the time before any category comes back. Adding a category also reshuffles every day's deal, and `npm test` pins that deal, so update its hash in `test.mjs` on purpose (CLAUDE.md §4, gotcha 8). Add a few answers to `MUST_ACCEPT` in `test.mjs` too. An optional `qualifiers` list lets one leading word make a variant ("women's soccer"); see CLAUDE.md §7.
 
 ## Dev mode
 
