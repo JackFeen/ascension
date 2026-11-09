@@ -12,13 +12,13 @@
     summitAlt: 8849,
     // Timers shorten with altitude; later legs score more (spec §3).
     legs: [
-      { secs: 20, mult: 1.0 },
-      { secs: 20, mult: 1.0 },
-      { secs: 15, mult: 1.25 },
-      { secs: 15, mult: 1.25 },
-      { secs: 15, mult: 1.25 },
-      { secs: 10, mult: 1.5 },
-      { secs: 10, mult: 1.5 },
+      { secs: 30, mult: 1.0 },
+      { secs: 30, mult: 1.0 },
+      { secs: 25, mult: 1.25 },
+      { secs: 25, mult: 1.25 },
+      { secs: 25, mult: 1.25 },
+      { secs: 20, mult: 1.5 },
+      { secs: 20, mult: 1.5 },
     ],
     // Daily mix (spec §7.2): two broad openers, three mid (one per lane),
     // one wildcard, one harder knowledge category to finish.

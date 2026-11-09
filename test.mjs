@@ -134,6 +134,12 @@ ok(iau === 88, 'IAU constellations ' + iau);
 ok(idx.usstates.entries.length === 50, 'states ' + idx.usstates.entries.length);
 ok(idx.africa.entries.filter((e) => e.canon !== 'Western Sahara').length === 54, 'africa ' + idx.africa.entries.length);
 
+// ---- leg timers (+10 s each); multipliers, extra time, countdown and penalty unchanged
+ok(JSON.stringify(E.CONFIG.legs.map((l) => l.secs)) === '[30,30,25,25,25,20,20]', 'leg timers are 30/30/25/25/25/20/20');
+ok(JSON.stringify(E.CONFIG.legs.map((l) => l.mult)) === '[1,1,1.25,1.25,1.25,1.5,1.5]', 'leg multipliers unchanged');
+ok(E.CONFIG.extraTimeFactor === 1.5 && E.CONFIG.countdownSecs === 3 && E.CONFIG.transitionMs === 3500 && E.CONFIG.invalidPenaltySecs === 1, 'extra time, countdown, transition and penalty unchanged');
+ok(E.CONFIG.legs.reduce((s, l) => s + l.secs, 0) === 175, 'total answering time is 175 s');
+
 // ---- scoring
 ok(E.answerGain(0, 0, 0) === 55, 'crawler gain leg1');
 ok(E.answerGain(4, 10, 6) === Math.round(500 * 1.25 * 1.5), 'sherpa chained leg7');
