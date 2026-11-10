@@ -471,6 +471,8 @@ select.dev-in[size] { width: 100%; min-height: 110px; padding: 4px; }
 .dev-log { list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .dev-log li { border-bottom: 1px dashed var(--line); padding-bottom: 3px; }
 .dev-ans .t0, .dev-ans-ranks .t0 { --c: var(--t0); } .dev-ans .t1, .dev-ans-ranks .t1 { --c: var(--t1); } .dev-ans .t2, .dev-ans-ranks .t2 { --c: var(--t2); } .dev-ans .t3, .dev-ans-ranks .t3 { --c: var(--t3); } .dev-ans .t4, .dev-ans-ranks .t4 { --c: var(--t4); }
+.dev-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; min-height: 30px; cursor: pointer; }
+.dev-check input { width: 17px; height: 17px; accent-color: var(--accent); }
 .dev-chip { min-height: 30px; padding: 0 9px; gap: 5px; display: inline-flex; align-items: center; }
 .dev-chip[aria-pressed="false"] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line); color: var(--ink-3); text-decoration: line-through; }
 .dev-chip[aria-pressed="true"] { background: color-mix(in srgb, var(--c) 18%, var(--panel)); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--c); }

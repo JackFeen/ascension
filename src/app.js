@@ -2413,6 +2413,38 @@
     announce(`Effect test: ${tierName(tier)}`);
   }
   function devPlaySound(kind) { Sound.force = true; Sound.play(kind); Sound.force = false; }
+  // Effects tab: plays an alpaca ride without changing the score or holding the clock.
+  // o: { style, band ('auto' or a band), golden, late, spit, meters, reduced }
+  const RIDE_BAND_ALT = { grass: 3300, trail: 4500, glacier: 6000, deathzone: 8100 };
+  function devPlayRide(o) {
+    const meters = clamp(Math.round(Number(o.meters) || 0), 0, 1500);
+    const back = Scene.alt;
+    const from = o.band && o.band !== 'auto' ? RIDE_BAND_ALT[o.band] : back;
+    const to = Math.min(C.summitAlt, from + meters);
+    const ix = G.index && G.index[G.legIdx];
+    const pick = ix && ix.entries.find((e) => e.tier === 4);
+    const answer = pick ? pick.canon : 'Test find';
+    if (o.reduced) {
+      if (G.screen === 'play') setFeedback(`Carried up by alpacas · +${fmt(to - from)} m`);
+      announce(rideSentence(from, to, to - from, null));
+      devEmit('ride', { plan: { reduced: true }, ans: { c: answer }, eff: to - from, test: true });
+      return `Reduced-motion preview: "Carried up by alpacas · +${fmt(to - from)} m", no ride.`;
+    }
+    const force = { golden: !!o.golden, late: !!o.late, spit: !!o.spit };
+    if (o.style && o.style !== 'auto') force.style = o.style;
+    if (o.band && o.band !== 'auto') force.band = o.band;
+    const seed = 'dev:' + Date.now();
+    const plan = E.ridePlan({ fromAlt: from, toAlt: to, meters: to - from, night: Scene.night || ui.app.classList.contains('night'), seed, force });
+    Scene.cancelRide();
+    Scene.setClimb(from, { snap: true });
+    const pl = $('#play'); if (G.screen === 'play') pl.classList.add('riding');
+    devEmit('ride', { plan, ans: { c: answer }, eff: to - from, test: true });
+    Scene.ride(plan, { fromAlt: from, toAlt: to, answer, seed, on: (n, p) => { Sound.force = true; rideCue(n, p); Sound.force = false; } }).then(() => {
+      if (!G.rideActive) pl.classList.remove('riding');
+      Scene.setClimb(G.round && G.screen === 'play' ? totalAltitude() : back, { snap: true });
+    });
+    return `Alpaca ride: ${plan.style} · ${plan.band}${plan.golden ? ' · golden' : ''}${plan.late ? ' · late' : ''}${plan.spit ? ' · spit' : ''} · +${fmt(to - from)} m (${(plan.durationMs / 1000).toFixed(1)} s)`;
+  }
   function devPlantFlag() {
     Scene.setClimb(C.summitAlt, { snap: true });
     Scene.burst(4); Scene.confetti();
@@ -2459,7 +2491,7 @@
       setNextCat(id) { if (!G.dev) ensureDev(); G.dev.nextCat = id || null; },
       setAltitude: devSetAltitude, setLap: devSetLap,
       setNight(v) { if (!G.dev) ensureDev(); G.dev.night = v; setNight(); },
-      fireRank: devFireRank, playSound: devPlaySound, plantFlag: devPlantFlag,
+      fireRank: devFireRank, playSound: devPlaySound, plantFlag: devPlantFlag, playRide: devPlayRide,
       confetti() { Scene.confetti(); }, rejectFx() { rejectFx('zzq', ' · −1 s'); },
       submit: devSubmit,
       openStatsWith(store) { withStore(store, openStats); },

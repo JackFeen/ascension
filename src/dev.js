@@ -269,6 +269,7 @@
       case 'sound': H.playSound(d.v); break;
       case 'flag': H.plantFlag(); notice('Flag planted (visual only; your next answer moves the climber back).'); break;
       case 'confetti': H.confetti(); break;
+      case 'ride-fx': notice(H.playRide(Object.assign({}, rideFx))); break;
       case 'shake': H.rejectFx(); break;
       // debugger
       case 'log-copy': copyText(LOG.map(logLine).join('\n'), 'Debugger log copied.'); break;
@@ -310,6 +311,10 @@
     else if (t.id === 'dev-mock-default') { mock.dflt = t.value; }
     else if (t.id === 'dev-mock-comm') { mock.comm = Number(t.value); }
     else if (t.id === 'dev-dbg-cat') { dbgCat = t.value; analyseNow(); }
+    else if (t.id === 'dev-ride-style') rideFx.style = t.value;
+    else if (t.id === 'dev-ride-band') rideFx.band = t.value;
+    else if (t.id === 'dev-ride-m') rideFx.meters = Math.max(0, Math.min(1500, Math.round(Number(t.value) || 0)));
+    else if (/^dev-ride-(golden|late|spit|reduced)$/.test(t.id)) rideFx[t.id.slice(9)] = t.checked;
     else if (t.id === 'dev-ans-cat') { ans.cat = t.value; ans.picked = true; ans.pos = null; ans.shown = ANS_CHUNK; renderAnswersControls(); renderAnswers(true); }
     else if (t.id === 'dev-ans-pos') { ans.pos = t.value === '' ? null : Number(t.value); renderAnswers(false); }
     else if (t.id === 'dev-ans-sort') { ans.sort = t.value; ans.shown = ANS_CHUNK; renderAnswers(false); }
@@ -349,6 +354,7 @@
   // ---------------------------------------------------------------- events from the game
   function onEvent(type, data) {
     switch (type) {
+      case 'ride': logRide(data); break;
       case 'answer': logAnswer(data); if (tab === 'content') renderCheat(); if (tab === 'answers') renderAnswers(false); if (tab === 'checker' && data.kind === 'judged') renderMockLog(); break;
       case 'leg-start': if (tab === 'content') renderCheat(); if (tab === 'answers') { if (!ans.picked) { ans.cat = null; renderTab(); } else renderAnswers(false); } if (tab === 'debug') analyseNow(); if (tab === 'time') renderTab(); break;
       case 'lap': showLap(data); break;
@@ -704,8 +710,12 @@
   }
 
   // ---------------------------------------------------------------- effects
+  // alpaca ride preview settings (Effects tab)
+  const rideFx = { style: 'auto', band: 'auto', golden: false, late: false, spit: false, reduced: false, meters: 625 };
   function tabEffects() {
-    const kinds = ['t0', 't1', 't2', 't3', 't4', 'bad', 'dup', 'tick', 'count', 'go', 'end'];
+    const kinds = ['t0', 't1', 't2', 't3', 't4', 'bad', 'dup', 'tick', 'count', 'go', 'end', 'hooves', 'alpaca', 'golden', 'splat'];
+    const opt = (list, cur) => list.map(([v, l]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${l}</option>`).join('');
+    const chk = (id, label, on) => `<label class="dev-check"><input type="checkbox" id="${id}"${on ? ' checked' : ''}> ${label}</label>`;
     return `<div class="dev-sec">
       <p class="dev-note">Fires the full find feedback for a rank without changing the score. The spotlight and the "+N m" pop appear on the play screen; elsewhere you get the sound, canvas burst and flash. Sound buttons play even when sound is off.</p>
       <h3>Rank finds</h3>
@@ -714,6 +724,15 @@
       <div class="dev-row">${kinds.map((k) => btn('sound', k, { v: k })).join('')}</div>
       <h3>Moments</h3>
       <div class="dev-row">${btn('flag', 'Plant summit flag')}${btn('confetti', 'Prayer-flag confetti')}${btn('shake', 'Wrong-answer shake')}</div>
+      <h3>Alpaca ride</h3>
+      <p class="dev-note">Plays the Sherpa alpaca ride without changing the score or holding the clock. Unticked rare variants are off, so each preview shows exactly what you pick.</p>
+      <div class="dev-row">
+        <label>Style <select class="dev-in" id="dev-ride-style">${opt([['auto', 'Random']].concat(H.C.ride.styles.map((st) => [st.id, st.id])), rideFx.style)}</select></label>
+        <label>Band <select class="dev-in" id="dev-ride-band">${opt([['auto', 'Current altitude'], ['grass', 'Grass'], ['trail', 'Trail'], ['glacier', 'Glacier'], ['deathzone', 'Death Zone']], rideFx.band)}</select></label>
+        <label>Meters <input class="dev-in" type="number" id="dev-ride-m" min="0" max="1500" step="25" value="${rideFx.meters}"></label>
+      </div>
+      <div class="dev-row">${chk('dev-ride-golden', 'Golden alpaca', rideFx.golden)}${chk('dev-ride-late', 'Late alpaca', rideFx.late)}${chk('dev-ride-spit', 'Farewell spit', rideFx.spit)}${chk('dev-ride-reduced', 'Reduced-motion preview', rideFx.reduced)}</div>
+      <div class="dev-row">${btn('ride-fx', 'Play alpaca ride', { cls: 'primary' })}</div>
     </div>`;
   }
 
@@ -844,12 +863,20 @@
     if (LOG.length > 300) LOG.length = 300;
     if (tab === 'debug' && !$('#dev-panel').hidden) renderLog();
   }
+  function logRide(d) {
+    const p = d.plan || {};
+    const what = p.reduced ? 'reduced motion, no ride' : [p.style, p.band, p.golden && 'golden', p.late && 'late', p.spit && 'spit', p.shortHop && 'short hop', p.noMove && 'no move'].filter(Boolean).join(' · ');
+    LOG.unshift({ t: new Date(), kind: 'ride', text: d.ans ? d.ans.c : '', line: `alpaca ride${d.test ? ' (effect test)' : ''}: ${what} · +${fmt(d.eff || 0)} m` });
+    if (LOG.length > 300) LOG.length = 300;
+    if (tab === 'debug' && !$('#dev-panel').hidden) renderLog();
+  }
   function logLine(e) {
     const head = `${clockStr(e.t)}  ${JSON.stringify(e.text)}`;
     switch (e.kind) {
       case 'ok': return e.fix
         ? `${clockStr(e.t)}  corrected (${e.fix}): ${e.text} → ${e.canon}${e.via && e.via.startsWith('qualified') ? ' · ' + e.via : ''} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`
         : `${head} → ACCEPTED via ${e.via || 'seed'} → ${e.canon} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`;
+      case 'ride': return `${clockStr(e.t)}  ${e.line}`;
       case 'dup': return `${head} → DUPLICATE of ${e.canon} (no penalty)`;
       case 'variant-limit': return `${head} → VARIANT LIMIT reached (no points, no penalty) · ${e.match}`;
       case 'rejected': return `${head} → REJECTED${e.penalized ? ' · −1 s' : ''} · ${e.match}`;
