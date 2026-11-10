@@ -1,4 +1,4 @@
-// Inlines engine, data, dev mode and app into the shell.
+// Inlines engine, data, dev mode, the pixel sprite kit and app into the shell.
 //   dist/game.html  — page body for the claude.ai artifact (the host adds the document skeleton)
 //   index.html      — complete standalone page at the repo root (GitHub Pages serves it)
 import fs from 'node:fs';
@@ -7,7 +7,7 @@ const shell = read('./src/shell.html');
 const data = ['./src/data-broad.js', './src/data-mid.js', './src/data-hard-wild.js'].map(read).join('\n');
 // Dev mode: the published lock (salt + hash only), its pure core, then the tools UI.
 const dev = ['./src/dev-lock.js', './src/dev-core.js', './src/dev.js'].map(read).join('\n');
-const parts = { '/*@ENGINE*/': read('./src/engine.js'), '/*@DATA*/': data, '/*@DEV*/': dev, '/*@APP*/': read('./src/app.js') };
+const parts = { '/*@ENGINE*/': read('./src/engine.js'), '/*@DATA*/': data, '/*@DEV*/': dev, '/*@APP*/': read('./src/pixel.js') + '\n' + read('./src/app.js') };
 let out = shell;
 for (const [k, v] of Object.entries(parts)) {
   if (/<\/script/i.test(v)) throw new Error('script terminator inside ' + k);
@@ -22,7 +22,7 @@ const page = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#3b4c8c">
+<meta name="theme-color" content="#2a2450">
 ${head}
 </head>
 <body>${body}
