@@ -271,6 +271,7 @@
       case 'confetti': H.confetti(); break;
       case 'ride-fx': notice(H.playRide(Object.assign({}, rideFx))); break;
       case 'shake': H.rejectFx(); break;
+      case 'outfit-reset': for (const [k] of OUTFIT_SLOTS) outfit[k] = ''; applyOutfit(true); renderTab(); notice('Outfit back to the default climber.'); break;
       // debugger
       case 'log-copy': copyText(LOG.map(logLine).join('\n'), 'Debugger log copied.'); break;
       case 'log-clear': LOG.length = 0; renderLog(); break;
@@ -315,6 +316,7 @@
     else if (t.id === 'dev-ride-band') rideFx.band = t.value;
     else if (t.id === 'dev-ride-m') rideFx.meters = Math.max(0, Math.min(1500, Math.round(Number(t.value) || 0)));
     else if (/^dev-ride-(golden|late|spit|reduced)$/.test(t.id)) rideFx[t.id.slice(9)] = t.checked;
+    else if (/^dev-outfit-(hat|eyes|neck|over|suit)$/.test(t.id)) { outfit[t.id.slice(11)] = t.value; applyOutfit(true); }
     else if (t.id === 'dev-ans-cat') { ans.cat = t.value; ans.picked = true; ans.pos = null; ans.shown = ANS_CHUNK; renderAnswersControls(); renderAnswers(true); }
     else if (t.id === 'dev-ans-pos') { ans.pos = t.value === '' ? null : Number(t.value); renderAnswers(false); }
     else if (t.id === 'dev-ans-sort') { ans.sort = t.value; ans.shown = ANS_CHUNK; renderAnswers(false); }
@@ -344,6 +346,7 @@
     if (H.devActive()) H.finishDev();
     if (H.G.mode === 'dev') H.exitDev();
     H.Scene.setSkyOverride(null);
+    H.setOutfit(null);
     fpsToggle(false);
     hideUI(false);
     try { sessionStorage.removeItem(UNLOCK_KEY); } catch (e) { /* ignore */ }
@@ -712,6 +715,19 @@
   // ---------------------------------------------------------------- effects
   // alpaca ride preview settings (Effects tab)
   const rideFx = { style: 'auto', band: 'auto', golden: false, late: false, spit: false, reduced: false, meters: 625 };
+  // draft climber cosmetics (preview only: never saved, gone on lock or reload). '' = the slot's default.
+  const outfit = { hat: '', eyes: '', neck: '', over: '', suit: '' };
+  const OUTFIT_SLOTS = [['hat', 'Hat', 'Default beanie', 'None (bare head)'], ['eyes', 'Eyes', 'None'], ['neck', 'Neck', 'None'], ['over', 'Over-layer', 'None'], ['suit', 'Suit', 'Default down suit']];
+  function applyOutfit(log) {
+    const o = {}; let any = false;
+    for (const [k] of OUTFIT_SLOTS) { if (outfit[k] === '-') { o[k] = null; any = true; } else if (outfit[k]) { o[k] = outfit[k]; any = true; } }
+    H.setOutfit(any ? o : null);
+    if (log) {
+      const names = OUTFIT_SLOTS.map(([k]) => (outfit[k] === '-' ? 'no hat' : outfit[k] ? H.cosmetics[outfit[k]].name.toLowerCase() : '')).filter(Boolean);
+      LOG.unshift({ t: new Date(), kind: 'note', text: '', line: 'outfit: ' + (names.length ? names.join(' + ') : 'default') });
+      if (LOG.length > 300) LOG.length = 300;
+    }
+  }
   function tabEffects() {
     const kinds = ['t0', 't1', 't2', 't3', 't4', 'bad', 'dup', 'tick', 'count', 'go', 'end', 'hooves', 'alpaca', 'golden', 'splat'];
     const opt = (list, cur) => list.map(([v, l]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${l}</option>`).join('');
@@ -733,6 +749,14 @@
       </div>
       <div class="dev-row">${chk('dev-ride-golden', 'Golden alpaca', rideFx.golden)}${chk('dev-ride-late', 'Late alpaca', rideFx.late)}${chk('dev-ride-spit', 'Farewell spit', rideFx.spit)}${chk('dev-ride-reduced', 'Reduced-motion preview', rideFx.reduced)}</div>
       <div class="dev-row">${btn('ride-fx', 'Play alpaca ride', { cls: 'primary' })}</div>
+      <h3>Climber outfit (draft)</h3>
+      <p class="dev-note">Draft cosmetics, for checking how items layer on the climber. Preview only: never saved and never shown to players. It resets when dev mode locks or the page reloads.</p>
+      <div class="dev-row">${OUTFIT_SLOTS.map(([k, label, dflt, none]) => {
+        const items = Object.entries(H.cosmetics).filter(([, c]) => c.slot === k);
+        const list = [['', dflt]].concat(none ? [['-', none]] : [], items.map(([id, c]) => [id, c.name]));
+        return `<label>${label} <select class="dev-in" id="dev-outfit-${k}">${opt(list, outfit[k])}</select></label>`;
+      }).join('')}</div>
+      <div class="dev-row">${btn('outfit-reset', 'Reset outfit')}</div>
     </div>`;
   }
 
@@ -876,7 +900,7 @@
       case 'ok': return e.fix
         ? `${clockStr(e.t)}  corrected (${e.fix}): ${e.text} → ${e.canon}${e.via && e.via.startsWith('qualified') ? ' · ' + e.via : ''} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`
         : `${head} → ACCEPTED via ${e.via || 'seed'} → ${e.canon} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`;
-      case 'ride': return `${clockStr(e.t)}  ${e.line}`;
+      case 'ride': case 'note': return `${clockStr(e.t)}  ${e.line}`;
       case 'dup': return `${head} → DUPLICATE of ${e.canon} (no penalty)`;
       case 'variant-limit': return `${head} → VARIANT LIMIT reached (no points, no penalty) · ${e.match}`;
       case 'rejected': return `${head} → REJECTED${e.penalized ? ' · −1 s' : ''} · ${e.match}`;

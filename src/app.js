@@ -2526,6 +2526,8 @@
       setNight(v) { if (!G.dev) ensureDev(); G.dev.night = v; setNight(); },
       fireRank: devFireRank, playSound: devPlaySound, plantFlag: devPlantFlag, playRide: devPlayRide,
       confetti() { Scene.confetti(); }, rejectFx() { rejectFx('zzq', ' · −1 s'); },
+      // draft cosmetics preview (Effects tab); the game itself never sets an outfit
+      cosmetics: window.DA_PIXEL.COSMETICS, setOutfit(o) { Scene.setOutfit(o); },
       submit: devSubmit,
       openStatsWith(store) { withStore(store, openStats); },
       recordClimbToday(store) { return withStore(store, () => { updateStreak(E.localDateStr()); store.save(); return Object.assign({}, store.data.streak); }); },
