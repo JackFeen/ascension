@@ -27,6 +27,27 @@
     transitionMs: 3500,
     invalidPenaltySecs: 1,          // open question 3: invalid costs time, not altitude
     maxAcceptedPerLeg: 30,
+    // Alpaca ride (§8.6): after a Sherpa spotlight, a herd carries the climber up
+    // by the meters the answer earned. The clock is held, so it costs no time.
+    ride: {
+      minMs: 2600, maxMs: 3600,     // ride length after the spotlight, scaled by meters…
+      fullAtMeters: 1000,           // …reaching maxMs at this many meters
+      herdMin: 4, herdMax: 6,       // alpacas in the herd
+      goldenChance: 1 / 20,         // one gold alpaca (cosmetic only, no extra points)
+      lateChance: 1 / 10,           // an alpaca sprints in after the herd has gone and slumps
+      spitChance: 1 / 50,           // farewell spit at the camera (skipped with reduced motion)
+      styles: [                     // ride styles and their weights
+        { id: 'conga', w: 0.35 },   // a line of alpacas, climber riding the middle one
+        { id: 'pyramid', w: 0.30 }, // an alpaca pyramid with the climber on top
+        { id: 'crowdsurf', w: 0.30 }, // the herd passes the climber along overhead
+        { id: 'paraglide', w: 0.05 }, // rare: the herd glides up under a paraglider
+      ],
+      shortHopMeters: 100,          // under this: the lead alpaca checks a tiny map and shrugs
+      treelineAlt: 3900,            // the Scene's forest treeline: grass below, rocky trail above
+      glacierFrom: 'basecamp',      // milestone id where the herd starts belly-sledding
+      deathZoneFrom: 'deathzone',   // milestone id where the herd wears oxygen masks
+      speed: 1,                     // playback multiplier (tests and smoke set it high)
+    },
     maxQualifiedPerLeg: 3,          // qualified answers ("womens soccer") per leg; they score at the base tier
     // Autocorrect (§6.3): how close a typed answer must be to a listed one to be corrected to it.
     correct: {
@@ -538,6 +559,60 @@
     return Math.round(Date.UTC(y, m - 1, d) / 86400000);
   }
 
+  // ---------------------------------------------------------------------------
+  // Alpaca ride plan (§8.6). Pure: the Scene draws whatever this returns.
+  //   ridePlan({ fromAlt, toAlt, meters, night, seed, reduced, force })
+  // `seed` is any string (the game uses date|leg|answer id, so a resumed round
+  // replays the same ride). `force` overrides any returned field.
+  // ---------------------------------------------------------------------------
+  function milestoneAlt(id, fallback) {
+    const m = CONFIG.milestones.find((x) => x.id === id);
+    return m ? m.alt : fallback;
+  }
+  function rideBand(alt) {
+    const R = CONFIG.ride;
+    if (alt >= milestoneAlt(R.deathZoneFrom, 8000)) return 'deathzone';
+    if (alt >= milestoneAlt(R.glacierFrom, 5364)) return 'glacier';
+    if (alt >= R.treelineAlt) return 'trail';
+    return 'grass';
+  }
+  function ridePlan(o) {
+    const R = CONFIG.ride;
+    const opts = o || {};
+    if (opts.reduced) return { reduced: true, durationMs: 0 };
+    const fromAlt = Number(opts.fromAlt) || CONFIG.startAlt;
+    const meters = Math.max(0, Math.round(opts.meters != null ? Number(opts.meters) : (Number(opts.toAlt) || fromAlt) - fromAlt));
+    const toAlt = opts.toAlt != null ? Number(opts.toAlt) : fromAlt + meters;
+    const roll = rng(hashStr('alpaca:' + String(opts.seed == null ? '' : opts.seed)));
+    const r1 = roll(), r2 = roll(), r3 = roll(), r4 = roll(), r5 = roll();
+    const total = R.styles.reduce((a, st) => a + st.w, 0);
+    let pick = r4 * total, style = R.styles[R.styles.length - 1].id;
+    for (const st of R.styles) { if (pick < st.w) { style = st.id; break; } pick -= st.w; }
+    const span = R.maxMs - R.minMs;
+    const ms = R.minMs + span * Math.min(1, meters / R.fullAtMeters);
+    const plan = {
+      style,
+      golden: r1 < R.goldenChance,
+      late: r2 < R.lateChance,
+      spit: r3 < R.spitChance,
+      band: rideBand(fromAlt),
+      headlamps: !!opts.night,
+      herd: R.herdMin + Math.floor(r5 * (R.herdMax - R.herdMin + 1)),
+      durationMs: Math.round(ms / (R.speed || 1)),
+      shortHop: meters > 0 && meters < R.shortHopMeters,
+      noMove: meters === 0,
+      crossesSummit: toAlt >= CONFIG.summitAlt && fromAlt < CONFIG.summitAlt,
+      fromAlt, toAlt, meters,
+    };
+    return Object.assign(plan, opts.force || {});
+  }
+  // The share line for alpaca rides: never letters, so never answers.
+  function shareAlpacas(n) {
+    const k = Math.max(0, Math.floor(Number(n) || 0));
+    if (!k) return '';
+    return k <= 5 ? '🦙'.repeat(k) : '🦙×' + k;
+  }
+
   function puzzleNumber(dateStr) {
     return Math.max(1, dayIndex(dateStr) - dayIndex(CONFIG.epoch) + 1);
   }
@@ -666,6 +741,7 @@
   const ENGINE = {
     CONFIG, normalize, pluralVariants, candidateKeys, editDistance, fuzzyAllowance,
     correctionDistance, respell, phoneticKey, correctionCost, corrections,
+    ridePlan, rideBand, shareAlpacas,
     stripAffixes, buildIndex, match, qualifierList, qualifiedCanon, answerKey, hitOutcome, tierFromCommonness, chainBonus, answerGain, legEffective,
     finalAltitude, milestoneFor, nextMilestone, airPercent, setClockOffset, clockOffset,
     nowDate, localDateStr, dayIndex,
