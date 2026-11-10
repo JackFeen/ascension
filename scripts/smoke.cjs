@@ -31,6 +31,11 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
 
   await f.click('#dlg-help [data-close]');
   await page.screenshot({ path: path.join(SHOTS, 'home.png') });
+  await page.screenshot({ path: path.join(SHOTS, 'newlook-home.png') });
+  // The scene is pixel art: drawn on a low-res art canvas (1 art pixel = 2 or 3 CSS px), then scaled up.
+  const art = await f.evaluate(() => { const c = document.querySelector('#scene'); return { w: Number(c.dataset.artW), h: Number(c.dataset.artH), px: Number(c.dataset.artPx), vw: innerWidth }; });
+  if (![2, 3].includes(art.px) || Math.abs(art.w - art.vw / art.px) > 1.5) fail(`art canvas ${art.w}×${art.h} at ${art.px} px doesn't match a ${art.vw} px viewport`);
+  else console.log(`art canvas: ${art.w}×${art.h} art pixels at ${art.px} CSS px each`);
   // Speed the climb up: short legs, fast transitions.
   await f.evaluate(() => { const C = DA_ENGINE.CONFIG; C.legs.forEach((l) => (l.secs = 6)); C.transitionMs = 700; C.countdownSecs = 1; C.ride.speed = 3; });
   const legs = await f.evaluate(() => {
@@ -58,7 +63,7 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
           // the alpaca ride follows the Sherpa spotlight: clock held, card faded, focus and typed text kept
           try { await f.waitForSelector('#play.riding', { timeout: 1500 }); } catch (e) { fail(`leg ${i + 1}: no alpaca ride after the Sherpa spotlight`); continue; }
           const sa = await f.textContent('#secs');
-          if (i === 0) { await page.keyboard.type('ab'); await page.waitForTimeout(250); await page.screenshot({ path: path.join(SHOTS, 'ride-daily.png') }); }
+          if (i === 0) { await page.keyboard.type('ab'); await page.waitForTimeout(250); await page.screenshot({ path: path.join(SHOTS, 'ride-daily.png') }); await page.screenshot({ path: path.join(SHOTS, 'newlook-ride.png') }); }
           await page.waitForTimeout(300);
           const sb = await f.textContent('#secs');
           if (await f.evaluate(() => document.querySelector('#play').classList.contains('riding')) && sa !== sb) fail(`leg ${i + 1}: the clock ran during the ride (${sa} → ${sb})`);
@@ -76,13 +81,19 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
     await page.keyboard.type('zzqxv'); await page.keyboard.press('Enter'); await page.waitForTimeout(170);
     const chips = await f.locator('.chip:not(.rejected)').count();
     if (chips !== legs[i].words.length) fail(`leg ${i + 1}: ${chips} chips for ${legs[i].words.length} valid answers`);
-    if (i === 0) await page.screenshot({ path: path.join(SHOTS, 'leg1.png') });
+    if (i === 0) { await page.screenshot({ path: path.join(SHOTS, 'leg1.png') }); await page.screenshot({ path: path.join(SHOTS, 'newlook-leg1.png') }); }
+    if (i === 5) {
+      // legs 6–7 are the summit push: night panels
+      if (!(await f.evaluate(() => document.querySelector('#app').classList.contains('night')))) fail('leg 6 is not on night panels');
+      await page.screenshot({ path: path.join(SHOTS, 'newlook-leg6.png') });
+    }
     await f.waitForFunction(() => !document.querySelector('#transition').hidden || !document.querySelector('#results').hidden, null, { timeout: 20000 });
     if (i < 6) await f.waitForFunction(() => document.querySelector('#transition').hidden, null, { timeout: 20000 });
   }
   await f.waitForSelector('#results:not([hidden])', { timeout: 20000 });
   await page.waitForTimeout(1500);
   await page.screenshot({ path: path.join(SHOTS, 'results.png') });
+  await page.screenshot({ path: path.join(SHOTS, 'newlook-results.png') });
   const share = await f.textContent('#share-box');
   if (!/^Daily Ascent #\d+/.test(share)) fail('share text missing: ' + share);
   if (!/🦙/.test(share)) fail('share text has no 🦙 for the Sherpa rides');
@@ -197,11 +208,23 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
       const fps = await d.evaluate(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const tick = () => { n++; if (performance.now() - t0 < 1400) requestAnimationFrame(tick); else res(Math.round(n / ((performance.now() - t0) / 1000))); }; requestAnimationFrame(tick); }));
       await page.screenshot({ path: path.join(SHOTS, `alpaca-${band}.png`) });
       console.log(`alpaca ride ${band} (${extras.join('+')}): ${fps} fps`);
+      if (fps < 30) fail(`the ${band} alpaca ride ran at ${fps} fps (needs 30 or more)`);
       await page.keyboard.press('Alt+KeyH');
       await page.waitForTimeout(3200);
     }
+    // Draft cosmetics (dev preview only): the climber in the bobble hat, summit shades and prayer-flag scarf.
+    await d.selectOption('#dev-outfit-hat', 'bobble_hat');
+    await d.selectOption('#dev-outfit-eyes', 'summit_shades');
+    await d.selectOption('#dev-outfit-neck', 'flag_scarf');
+    await page.keyboard.press('Alt+KeyH'); await page.waitForTimeout(500);
+    await page.screenshot({ path: path.join(SHOTS, 'newlook-outfit.png') });
+    await page.keyboard.press('Alt+KeyH');
+    await d.click('[data-act="outfit-reset"]');
+    if (realBefore !== await d.evaluate(() => localStorage.getItem('daily-ascent:v1'))) fail('the outfit preview touched the real save');
+    if (/bobble|shades|scarf/.test(await d.evaluate(() => localStorage.getItem('daily-ascent:dev:v1') || ''))) fail('the outfit preview was saved to the dev save');
     await d.click('#dev-tab-debug');
     if (!/alpaca ride \(effect test\)/.test(await d.textContent('#dev-dbg-log'))) fail('the dev log has no alpaca ride line');
+    if (!/outfit: yak-wool bobble hat \+ summit shades \+ prayer-flag scarf/.test(await d.textContent('#dev-dbg-log'))) fail('the dev log has no outfit line');
     await d.click('#dev-acts [data-act="end-climb"]');
     await d.waitForSelector('#results:not([hidden])', { timeout: 5000 });
     if (!/Dev climb/.test(await d.textContent('#sheet'))) fail('no dev results summary');
