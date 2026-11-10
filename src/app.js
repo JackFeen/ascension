@@ -53,13 +53,17 @@
   // ===========================================================================
   // Tier icons — shape + color + label, never color alone
   // ===========================================================================
+  // 8 x 8 pixel icons (crisp at 16 px): dot, tree, diamond, sparkle, peak with a flag
+  const pxIcon = (d) => `<svg viewBox="0 0 8 8" aria-hidden="true" fill="currentColor" shape-rendering="crispEdges"><path d="${d}"/></svg>`;
   const ICON = [
-    '<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="3.3" fill="currentColor"/></svg>',
-    '<svg viewBox="0 0 14 14" aria-hidden="true" fill="currentColor"><path d="M7 .6 11.8 7H9.3l3.1 4.6H8v1.9H6v-1.9H1.6l3.1-4.6H2.2Z"/></svg>',
-    '<svg viewBox="0 0 14 14" aria-hidden="true" fill="currentColor"><path d="M7 .5 13.5 7 7 13.5.5 7Z"/></svg>',
-    '<svg viewBox="0 0 14 14" aria-hidden="true" fill="currentColor"><path d="M7 .2c.6 4.3 2.2 5.9 6.8 6.8C9.2 7.9 7.6 9.5 7 13.8 6.4 9.5 4.8 7.9.2 7 4.8 6.1 6.4 4.5 7 .2Z"/></svg>',
-    '<svg viewBox="0 0 14 14" aria-hidden="true" fill="currentColor"><path d="M.4 13.6 5.4 4.4l2.4 4 1.5-2.2 4.3 7.4Z"/><path d="M5 4.6V.4h.9v.5l3.4 1.1-3.4 1.2v1.4Z"/></svg>',
+    pxIcon('M3 2h2v1h1v2h-1v1h-2v-1h-1v-2h1z'),
+    pxIcon('M3 0h2v2h1v2h1v2h-2v2h-2v-2h-2v-2h1v-2h1z'),
+    pxIcon('M3 0h2v1h1v1h1v1h1v2h-1v1h-1v1h-1v1h-2v-1h-1v-1h-1v-1h-1v-2h1v-1h1v-1h1z'),
+    pxIcon('M3 0h2v3h3v2h-3v3h-2v-3h-3v-2h3z'),
+    pxIcon('M4 0h3v2h-2v1h-1zM3 3h2v1h1v1h1v1h1v2h-8v-2h1v-1h1v-1h1z'),
   ];
+  // a tiny pixel alpaca for the results' "Alpaca rides" row
+  const ALPACA_ICON = '<svg viewBox="0 0 10 10" aria-hidden="true" fill="currentColor" shape-rendering="crispEdges"><path d="M7 0h1v1h1v3h-1v3h-1v-1h-5v-1h-1v-1h1v-1h5v-2h-1v-1h1zM2 7h1v3h-1zM6 7h1v3h-1z"/></svg>';
   const tierName = (t) => C.tiers[t].name;
 
   // ===========================================================================
@@ -1509,7 +1513,7 @@
       return;
     }
     li.className = `chip t${a.tier}` + (a.x ? ' fixed' : '');
-    li.innerHTML = `${ICON[a.tier]}<span class="txt"></span><span class="gain">+${fmt(a.g)}</span><span class="sr-only">${tierName(a.tier)}</span>`;
+    li.innerHTML = `${ICON[a.tier]}<span class="txt"></span><span class="rk">${tierName(a.tier)}</span><span class="gain">+${fmt(a.g)}</span>`;
     const txt = li.querySelector('.txt');
     if (a.x) {
       // Autocorrected: the answer as listed, with what was typed underneath.
@@ -1982,7 +1986,7 @@
       </header>
       ${r.forfeited ? '<p class="forfeit">You left mid-climb, so this round was scored on the answers you’d entered.</p>' : ''}
       ${r.extra ? '<p class="res-note">Extra time was on for this climb.</p>' : ''}
-      ${alpacaRides(r).n ? `<p class="res-note res-rides"><span aria-hidden="true">🦙</span> Alpaca rides: <b>${alpacaRides(r).n}</b></p>` : ''}
+      ${alpacaRides(r).n ? `<p class="res-note res-rides">${ALPACA_ICON}<span>Alpaca rides: <b>${alpacaRides(r).n}</b></span></p>` : ''}
       <section aria-label="The climb"><h3>The climb</h3><ol class="legrows">${legRows}</ol></section>
       <section aria-label="Best finds"><h3>Best finds</h3>${best.length ? `<ul class="finds">${best.map((a) => `<li class="find"><span class="chip t${a.tier}">${ICON[a.tier]}<span class="txt">${esc(a.c)}</span></span><span class="where">${tierName(a.tier)} · ${esc(a.cat)}</span></li>`).join('')}</ul>` : '<p class="res-note">No answers found this time.</p>'}</section>
       ${gems.length ? `<section aria-label="Missed gems"><h3>Missed gems</h3><ul class="finds">${gems.map((g) => `<li class="find"><span class="chip t${g.e.tier}">${ICON[g.e.tier]}<span class="txt">${esc(g.e.canon)}</span></span><span class="where">${tierName(g.e.tier)} · ${esc(g.cat)}</span></li>`).join('')}</ul></section>` : ''}
