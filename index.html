@@ -296,6 +296,11 @@ button { font: inherit; color: inherit; }
 /* between legs: the leg card steps aside and the camp report takes the screen */
 .play:has(#transition:not([hidden])) .play-inner { opacity: 0; transform: translateY(-12px); }
 .play:has(#transition:not([hidden])) .next-mark { opacity: 0; }
+/* alpaca ride: the leg card steps aside so the herd stays visible above the keyboard (the input stays focused) */
+.play-card, .play .chips { transition: opacity .3s ease, transform .3s var(--ease-out); }
+.play.riding .play-card, .play.riding .chips { opacity: 0; transform: translateY(10px); pointer-events: none; }
+.play.riding .next-mark { opacity: 0; }
+.altimeter .alt .slot { display: inline-block; filter: blur(0.35px); color: var(--t4); }
 .trans-card { pointer-events: auto; width: min(100%, 400px); padding: 22px 22px 18px; display: flex; flex-direction: column; gap: 4px; text-align: left; animation: card-in .45s var(--ease-out) both; }
 .trans-card > .eyebrow:first-child { font-weight: 700; color: var(--accent-text); }
 .trans-gain { font: 900 88px/0.88 var(--f-display); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; margin: 4px 0 2px; animation: gain-in .6s var(--ease-spring) .1s both; }
@@ -3324,6 +3329,17 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
         case 'count': this.tone(660, t, 0.12, { vol: 0.09 }); break;
         case 'go': this.tone(587, t, 0.14, { vol: 0.09 }); this.tone(880, t + 0.11, 0.3, { vol: 0.11 }); break;
         case 'end': this.bell(330, t, 1.6, 0.1); break;
+        // alpaca ride
+        case 'hooves': // clip-clop gallop
+          for (let i = 0; i < 12; i++) { const tt = t + i * 0.13 + (i % 2 ? 0.05 : 0); this.tone(i % 2 ? 180 : 230, tt, 0.05, { vol: 0.08, type: 'triangle', attack: 0.002 }); this.hiss(tt, 0.03, 0.05, 2600); }
+          break;
+        case 'alpaca': // a hum, then a "mwaa"
+          this.tone(330, t, 0.45, { vol: 0.06, type: 'triangle', attack: 0.05, glide: 290 });
+          this.tone(520, t + 0.45, 0.35, { vol: 0.05, type: 'sawtooth', attack: 0.03, glide: 400 }); break;
+        case 'golden': // bright fanfare for the golden alpaca
+          [784, 988, 1175, 1568, 1976].forEach((f, i) => this.bell(f, t + i * 0.07, 1.4, 0.07));
+          [523, 659, 784].forEach((f) => this.tone(f, t + 0.35, 1.2, { vol: 0.06, type: 'triangle', attack: 0.04 })); break;
+        case 'splat': this.hiss(t, 0.25, 0.12, 1200); this.tone(120, t, 0.16, { vol: 0.12, glide: 60 }); break;
         default: break;
       }
     },
@@ -4378,6 +4394,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
   const G = {
     screen: 'home', state: 'idle', mode: 'daily', today: '', puzzle: 1, cats: [], index: [], round: null,
     legIdx: 0, aid: 0, lastSubmit: 0, peek: false, lastSec: -1, pauseUntil: 0,
+    rideQ: [], rideActive: null, slotT: 0, slotTxt: '',   // alpaca rides (queued, playing) and the slot-machine altimeter
     dev: null,   // dev climb tool state (mode 'dev' only), see the dev mode section
   };
   const ui = {
@@ -4565,6 +4582,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     save();
     G.state = 'leg';
     G.lastSec = -1;
+    cancelRides();
     clearSpotlight();
     setLegHeader(i, secs, conf.mult);
     ui.chips.innerHTML = '';
@@ -4597,7 +4615,13 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
   Scene.onFrame((alt) => {
     devTick();
     if (G.screen === 'play') {
-      ui.alt.innerHTML = fmt(alt) + '<small>m</small>';
+      const rs = Scene.rideState();
+      if (rs && rs.phase === 'gallop' && !isReduced()) {
+        // slot machine: the digits spin while the herd gallops, then land on the drop-off
+        const t = performance.now();
+        if (t - G.slotT > 55) { G.slotT = t; G.slotTxt = fmt(Math.round(rs.to)).replace(/\d/g, () => String(Math.floor(Math.random() * 10))); }
+        ui.alt.innerHTML = `<span class="slot">${G.slotTxt}</span><small>m</small>`;
+      } else ui.alt.innerHTML = fmt(alt) + '<small>m</small>';
       ui.air.textContent = 'Air ' + E.airPercent(alt) + '%';
       const nx = E.nextMilestone(alt + 0.5);
       ui.next.innerHTML = nx ? `Next: <b>${esc(nx.short)}</b> in ${fmt(nx.alt - alt)} m` : '<b>On the summit</b>';
@@ -4705,6 +4729,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
   }
 
   function accept(leg, legIdx, a, existing) {
+    const altBefore = totalAltitude();
     const before = E.legEffective(leg.raw);
     const rawGain = E.answerGain(a.tier, leg.chain, legPos(legIdx));
     leg.chain += 1;
@@ -4721,18 +4746,85 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
       else if (G.state === 'leg') setFeedback('');
     }
     const lapUp = G.mode === 'dev' && devLap().lap > devLap(devTotal() - eff).lap;
-    if (lapUp) devLapUp(); else Scene.setClimb(totalAltitude());
+    const live = legIdx === G.legIdx && G.screen === 'play';
+    // Sherpa: the alpacas carry the climber after the spotlight, so the climb waits for them
+    const sherpaRide = ans.tier === 4 && live && G.state === 'leg';
+    if (sherpaRide && !isReduced()) queueRide({ ans, eff, legIdx, lapUp, from: altBefore, to: lapUp ? C.summitAlt : totalAltitude() });
+    else if (lapUp) devLapUp(); else Scene.setClimb(totalAltitude());
     Sound.play('t' + ans.tier);
     Scene.burst(ans.tier);
-    const live = legIdx === G.legIdx && G.screen === 'play';
     if (ans.tier === 2) buzz(15);
     if (ans.tier === 3) { flash('m'); buzz([15, 40, 25]); }
     if (ans.tier === 4) { Scene.confetti(); flash('s'); buzz([20, 50, 20, 50, 40]); }
     if (live && C.tiers[ans.tier].pause && G.state === 'leg') spotlight(ans, eff);
     else if (live) gainPop(ans, eff);
+    if (sherpaRide && !isReduced() && $('#spot').hidden) runNextRide();
     announce(ans.x ? `Corrected to ${ans.c}. ${tierName(ans.tier)}, plus ${eff} meters` : `${ans.c}, ${tierName(ans.tier)}, plus ${eff} meters`);
+    if (sherpaRide && isReduced()) {   // reduced motion: no ride, just the words
+      setFeedback(`Carried up by alpacas · +${fmt(eff)} m`);
+      announce(rideSentence(altBefore, lapUp ? C.summitAlt : totalAltitude(), eff, null));
+    }
     setNight();
     devEmit('answer', { kind: 'ok', ans, rawGain, eff, legIdx });
+  }
+
+  // ---------------------------------------------------------------- alpaca ride
+  // After a Sherpa spotlight the herd carries the climber up by the meters earned
+  // (Scene.ride draws it, E.ridePlan decides it). The clock is held for the ride
+  // with holdClock(), Enter waits (G.pauseUntil), the leg card fades (.riding) and
+  // rides queue: a judge result can land mid-ride.
+  function rideSentence(from, to, eff, plan) {
+    if (plan && plan.noMove) return 'Alpaca express! The herd shrugs: this leg is already at its limit.';
+    const m0 = E.milestoneFor(from), m1 = E.milestoneFor(to);
+    const to1 = m1 && m0 && m1.id !== m0.id ? `, to ${m1.short}` : '';
+    return `Alpaca express! Carried up ${fmt(eff)} meters${to1}.${plan && plan.golden ? ' Golden alpaca!' : ''}`;
+  }
+  // the spotlight's timer starts the ride (runNextRide); accept() starts it at once if no spotlight is up
+  function queueRide(job) { G.rideQ.push(job); }
+  function runNextRide() {
+    if (G.rideActive || !G.rideQ.length) return;
+    const job = G.rideQ.shift();
+    if (G.state !== 'leg' || job.legIdx !== G.legIdx || G.screen !== 'play' || !G.round) { landRide(job, false); runNextRide(); return; }
+    const seed = `${G.round.date || G.mode}|${job.legIdx}|${job.ans.id}`;
+    const plan = E.ridePlan({ fromAlt: job.from, toAlt: job.to, meters: job.eff, night: Scene.night || ui.app.classList.contains('night'), seed, force: job.force });
+    job.plan = plan;
+    job.until = holdClock(plan.durationMs + 120);
+    G.rideActive = job;
+    $('#play').classList.add('riding');
+    announce(rideSentence(job.from, job.to, job.eff, plan));
+    devEmit('ride', { plan, ans: job.ans, eff: job.eff });
+    Scene.ride(plan, { fromAlt: job.from, toAlt: job.to, answer: job.ans.c, seed, on: rideCue }).then((done) => {
+      if (G.rideActive === job) G.rideActive = null;
+      $('#play').classList.remove('riding');
+      if ($('#spot').hidden && G.pauseUntil <= now() + 150) G.pauseUntil = 0;
+      landRide(job, done);
+      runNextRide();
+    });
+  }
+  // the climber ends exactly where the answer put it, ride or no ride
+  function landRide(job, done) {
+    if (!G.round) return;
+    if (job.lapUp && G.mode === 'dev') { if (done) devLapUp(); else Scene.setClimb(totalAltitude(), { snap: true }); }
+    else Scene.setClimb(totalAltitude(), done ? { snap: true } : undefined);
+    setNight();
+  }
+  function rideCue(name, plan) {
+    switch (name) {
+      case 'enter': Sound.play('alpaca'); break;
+      case 'scoop': if (plan.golden) Sound.play('golden'); break;
+      case 'gallop': Sound.play('hooves'); buzz([30, 60, 30, 60, 30, 60, 30, 60, 30]); break;
+      case 'shrug': Sound.play('alpaca'); break;
+      case 'late': Sound.play('alpaca'); break;
+      case 'spit': Sound.play('splat'); buzz(40); break;
+      default: break;
+    }
+  }
+  function cancelRides() {
+    G.rideQ.length = 0;
+    const a = G.rideActive;
+    G.rideActive = null;
+    const pl = $('#play'); if (pl) pl.classList.remove('riding');
+    if (a) Scene.cancelRide();
   }
 
   function flash(kind) {
@@ -4792,11 +4884,11 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     };
     requestAnimationFrame(tick);
     clearTimeout(G.spotT);
-    G.spotT = setTimeout(clearSpotlight, until - t);
+    G.spotT = setTimeout(() => { clearSpotlight(); runNextRide(); }, until - t);
   }
   function clearSpotlight() {
     clearTimeout(G.spotT);
-    G.pauseUntil = 0;
+    G.pauseUntil = G.rideActive && G.rideActive.until > now() ? G.rideActive.until : 0;   // a ride keeps holding the clock
     const box = $('#spot');
     if (box) { box.hidden = true; box.classList.remove('on'); }
     const pi = $('.play-inner'); if (pi) pi.classList.remove('quake');
@@ -4889,6 +4981,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
   async function endLeg() {
     if (G.state !== 'leg') return;
     G.state = 'settle';
+    cancelRides();
     clearSpotlight();
     const leg = curLeg();
     ui.fill.style.transform = 'scaleX(0)';
@@ -5315,6 +5408,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     if (G.mode !== 'dev' || !G.round) return;
     const r = G.round, d = ensureDev();
     clearTimeout(d.lapT1); clearTimeout(d.lapT2);
+    cancelRides();
     clearSpotlight();
     $('#transition').hidden = true;
     $('#countdown').hidden = true;
@@ -5408,6 +5502,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
   function devSimulateReload(kind) {
     if (!devActive()) return 'Start a dev climb first.';
     save();
+    cancelRides();
     clearSpotlight();
     clearTimeout(G.dev.lapT1); clearTimeout(G.dev.lapT2);
     $('#transition').hidden = true;

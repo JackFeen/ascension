@@ -290,6 +290,11 @@ button { font: inherit; color: inherit; }
 /* between legs: the leg card steps aside and the camp report takes the screen */
 .play:has(#transition:not([hidden])) .play-inner { opacity: 0; transform: translateY(-12px); }
 .play:has(#transition:not([hidden])) .next-mark { opacity: 0; }
+/* alpaca ride: the leg card steps aside so the herd stays visible above the keyboard (the input stays focused) */
+.play-card, .play .chips { transition: opacity .3s ease, transform .3s var(--ease-out); }
+.play.riding .play-card, .play.riding .chips { opacity: 0; transform: translateY(10px); pointer-events: none; }
+.play.riding .next-mark { opacity: 0; }
+.altimeter .alt .slot { display: inline-block; filter: blur(0.35px); color: var(--t4); }
 .trans-card { pointer-events: auto; width: min(100%, 400px); padding: 22px 22px 18px; display: flex; flex-direction: column; gap: 4px; text-align: left; animation: card-in .45s var(--ease-out) both; }
 .trans-card > .eyebrow:first-child { font-weight: 700; color: var(--accent-text); }
 .trans-gain { font: 900 88px/0.88 var(--f-display); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; margin: 4px 0 2px; animation: gain-in .6s var(--ease-spring) .1s both; }
