@@ -1891,7 +1891,19 @@
     const m = E.milestoneFor(r.final);
     const row = Array.from({ length: 7 }, (_, i) => { const t = legRarest(r.legs[i]); return t >= 0 ? C.tiers[t].emoji : C.noFindEmoji; }).join('');
     const url = shareUrl();
-    return `Daily Ascent #${r.puzzle} ⛰️\n${m.emoji} ${m.short} · ${fmt(r.final)} m\n${row}${url ? '\n' + url : ''}`;
+    const llamas = E.shareAlpacas(alpacaRides(r).n);   // one 🦙 per Sherpa ride: no letters, so never answers
+    return `Daily Ascent #${r.puzzle} ⛰️\n${m.emoji} ${m.short} · ${fmt(r.final)} m\n${row}${llamas ? '\n' + llamas : ''}${url ? '\n' + url : ''}`;
+  }
+  // Alpaca rides in a round: its ok Sherpa answers (judge-accepted ones too).
+  // The longest is the one that climbed the most effective meters.
+  function alpacaRides(r) {
+    let n = 0, longest = null;
+    (r && r.legs || []).forEach((l, i) => l && l.answers.forEach((a) => {
+      if (a.s !== 'ok' || a.tier !== 4) return;
+      n++;
+      if (!longest || (a.g || 0) > longest.g) longest = { g: a.g || 0, c: a.c, date: r.date, cat: (DATA.categories.find((c) => c.id === r.catIds[i]) || {}).text || '' };
+    }));
+    return { n, longest };
   }
   function shareUrl() {
     if (window.DA_SHARE_URL) return window.DA_SHARE_URL;
@@ -1941,6 +1953,7 @@
       </header>
       ${r.forfeited ? '<p class="forfeit">You left mid-climb, so this round was scored on the answers you’d entered.</p>' : ''}
       ${r.extra ? '<p class="res-note">Extra time was on for this climb.</p>' : ''}
+      ${alpacaRides(r).n ? `<p class="res-note res-rides"><span aria-hidden="true">🦙</span> Alpaca rides: <b>${alpacaRides(r).n}</b></p>` : ''}
       <section aria-label="The climb"><h3>The climb</h3><ol class="legrows">${legRows}</ol></section>
       <section aria-label="Best finds"><h3>Best finds</h3>${best.length ? `<ul class="finds">${best.map((a) => `<li class="find"><span class="chip t${a.tier}">${ICON[a.tier]}<span class="txt">${esc(a.c)}</span></span><span class="where">${tierName(a.tier)} · ${esc(a.cat)}</span></li>`).join('')}</ul>` : '<p class="res-note">No answers found this time.</p>'}</section>
       ${gems.length ? `<section aria-label="Missed gems"><h3>Missed gems</h3><ul class="finds">${gems.map((g) => `<li class="find"><span class="chip t${g.e.tier}">${ICON[g.e.tier]}<span class="txt">${esc(g.e.canon)}</span></span><span class="where">${tierName(g.e.tier)} · ${esc(g.cat)}</span></li>`).join('')}</ul></section>` : ''}
@@ -2023,6 +2036,8 @@
       if (!rarest || a.tier > rarest.tier || (a.tier === rarest.tier && r.date > rarest.date)) rarest = { tier: a.tier, c: a.c, date: r.date, cat: (DATA.categories.find((c) => c.id === r.catIds[i]) || {}).text || '' };
     })));
     const maxD = Math.max(1, ...dist);
+    let rides = 0, longestRide = null;
+    rs.forEach((r) => { const ar = alpacaRides(r); rides += ar.n; if (ar.longest && (!longestRide || ar.longest.g > longestRide.g)) longestRide = ar.longest; });
     const s = Store.data.streak;
     $('#stats-body').innerHTML = `
       <div class="stat-grid">
@@ -2032,7 +2047,10 @@
         <div class="fact"><dt>Summits</dt><dd>${summits}</dd></div>
         <div class="fact"><dt>Streak</dt><dd>${liveStreak()}</dd></div>
         <div class="fact"><dt>Rest days</dt><dd>${s.tokens}</dd></div>
+        <div class="fact"><dt>Alpaca rides</dt><dd>${rides}</dd></div>
+        <div class="fact"><dt>Longest ride</dt><dd>${longestRide ? fmt(longestRide.g) + '<small> m</small>' : '—'}</dd></div>
       </div>
+      ${longestRide ? `<p class="res-note"><span aria-hidden="true">🦙</span> Longest alpaca ride: +${fmt(longestRide.g)} m for <b>${esc(longestRide.c)}</b> (${esc(longestRide.cat)}).</p>` : ''}
       <p>Longest streak: ${s.best} day${s.best === 1 ? '' : 's'}. You earn one rest day for every 14 days in a row; it covers a single missed day.</p>
       ${rarest ? `<div class="find"><span class="chip t${rarest.tier}">${ICON[rarest.tier]}<span class="txt">${esc(rarest.c)}</span></span><span class="where">Rarest find · ${esc(rarest.cat)}</span></div>` : ''}
       <div class="dist" aria-label="Finds by rarity">${C.tiers.map((t, i) => `<div class="dist-row t${i}"><span class="badge">${ICON[i]}${t.name}</span><span class="bar"><i style="width:${((dist[i] / maxD) * 100).toFixed(1)}%"></i></span><span class="v">${dist[i]}</span></div>`).join('')}</div>`;
