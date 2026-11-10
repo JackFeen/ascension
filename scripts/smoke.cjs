@@ -32,7 +32,7 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
   await f.click('#dlg-help [data-close]');
   await page.screenshot({ path: path.join(SHOTS, 'home.png') });
   // Speed the climb up: short legs, fast transitions.
-  await f.evaluate(() => { const C = DA_ENGINE.CONFIG; C.legs.forEach((l) => (l.secs = 6)); C.transitionMs = 700; C.countdownSecs = 1; });
+  await f.evaluate(() => { const C = DA_ENGINE.CONFIG; C.legs.forEach((l) => (l.secs = 6)); C.transitionMs = 700; C.countdownSecs = 1; C.ride.speed = 3; });
   const legs = await f.evaluate(() => {
     const E = DA_ENGINE;
     const cats = E.dailyCategories({ categories: DA_CATS.filter((c) => c.kind !== 'practice') }, E.puzzleNumber(E.localDateStr()));
@@ -54,6 +54,22 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
         if (rank !== (t === 3 ? 'Mountaineer' : 'Sherpa')) fail(`leg ${i + 1}: spotlight rank "${rank}"`);
         if (i === 0) await page.screenshot({ path: path.join(SHOTS, `spot-t${t}.png`) });
         await f.waitForSelector('#spot', { state: 'hidden', timeout: 4000 });
+        if (t === 4) {
+          // the alpaca ride follows the Sherpa spotlight: clock held, card faded, focus and typed text kept
+          try { await f.waitForSelector('#play.riding', { timeout: 1500 }); } catch (e) { fail(`leg ${i + 1}: no alpaca ride after the Sherpa spotlight`); continue; }
+          const sa = await f.textContent('#secs');
+          if (i === 0) { await page.keyboard.type('ab'); await page.waitForTimeout(250); await page.screenshot({ path: path.join(SHOTS, 'ride-daily.png') }); }
+          await page.waitForTimeout(300);
+          const sb = await f.textContent('#secs');
+          if (await f.evaluate(() => document.querySelector('#play').classList.contains('riding')) && sa !== sb) fail(`leg ${i + 1}: the clock ran during the ride (${sa} → ${sb})`);
+          await f.waitForFunction(() => !document.querySelector('#play').classList.contains('riding'), null, { timeout: 5000 });
+          if (await f.evaluate(() => document.activeElement && document.activeElement.id) !== 'answer') fail(`leg ${i + 1}: the answer box lost focus after the ride`);
+          if (i === 0) {
+            const kept = await f.inputValue('#answer');
+            if (kept !== 'ab') fail(`text typed during the ride was not kept ("${kept}")`);
+            await f.fill('#answer', '');
+          }
+        }
       }
       await page.waitForTimeout(170);
     }
@@ -69,11 +85,37 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
   await page.screenshot({ path: path.join(SHOTS, 'results.png') });
   const share = await f.textContent('#share-box');
   if (!/^Daily Ascent #\d+/.test(share)) fail('share text missing: ' + share);
+  if (!/🦙/.test(share)) fail('share text has no 🦙 for the Sherpa rides');
+  const leaked = legs.flatMap((l) => l.words.map((x) => x.w)).filter((w) => share.toLowerCase().includes(w.toLowerCase()));
+  if (leaked.length) fail('share text contains answers: ' + leaked.join(', '));
+  if (!/Alpaca rides/.test(await f.textContent('#sheet'))) fail('results do not show alpaca rides');
   console.log(share);
 
   await page.reload(); await page.waitForTimeout(1200);
   const label = await page.frames()[1].textContent('#btn-begin');
   if (label !== 'View Results') fail('after reload the button says "' + label + '"');
+
+  // ---- reduced motion: a Sherpa answer gets the words, not the ride
+  {
+    const setReduced = async (v) => {
+      await page.frames()[1].evaluate((on) => { const k = 'daily-ascent:v1'; const d = JSON.parse(localStorage.getItem(k)); d.settings.reduced = on; localStorage.setItem(k, JSON.stringify(d)); }, v);
+      await page.reload(); await page.waitForTimeout(1000);
+    };
+    await setReduced(true);
+    const r = page.frames()[1];
+    const sherpa = await r.evaluate(() => DA_ENGINE.buildIndex(DA_CATS.find((c) => c.kind === 'practice')).entries.find((e) => e.tier === 4).canon);
+    await r.evaluate(() => { DA_ENGINE.CONFIG.countdownSecs = 1; });
+    await r.click('#btn-practice');
+    await r.waitForFunction(() => document.querySelector('#category').textContent && !/Get ready/.test(document.querySelector('#category').textContent), null, { timeout: 6000 });
+    await page.waitForTimeout(1300);
+    await r.click('#answer'); await page.keyboard.type(sherpa); await page.keyboard.press('Enter');
+    let rode = false;
+    for (let k = 0; k < 12; k++) { await page.waitForTimeout(200); if (await r.evaluate(() => document.querySelector('#play').classList.contains('riding'))) rode = true; }
+    if (rode) fail('reduced motion: the alpaca ride played');
+    const fb = await r.textContent('#feedback');
+    if (!/Carried up by alpacas/.test(fb)) fail('reduced motion: no "Carried up by alpacas" line (' + fb + ')');
+    await setReduced(false);
+  }
 
   // ---- dev mode: unlock with ?dev, play a full lap with the autoplay bot, and
   // confirm the real save (daily-ascent:v1) is untouched. Needs the private
@@ -140,6 +182,26 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
     const n = await d.$$eval('.dev-ans-table tbody tr', (r) => r.length);
     if (!n || !(await onlySherpa())) fail(`Answers rank filter: ${n} rows for "island", not all Sherpa`);
     await page.screenshot({ path: path.join(SHOTS, 'dev-answers.png') });
+    // alpaca ride effect trigger: once per band, with the rare variants spread across the runs.
+    // The bot stops first, and Alt+H hides the UI so the screenshot shows the herd.
+    await d.click('#dev-tab-content');
+    if (await d.evaluate(() => /Stop/i.test((document.querySelector('[data-act="bot"]') || {}).textContent || ''))) await d.click('[data-act="bot"]');
+    await d.click('#dev-tab-effects');
+    const runs = [['grass', ['golden']], ['trail', ['late']], ['glacier', ['spit']], ['deathzone', ['golden', 'late']]];
+    for (const [band, extras] of runs) {
+      await d.selectOption('#dev-ride-band', band);
+      for (const v of ['golden', 'late', 'spit']) await d.setChecked('#dev-ride-' + v, extras.includes(v));
+      for (const v of ['golden', 'late', 'spit']) await d.dispatchEvent('#dev-ride-' + v, 'change');
+      await d.click('[data-act="ride-fx"]');
+      await page.keyboard.press('Alt+KeyH');
+      const fps = await d.evaluate(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const tick = () => { n++; if (performance.now() - t0 < 1400) requestAnimationFrame(tick); else res(Math.round(n / ((performance.now() - t0) / 1000))); }; requestAnimationFrame(tick); }));
+      await page.screenshot({ path: path.join(SHOTS, `alpaca-${band}.png`) });
+      console.log(`alpaca ride ${band} (${extras.join('+')}): ${fps} fps`);
+      await page.keyboard.press('Alt+KeyH');
+      await page.waitForTimeout(3200);
+    }
+    await d.click('#dev-tab-debug');
+    if (!/alpaca ride \(effect test\)/.test(await d.textContent('#dev-dbg-log'))) fail('the dev log has no alpaca ride line');
     await d.click('#dev-acts [data-act="end-climb"]');
     await d.waitForSelector('#results:not([hidden])', { timeout: 5000 });
     if (!/Dev climb/.test(await d.textContent('#sheet'))) fail('no dev results summary');
