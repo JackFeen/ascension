@@ -3462,6 +3462,19 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
 
     // --- view framing ----------------------------------------------------------
     function computeTarget() {
+      if (view === 'ride') {
+        // tighter than follow, with the climber in the upper part of what's visible
+        // (above the leg card and, on phones, the keyboard)
+        const range = clamp(H * 1.15, 800, 1300);
+        tgt.sy = H / range;
+        const wp = clamp(0.3 * (W / H) / 0.462, 0.24, 0.6) * 0.45;
+        tgt.sx = W / wp;
+        const vv = window.visualViewport;
+        const vh = vv && vv.height > 100 ? Math.min(H, vv.height) : H;
+        tgt.p = pFor(climbTarget) + (0.5 - 0.42) * W / tgt.sx;
+        tgt.alt = climbTarget - (H / 2 - 0.6 * vh) / tgt.sy;
+        return;
+      }
       if (view === 'follow' || view === 'peek') {
         const range = clamp(H * 1.8, 1350, 2100);
         tgt.sy = H / range;
@@ -3571,30 +3584,377 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
         ctx.fillRect(x - 2 * s, y, 4 * s, 5 * s + fl);
       }
     }
-    function climber(x, y, s, t) {
-      const walk = moving && !reduced ? Math.sin(t * 10) : 0;
-      const cheer = time < cheerUntil;
+    // o (alpaca ride): flail (arms waving), thumbs (thumbs-up), hatless, sit (riding)
+    function climber(x, y, s, t, o) {
+      const op = o || {};
+      const walk = moving && !reduced && !op.sit ? Math.sin(t * 10) : 0;
+      const cheer = time < cheerUntil && !op.flail && !op.thumbs;
       ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
       ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(0, 0, 7, 1.8, 0, 0, Math.PI * 2); ctx.fill();
       ctx.lineCap = 'round';
       ctx.strokeStyle = '#262b40'; ctx.lineWidth = 2.8;
-      ctx.beginPath(); ctx.moveTo(-0.5, -9); ctx.lineTo(-0.5 - walk * 3, -0.5); ctx.moveTo(1.8, -9); ctx.lineTo(1.8 + walk * 3, -0.5); ctx.stroke();
+      ctx.beginPath();
+      if (op.sit) { ctx.moveTo(-0.5, -9); ctx.lineTo(5, -6); ctx.lineTo(5.5, -1.5); ctx.moveTo(1.8, -9); ctx.lineTo(7, -6.5); ctx.lineTo(7.5, -2); }
+      else { ctx.moveTo(-0.5, -9); ctx.lineTo(-0.5 - walk * 3, -0.5); ctx.moveTo(1.8, -9); ctx.lineTo(1.8 + walk * 3, -0.5); }
+      ctx.stroke();
       ctx.fillStyle = '#2b4a9c'; rr(-7, -20, 5.2, 9.5, 1.6); ctx.fill();
       ctx.fillStyle = '#ff6a1a'; rr(-3, -21, 7.6, 12.5, 3); ctx.fill();
       ctx.strokeStyle = '#ff6a1a'; ctx.lineWidth = 2.4;
       ctx.beginPath();
-      if (cheer) { ctx.moveTo(-1, -18.5); ctx.lineTo(-4.5, -27); ctx.moveTo(3.5, -18.5); ctx.lineTo(7, -27); }
+      if (op.flail) {
+        const a = Math.sin(time * 24) * 4, b = Math.cos(time * 21) * 4;
+        ctx.moveTo(-1, -18.5); ctx.lineTo(-6 + a, -26 + b * 0.5); ctx.moveTo(3.5, -18.5); ctx.lineTo(8 - b, -26 + a * 0.5);
+      } else if (op.thumbs) { ctx.moveTo(3.5, -18.5); ctx.lineTo(7.5, -26); }
+      else if (cheer) { ctx.moveTo(-1, -18.5); ctx.lineTo(-4.5, -27); ctx.moveTo(3.5, -18.5); ctx.lineTo(7, -27); }
       else { ctx.moveTo(3, -18); ctx.lineTo(6 + walk * 1.5, -12); }
       ctx.stroke();
-      if (!cheer) { ctx.strokeStyle = '#cfd5df'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(6 + walk * 1.5, -13); ctx.lineTo(8.5 + walk * 2, 0); ctx.stroke(); }
+      if (op.thumbs) { ctx.fillStyle = '#f1c39a'; ctx.beginPath(); ctx.arc(7.8, -27, 1.6, 0, Math.PI * 2); ctx.fill(); ctx.fillRect(7.1, -30.5, 1.4, 3); }
+      if (!cheer && !op.flail && !op.thumbs && !op.sit) { ctx.strokeStyle = '#cfd5df'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(6 + walk * 1.5, -13); ctx.lineTo(8.5 + walk * 2, 0); ctx.stroke(); }
       ctx.fillStyle = '#f1c39a'; ctx.beginPath(); ctx.arc(1.2, -24.2, 3.6, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(1.2, -24.6, 3.8, Math.PI, 0); ctx.fill();
-      ctx.fillStyle = '#1c2233'; ctx.fillRect(1.6, -24.6, 3.6, 1.6);
+      if (!op.hatless) {
+        ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(1.2, -24.6, 3.8, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = '#1c2233'; ctx.fillRect(1.6, -24.6, 3.6, 1.6);
+      }
       if (climb >= C.summitAlt - 1) {
         ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(-9, -30); ctx.stroke();
         ctx.fillStyle = '#ff6a1a'; ctx.beginPath(); ctx.moveTo(-9, -30); ctx.lineTo(-1, -27); ctx.lineTo(-9, -24); ctx.fill();
       }
       ctx.restore();
+    }
+
+    // --- alpaca ride (§8.6) ---------------------------------------------------------
+    // After a Sherpa spotlight, a herd carries the climber up by the meters earned.
+    // The plan (style, band, rare variants, timing) comes from E.ridePlan(); this
+    // only draws it. The timeline runs on u = elapsed / duration:
+    //   enter 0–.18 · scoop .18–.26 · gallop .26–.78 · drop .78–.86 · exit .86–1
+    const AL = {   // alpaca coats (canvas constants, CLAUDE.md §4.13)
+      coats: [[243, 230, 207], [217, 180, 138], [154, 107, 69], [251, 247, 239], [226, 200, 160], [186, 140, 98]],
+      gold: [242, 194, 48], dark: [58, 44, 34], mask: [120, 150, 190], tank: [96, 112, 140],
+      banner: [243, 246, 249], ink: [23, 32, 58], plate: [23, 32, 58], splat: [226, 236, 206],
+    };
+    const PUFF = { grass: [176, 150, 112], trail: [150, 146, 140], glacier: [250, 252, 255], deathzone: [236, 240, 250] };
+    const puffs = [];
+    for (let i = 0; i < 48; i++) puffs.push({ on: false, x: 0, y: 0, vx: 0, vy: 0, r: 0, life: 0, max: 1 });
+    let ride = null;          // the running ride, or null
+    let splat = null;         // { x, y, t, r } screen-space spit, outlives the ride a little
+    const easeIO = (k) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
+    const seg = (u, a, b) => clamp((u - a) / (b - a), 0, 1);
+    const groundY = (x) => Y(ground(cam.p + (x - W / 2) / cam.sx));
+    function slopeAt(x) { const a = groundY(x - 6), b = groundY(x + 6); return Math.atan2(b - a, 12); }
+    function puff(x, y, s, band) {
+      for (const p of puffs) {
+        if (p.on) continue;
+        p.on = true; p.x = x; p.y = y; p.vx = -20 - Math.random() * 40; p.vy = -8 - Math.random() * 18;
+        p.r = (2 + Math.random() * 3) * s; p.life = 0; p.max = 0.45 + Math.random() * 0.3; p.c = PUFF[band] || PUFF.trail;
+        return;
+      }
+    }
+    // One alpaca, facing right, feet at (x, y). o: coat, gold, phase, tucked, mask,
+    // lamp, sad, shrug, head (neck tilt), map, sign.
+    function alpaca(x, y, s, o) {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(o.tilt || 0); ctx.scale(s, s);
+      const col = o.gold ? AL.gold : o.coat;
+      const body = css(tint(col)), shade = css(tint(mixc(col, AL.dark, 0.22))), deep = css(tint(mixc(col, AL.dark, 0.55)));
+      const ph = o.phase || 0, tucked = !!o.tucked;
+      // legs
+      if (!tucked) {
+        ctx.strokeStyle = shade; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+        ctx.beginPath();
+        for (let i = 0; i < 4; i++) {
+          const lx = i < 2 ? -6 + i * 3 : 4 + (i - 2) * 3;
+          const sw = Math.sin(ph + (i % 2 ? Math.PI : 0) + (i > 1 ? 0.6 : 0)) * 3;
+          ctx.moveTo(lx, -9); ctx.lineTo(lx + sw * 0.6, -4.5); ctx.lineTo(lx + sw, 0);
+        }
+        ctx.stroke();
+      } else {   // belly-sledding: legs tucked forward, a little snow at the belly
+        ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.ellipse(-2, -1, 12, 1.6, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      const by = tucked ? -6 : -12;
+      // body: overlapping fluff
+      ctx.fillStyle = body;
+      ctx.beginPath(); ctx.ellipse(0, by, 11, 6.2, 0, 0, Math.PI * 2); ctx.fill();
+      for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.arc(i * 4.2, by - 5 + (i % 2 ? 0.8 : 0), 3.2, 0, Math.PI * 2); ctx.fill(); }
+      ctx.beginPath(); ctx.arc(-11, by - 1, 2.6, 0, Math.PI * 2); ctx.fill();   // tail puff
+      ctx.fillStyle = shade; ctx.beginPath(); ctx.ellipse(0, by + 3.2, 9, 2.4, 0, 0, Math.PI); ctx.fill();
+      // saddle sign: ALPACA EXPRESS plate and a tiny prayer flag on the lead alpaca
+      if (o.sign) {
+        ctx.fillStyle = css(AL.plate); rr(-7.5, by - 1.8, 15, 5.2, 1); ctx.fill();
+        ctx.fillStyle = '#ffffff'; ctx.font = '700 3.1px "Big Shoulders Stencil Display", "Big Shoulders Display", sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('ALPACA EXPRESS', 0, by + 0.8);
+        ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(-8, by - 5); ctx.lineTo(-8, by - 15); ctx.stroke();
+        const fc = ['#2f6fd0', '#f4f2ea', '#d8382b', '#2f9b4a', '#f2c230'];
+        for (let i = 0; i < 5; i++) { ctx.fillStyle = fc[i]; ctx.fillRect(-7.6 + i * 1.9, by - 15 + Math.sin(time * 7 + i) * 0.4, 1.7, 2.4); }
+      }
+      // neck and head
+      const hd = o.sad ? 0.9 : o.shrug ? 0.25 : (o.head || 0);
+      ctx.save(); ctx.translate(7.5, by - 3); ctx.rotate(hd);
+      ctx.fillStyle = body; rr(-2.6, -13, 5.2, 14, 2.4); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(1.5, -14, 4.4, 3.1, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = shade; ctx.beginPath(); ctx.ellipse(5, -13.2, 1.8, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+      // banana ears
+      ctx.fillStyle = deep;
+      ctx.beginPath(); ctx.ellipse(-1, -18.3, 0.9, 2.6, -0.25 - (o.shrug ? 0.5 : 0), 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(1.4, -18.6, 0.9, 2.6, 0.18 + (o.shrug ? 0.5 : 0), 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1c1c22'; ctx.beginPath(); ctx.arc(2.3, -14.8, 0.75, 0, Math.PI * 2); ctx.fill();
+      if (o.sad) { ctx.strokeStyle = '#1c1c22'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(1.2, -16.3); ctx.lineTo(3.2, -15.6); ctx.stroke(); }
+      if (o.mask) {   // Death Zone: a tiny oxygen mask with a tube back to a tank
+        ctx.fillStyle = css(tint(AL.mask)); ctx.beginPath(); ctx.ellipse(5.2, -12.9, 2.3, 2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = css(tint(AL.tank)); ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(4.5, -11); ctx.quadraticCurveTo(0, -4, -4, 1); ctx.stroke();
+      }
+      if (o.lamp) {   // night: headlamp and a soft beam
+        ctx.fillStyle = 'rgba(255,240,180,0.18)'; ctx.beginPath(); ctx.moveTo(3, -16.5); ctx.lineTo(28, -24); ctx.lineTo(28, -8); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#fff6c8'; ctx.beginPath(); ctx.arc(2.8, -16.6, 1.1, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+      if (o.mask) { ctx.fillStyle = css(tint(AL.tank)); rr(-6, by - 9, 5, 3, 1.2); ctx.fill(); }
+      if (o.map) {    // short hop: a tiny map held up
+        ctx.fillStyle = '#f7efd8'; ctx.fillRect(9, by - 22, 8, 6);
+        ctx.strokeStyle = '#b4542c'; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(10, by - 20); ctx.lineTo(13, by - 18); ctx.lineTo(16, by - 21); ctx.stroke();
+      }
+      if (o.gold && !reduced) {   // shimmer
+        for (let i = 0; i < 4; i++) {
+          const a = time * 3 + i * 1.6, r = 13 + Math.sin(time * 5 + i) * 2;
+          const sx = Math.cos(a) * r, sy = by - 4 + Math.sin(a) * r * 0.7, k = 1.2 + Math.sin(time * 9 + i) * 0.8;
+          ctx.fillStyle = 'rgba(255,240,170,0.95)';
+          ctx.beginPath(); ctx.moveTo(sx, sy - 2.4 * k); ctx.lineTo(sx + 0.6, sy - 0.6); ctx.lineTo(sx + 2.4 * k, sy); ctx.lineTo(sx + 0.6, sy + 0.6);
+          ctx.lineTo(sx, sy + 2.4 * k); ctx.lineTo(sx - 0.6, sy + 0.6); ctx.lineTo(sx - 2.4 * k, sy); ctx.lineTo(sx - 0.6, sy - 0.6); ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+    function hat(x, y, s, rot) {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
+      ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(0, 0, 3.8, Math.PI, 0); ctx.fill();
+      ctx.fillStyle = '#1c2233'; ctx.fillRect(0.4, 0, 3.6, 1.6);
+      ctx.restore();
+    }
+    function dizzy(x, y, s) {
+      for (let i = 0; i < 3; i++) {
+        const a = time * 6 + i * 2.1;
+        ctx.fillStyle = '#ffe28a';
+        ctx.font = `${Math.round(8 * s)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('★', x + Math.cos(a) * 7 * s, y + Math.sin(a) * 2.5 * s);
+      }
+    }
+    function questionMark(x, y, s) {
+      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = 'rgba(23,32,58,0.8)'; ctx.lineWidth = 2;
+      ctx.font = `800 ${Math.round(13 * s)}px "Big Shoulders Display", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.strokeText('?', x, y); ctx.fillText('?', x, y);
+    }
+    // The answer banner: stencil capitals on a snowfield strip, as wide as the
+    // answer needs (up to a cap), shrunk to fit, then cut with an ellipsis.
+    // holders: two alpaca positions whose poles hold it up (null under the canopy).
+    function banner(cx, y, s, text, holders) {
+      const font = (f) => `800 ${f.toFixed(1)}px "Big Shoulders Stencil Display", "Big Shoulders Display", sans-serif`;
+      const maxW = Math.min(W - 24, 170 * s), h = 15 * s, pad = 8 * s;
+      let fs = 11 * s; const min = 7 * s;
+      ctx.font = font(fs);
+      let t = text;
+      while (ctx.measureText(t).width > maxW - pad && fs > min) { fs -= 0.5; ctx.font = font(fs); }
+      if (ctx.measureText(t).width > maxW - pad) {
+        while (t.length > 2 && ctx.measureText(t + '…').width > maxW - pad) t = t.slice(0, -1);
+        t = t.replace(/[\s!]+$/, '') + '…';
+      }
+      const span = holders ? Math.abs(holders[1].x - holders[0].x) + 10 * s : 0;
+      const w = clamp(Math.max(ctx.measureText(t).width + pad, span), 40 * s, maxW);
+      const x = clamp(cx - w / 2, 6, W - w - 6);
+      if (holders) {   // two poles, from each holder's back up to the banner
+        ctx.strokeStyle = '#6b4a2c'; ctx.lineWidth = 1.3 * s;
+        ctx.beginPath();
+        for (const hp of holders) { const px = clamp(hp.x + 3 * s, x + 3 * s, x + w - 3 * s); ctx.moveTo(hp.x + 3 * s, hp.y - 14 * s); ctx.lineTo(px, y); }
+        ctx.stroke();
+      }
+      ctx.fillStyle = css(tint(AL.banner)); rr(x, y - h, w, h, 2 * s); ctx.fill();
+      ctx.strokeStyle = css(tint([206, 216, 226])); ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = css(AL.ink); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(t, x + w / 2, y - h / 2 + 0.5);
+    }
+    function startRide(plan, o) {
+      const P = Object.assign({}, plan);
+      const n = clamp(P.herd || 5, 1, 8);
+      const r = E.rng(E.hashStr('herd:' + (o.seed || '') + ':' + n));
+      const herd = [];
+      const goldAt = P.golden ? Math.floor(r() * n) : -1;
+      for (let i = 0; i < n; i++) herd.push({ coat: AL.coats[Math.floor(r() * AL.coats.length)], gold: i === goldAt, ph: r() * 6, bob: r() * 6 });
+      return new Promise((resolve) => {
+        if (ride) ride.resolve(false);
+        ride = {
+          P, herd, from: o.fromAlt, to: P.noMove ? o.fromAlt : clamp(o.toAlt, C.startAlt, C.summitAlt),
+          answer: String(o.answer || '').toUpperCase().trim() + '!', t: 0, dur: Math.max(0.3, (P.durationMs || 3000) / 1000),
+          resolve, on: o.on || null, fired: {}, prevView: view, prevRect: rect,
+        };
+        climb = climbTarget = ride.from;
+        view = 'ride'; computeTarget();
+      });
+    }
+    function endRide(done) {
+      if (!ride) return;
+      const R0 = ride; ride = null;
+      climb = climbTarget = R0.to;
+      view = R0.prevView === 'ride' ? 'follow' : R0.prevView; rect = R0.prevRect; computeTarget();
+      R0.resolve(done !== false);
+    }
+    function rideEvent(name) { if (ride && !ride.fired[name]) { ride.fired[name] = true; if (ride.on) try { ride.on(name, ride.P); } catch (e) { /* never break a frame */ } } }
+    // advances the ride clock and drives the climber's altitude (called from frame())
+    function stepRide(dt) {
+      const R0 = ride; R0.t += dt;
+      const u = R0.t / R0.dur, P = R0.P;
+      if (u >= 0) rideEvent('enter');
+      if (u >= 0.18) rideEvent('scoop');
+      if (u >= 0.26) rideEvent(P.noMove ? 'shrug' : 'gallop');
+      if (u >= 0.78) rideEvent('drop');
+      if (P.late && u >= 0.84) rideEvent('late');
+      if (P.spit && u >= 0.9) { rideEvent('spit'); if (!splat) splat = { x: W * (0.38 + Math.random() * 0.24), y: Math.max(70, H * 0.22), t: 0, r: Math.min(W, H) * 0.09 }; }
+      const g = P.noMove ? 0 : easeIO(seg(u, 0.26, 0.78));
+      climb = climbTarget = R0.from + (R0.to - R0.from) * g;
+      if (u >= 1) endRide(true);
+    }
+    // where the ride is, for the HUD (slot-machine altimeter) and dev mode
+    function rideState() {
+      if (!ride) return null;
+      const u = ride.t / ride.dur;
+      const phase = u < 0.18 ? 'enter' : u < 0.26 ? 'scoop' : u < 0.78 ? (ride.P.noMove ? 'shrug' : 'gallop') : u < 0.86 ? 'drop' : 'exit';
+      return { phase, u, from: ride.from, to: ride.to, plan: ride.P };
+    }
+    // walks along the ground from screen x0 by d pixels of trail (signed)
+    function alongX(x0, d) {
+      if (!d) return x0;
+      const dir = d > 0 ? 1 : -1, target = Math.abs(d);
+      let x = x0, y = groundY(x0), dist = 0, guard = 0;
+      while (dist < target && guard++ < 400) {
+        const nx = x + dir * 1.5, ny = groundY(nx);
+        dist += Math.hypot(nx - x, ny - y); x = nx; y = ny;
+      }
+      return x;
+    }
+    function drawRide(dt, cx0, cy0, cs) {
+      const R0 = ride, P = R0.P, u = clamp(R0.t / R0.dur, 0, 1);
+      const s = cs * 1.05, gap = 24 * s;
+      const n = R0.herd.length, H0 = R0.herd;
+      const style = P.style, band = P.band, tucked = band === 'glacier' && style !== 'paraglide';
+      const galloping = !P.noMove && u > 0.26 && u < 0.78;
+      const legRate = galloping ? 22 : 11;
+      // the herd enters along the trail from the left, waits at the climber, leaves to the right
+      const enter = easeIO(seg(u, 0, 0.18)), exit = seg(u, 0.86, 1);
+      const baseX = alongX(cx0, -(1 - enter) * W * 0.9 + exit * exit * W * 0.9);
+      const lead = n - 1;
+      const carrier = style === 'conga' ? Math.floor(n / 2) : lead;
+      const lift = seg(u, 0.18, 0.26), drop = seg(u, 0.78, 0.86), carried = lift * (1 - drop);
+      const shrugging = (P.noMove && u > 0.26 && u < 0.8) || (P.shortHop && u > 0.2 && u < 0.3);
+      const mapUp = P.shortHop && u > 0.16 && u < 0.27;
+      // a line along the trail first; styles form out of it
+      const line = R0.line || (R0.line = new Array(n));
+      for (let i = 0; i < n; i++) {
+        const x = alongX(baseX, (i - carrier) * gap);
+        const bounce = galloping ? Math.abs(Math.sin(time * 11 + H0[i].bob)) * 2.2 * s : 0;
+        line[i] = { x, y: groundY(x) - bounce, tilt: slopeAt(x) * 0.6, row: 0 };
+      }
+      let pos = line, climberX = line[carrier].x - 1 * s, climberY = line[carrier].y - 17 * s, lying = false;
+      if (style === 'pyramid') {
+        // rows of 3-2-1 stacked on the bottom row, rising as the climber is lifted
+        const rows = []; let left = n, w = Math.min(3, n);
+        while (left > 0) { const k = Math.min(w, left); rows.push(k); left -= k; w = Math.max(1, w - 1); }
+        const pyr = []; let idx = 0, prev = null;
+        rows.forEach((k, ri) => {
+          const cur = [];
+          for (let j = 0; j < k; j++) {
+            let x, y;
+            if (!ri) { x = alongX(baseX, (j - (k - 1) / 2) * gap * 0.95); y = groundY(x); }
+            else { const a = prev[Math.min(j, prev.length - 1)], b = prev[Math.min(j + 1, prev.length - 1)]; x = (a.x + b.x) / 2; y = Math.min(a.y, b.y) - 13 * s; }
+            const wob = galloping && ri ? Math.sin(time * 8 + ri * 1.3) * 0.06 * ri : 0;
+            cur.push({ x, y, tilt: ri ? wob : slopeAt(x) * 0.6, row: ri });
+          }
+          for (const c of cur) pyr[idx++] = c;
+          prev = cur;
+        });
+        pos = pyr.map((p, i) => ({ x: lerp(line[i].x, p.x, carried), y: lerp(line[i].y, p.y, carried), tilt: lerp(line[i].tilt, p.tilt, carried), row: p.row }));
+        const top = pos[n - 1]; climberX = top.x; climberY = top.y - 15 * s;
+      } else if (style === 'paraglide') {
+        const fly = carried * (42 * s + (galloping ? Math.sin(time * 2) * 4 * s : 0));
+        const hx = baseX, hy = groundY(baseX) - fly;
+        pos = line.map((p, i) => { const tx = hx + (i - (n - 1) / 2) * 12 * s, ty = hy - (i % 2) * 6 * s; return { x: lerp(p.x, tx, carried), y: lerp(p.y, ty, carried), tilt: lerp(p.tilt, Math.sin(time * 3 + i) * 0.15, carried), row: carried > 0.5 ? 1 : 0 }; });
+        climberX = hx; climberY = hy - 10 * s;
+      } else if (style === 'crowdsurf') {
+        // lying on the herd's backs, passed back and forth along the line
+        const k = galloping ? (Math.sin(seg(u, 0.26, 0.78) * Math.PI * 3) + 1) / 2 : 0.5;
+        const fi = k * (n - 1), i0 = Math.floor(fi), i1 = Math.min(n - 1, i0 + 1), f = fi - i0;
+        climberX = lerp(line[i0].x, line[i1].x, f); climberY = lerp(line[i0].y, line[i1].y, f) - 19 * s; lying = true;
+      }
+      let topY = Infinity;
+      for (const p of pos) topY = Math.min(topY, p.y);
+      // dust, gravel or snow from the hooves
+      if (galloping && !reduced && style !== 'paraglide' && Math.random() < 0.6) { const i = Math.floor(Math.random() * n); puff(pos[i].x - 6 * s, pos[i].y, s, band); }
+      for (const p of puffs) {
+        if (!p.on) continue;
+        p.life += dt; if (p.life >= p.max) { p.on = false; continue; }
+        p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 12 * dt;
+        ctx.fillStyle = css(tint(p.c), 0.55 * (1 - p.life / p.max)); ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 + p.life * 2), 0, Math.PI * 2); ctx.fill();
+      }
+      // paraglider canopy (suit orange with white cells)
+      if (style === 'paraglide' && carried > 0.05) {
+        const cyc = climberY - 50 * s;
+        ctx.globalAlpha = Math.min(1, carried * 2);
+        ctx.fillStyle = '#ff5a1f'; ctx.beginPath(); ctx.ellipse(climberX, cyc, 46 * s, 12 * s, 0, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = '#ffffff'; for (let k = -2; k <= 2; k += 2) { ctx.beginPath(); ctx.ellipse(climberX + k * 9 * s, cyc - 1, 3.2 * s, 10 * s, 0, Math.PI, 0); ctx.fill(); }
+        ctx.strokeStyle = 'rgba(40,40,40,0.45)'; ctx.lineWidth = 0.7; ctx.beginPath();
+        for (let i = 0; i < n; i++) { ctx.moveTo(climberX + (i - (n - 1) / 2) * 18 * s, cyc); ctx.lineTo(pos[i].x, pos[i].y - 20 * s); }
+        ctx.stroke(); ctx.globalAlpha = 1;
+      }
+      // the herd
+      for (let i = 0; i < n; i++) {
+        const p = pos[i];
+        alpaca(p.x, p.y, s, {
+          coat: H0[i].coat, gold: H0[i].gold, phase: H0[i].ph + time * legRate, tucked: tucked && !p.row, tilt: p.tilt,
+          mask: band === 'deathzone', lamp: P.headlamps, shrug: shrugging, map: mapUp && i === lead,
+          sign: i === lead, head: galloping ? -0.25 : 0,
+        });
+      }
+      if (shrugging) questionMark((P.noMove ? baseX : pos[lead].x) + 10 * s, topY - 36 * s, s);
+      // the answer banner on two poles, above the herd
+      if (!P.noMove && u > 0.2 && u < 0.84) {
+        const k = seg(u, 0.2, 0.28) * (1 - seg(u, 0.78, 0.84));
+        ctx.globalAlpha = k;
+        if (style === 'paraglide') banner(climberX, climberY + 44 * s, s, R0.answer, null);
+        else {
+          const ground0 = pos.filter((p) => !p.row);
+          const a = ground0[0], b = ground0[ground0.length - 1];
+          const by = Math.min(topY, climberY - 12 * s) - 30 * s;
+          banner((a.x + b.x) / 2 + 3 * s, by, s, R0.answer, [a, b]);
+        }
+        ctx.globalAlpha = 1;
+      }
+      // the climber: surprised, carried with flailing arms, dropped off dizzy, thumbs up
+      const cx = lerp(cx0, climberX, carried), cy = lerp(cy0, climberY, carried);
+      const hatOff = u > 0.19 && u < 0.84;
+      const thumbs = u > 0.92 || (P.noMove && u > 0.86);
+      if (lying && carried > 0.3) {
+        ctx.save(); ctx.translate(cx, cy); ctx.rotate(-Math.PI / 2 * Math.min(1, carried * 1.2));
+        climber(0, 0, cs, time, { flail: galloping, hatless: hatOff }); ctx.restore();
+      } else climber(cx, cy, cs, time, { flail: galloping, thumbs, hatless: hatOff, sit: carried > 0.3 });
+      if (hatOff) {   // the hat flies up, tumbles above the ride, and drops back on
+        const up = seg(u, 0.19, 0.3), back = seg(u, 0.74, 0.84);
+        const hy = cy - 24 * cs - (up - back) * 15 * cs - Math.sin(time * 5) * 2 * cs * (1 - back);
+        hat(cx + 1.2 * cs + (up - back) * (11 + Math.sin(time * 4) * 3) * cs, hy, cs, time * 6 * (1 - back));
+      }
+      if (u > 0.84 && u < 0.97) dizzy(cx + 1.2 * cs, cy - 32 * cs, cs);
+      // the late alpaca: sprints in after the herd has gone, skids, slumps
+      if (P.late && u > 0.84) {
+        const k = seg(u, 0.84, 0.94);
+        const lx = alongX(cx0, -lerp(W * 0.7, 28 * s, easeIO(k)));
+        if (k < 1 && !reduced && Math.random() < 0.5) puff(lx - 8 * s, groundY(lx), s, band);
+        alpaca(lx, groundY(lx), s, { coat: AL.coats[1], phase: time * (k < 1 ? 26 : 0), tilt: k >= 1 ? 0 : -0.12, sad: k >= 1, mask: band === 'deathzone', lamp: P.headlamps });
+      }
+    }
+    function drawSplat(dt) {
+      if (!splat) return;
+      splat.t += dt;
+      const k = splat.t / 1.6;
+      if (k >= 1) { splat = null; return; }
+      const y = splat.y + k * k * H * 0.12, a = k < 0.7 ? 0.85 : 0.85 * (1 - (k - 0.7) / 0.3);
+      ctx.fillStyle = css(AL.splat, a);
+      ctx.beginPath(); ctx.arc(splat.x, y, splat.r * 0.6, 0, Math.PI * 2); ctx.fill();
+      for (let i = 0; i < 7; i++) { const an = i * 0.9; ctx.beginPath(); ctx.arc(splat.x + Math.cos(an) * splat.r * 0.62, y + Math.sin(an) * splat.r * 0.5, splat.r * (0.16 + (i % 3) * 0.05), 0, Math.PI * 2); ctx.fill(); }
+      for (let i = -1; i <= 1; i++) { ctx.fillRect(splat.x + i * splat.r * 0.3 - 2, y, 4, splat.r * (0.5 + k * 1.2) * (1 - Math.abs(i) * 0.3)); }
     }
 
     // --- the frame ------------------------------------------------------------------
@@ -3826,7 +4186,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
         ctx.strokeStyle = `rgba(255,106,26,${0.8 * (1 - pr)})`; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(cx, cy - 6, 8 + pr * 16, 0, Math.PI * 2); ctx.stroke();
       }
-      climber(cx, cy, cs, time);
+      if (ride) drawRide(dt, cx, cy, cs); else climber(cx, cy, cs, time);
       if (overview && view === 'overview' && showPin) plate(cx, cy - 44, fmt(climb) + ' m', null, { align: 'center', accent: true });
 
       // bursts on rare finds
@@ -3864,19 +4224,21 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
         ctx.fillStyle = c.col; ctx.fillRect(-4, -3, 8, 6); ctx.restore();
       }
       ctx.globalAlpha = 1;
+      drawSplat(dt);
     }
 
     let showPin = false;
     function frame(ts) {
       const dt = Math.min(0.05, Math.max(0, (ts - last) / 1000));
       last = ts; time += dt;
+      if (ride) stepRide(dt);
       const diff = climbTarget - climb;
-      if (reduced || snap) climb = climbTarget;
+      if (ride || reduced || snap) climb = climbTarget;
       else climb += diff * (1 - Math.exp(-dt * 3.2));
       if (Math.abs(climbTarget - climb) < 0.5) climb = climbTarget;
       moving = Math.abs(diff) > 3;
       computeTarget();
-      const k = reduced || snap ? 1 : 1 - Math.exp(-dt * (view === 'follow' ? 4.5 : 2.4));
+      const k = reduced || snap ? 1 : 1 - Math.exp(-dt * (view === 'ride' ? 5 : view === 'follow' ? 4.5 : 2.4));
       cam.p = lerp(cam.p, tgt.p, k); cam.alt = lerp(cam.alt, tgt.alt, k);
       cam.sx = lerp(cam.sx, tgt.sx, k); cam.sy = lerp(cam.sy, tgt.sy, k);
       snap = false;
@@ -3896,6 +4258,12 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
       get skyOverride() { return skyOverride; },
       onFrame(fn) { onFrame = fn; },
       get alt() { return climb; },
+      // alpaca ride: resolves true when it finishes, false if cancelled
+      ride(plan, o) { return startRide(plan, o || {}); },
+      cancelRide() { if (ride) endRide(false); splat = null; },
+      get riding() { return !!ride; },
+      rideState,
+      get night() { return skyAt(clamp(skyOverride != null ? skyOverride : climb, C.startAlt, C.summitAlt)).star > 0.3; },
       burst(tier) {
         if (reduced) return;
         const cols = [[200, 205, 212], [92, 197, 128], [99, 170, 245], [181, 140, 243], [255, 200, 70]];
