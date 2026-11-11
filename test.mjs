@@ -380,6 +380,48 @@ for (const [cat, list] of Object.entries(MUST_REJECT)) for (const input of list)
   ok(!m || !m.entry, `${cat}: must reject "${input}", got ${m && m.entry ? (m.qualifier ? m.qualifier + ' + ' : '') + m.entry.canon : ''}`);
 }
 
+// ---- alpaca ride plan (§8.6): chances, bands, timing, share line
+{
+  const R = E.CONFIG.ride;
+  ok(R.goldenChance === 1 / 20 && R.lateChance === 1 / 10 && R.spitChance === 1 / 50, 'CONFIG.ride chances: golden 1/20, late 1/10, spit 1/50');
+  ok(R.minMs === 2600 && R.maxMs === 3600 && R.herdMin === 4 && R.herdMax === 6 && R.shortHopMeters === 100 && R.speed === 1, 'CONFIG.ride defaults');
+  const N = 200000, counts = { golden: 0, late: 0, spit: 0 }, styles = {}, herds = new Set();
+  for (let i = 0; i < N; i++) {
+    const p = E.ridePlan({ fromAlt: 4000, meters: 500, seed: 'roll' + i });
+    if (p.golden) counts.golden++;
+    if (p.late) counts.late++;
+    if (p.spit) counts.spit++;
+    styles[p.style] = (styles[p.style] || 0) + 1;
+    herds.add(p.herd);
+  }
+  const near = (got, want, tol) => Math.abs(got / N - want) < tol;
+  ok(near(counts.golden, 0.05, 0.004), `golden ≈ 5% (${(100 * counts.golden / N).toFixed(2)}%)`);
+  ok(near(counts.late, 0.10, 0.005), `late ≈ 10% (${(100 * counts.late / N).toFixed(2)}%)`);
+  ok(near(counts.spit, 0.02, 0.003), `spit ≈ 2% (${(100 * counts.spit / N).toFixed(2)}%)`);
+  ok(R.styles.every((st) => styles[st.id] > 0), 'every ride style appears');
+  ok(Object.entries(styles).every(([id, n]) => id === 'paraglide' || n > styles.paraglide), `paraglide is the rarest style (${(100 * styles.paraglide / N).toFixed(1)}%)`);
+  ok(herds.size === 3 && herds.has(4) && herds.has(6), 'herd of 4–6');
+  ok(JSON.stringify(E.ridePlan({ fromAlt: 5000, meters: 300, seed: '2026-11-09|3|17' })) === JSON.stringify(E.ridePlan({ fromAlt: 5000, meters: 300, seed: '2026-11-09|3|17' })), 'the same seed gives the same plan');
+  const band = (alt) => E.ridePlan({ fromAlt: alt, meters: 200, seed: 'b' }).band;
+  ok(band(2860) === 'grass' && band(3899) === 'grass' && band(3900) === 'trail' && band(5363) === 'trail' && band(5364) === 'glacier' && band(7999) === 'glacier' && band(8000) === 'deathzone', 'altitude bands: grass, trail, glacier from Base Camp, Death Zone from 8,000 m');
+  ok(E.ridePlan({ fromAlt: 4000, meters: 100, night: true, seed: 'n' }).headlamps === true && E.ridePlan({ fromAlt: 4000, meters: 100, seed: 'n' }).headlamps === false, 'headlamps at night');
+  ok(E.ridePlan({ fromAlt: 4000, meters: 99, seed: 's' }).shortHop && !E.ridePlan({ fromAlt: 4000, meters: 100, seed: 's' }).shortHop, 'short hop under 100 m');
+  const still = E.ridePlan({ fromAlt: 4000, meters: 0, seed: 's' });
+  ok(still.noMove && !still.shortHop, 'no move at 0 m');
+  ok(E.ridePlan({ fromAlt: 8500, toAlt: 8849, seed: 'top' }).crossesSummit && !E.ridePlan({ fromAlt: 8000, toAlt: 8500, seed: 'top' }).crossesSummit, 'crossesSummit when the ride reaches the summit');
+  const forced = E.ridePlan({ fromAlt: 3000, meters: 400, seed: 'f', force: { style: 'paraglide', golden: true, late: true, spit: true, band: 'deathzone' } });
+  ok(forced.style === 'paraglide' && forced.golden && forced.late && forced.spit && forced.band === 'deathzone', 'force overrides any field');
+  const durs = [0, 50, 400, 1000, 5000].map((m) => E.ridePlan({ fromAlt: 4000, meters: m, seed: 'd' }).durationMs);
+  ok(durs.every((d) => d >= R.minMs && d <= R.maxMs) && durs[0] === R.minMs && durs[3] === R.maxMs && durs[2] > durs[1], 'ride length 2.6–3.6 s, scaled by meters');
+  R.speed = 4;
+  ok(E.ridePlan({ fromAlt: 4000, meters: 1000, seed: 'd' }).durationMs === Math.round(R.maxMs / 4), 'CONFIG.ride.speed shortens the ride');
+  R.speed = 1;
+  const red = E.ridePlan({ fromAlt: 4000, meters: 600, seed: 'r', reduced: true });
+  ok(red.reduced === true && red.durationMs === 0, 'reduced motion: no ride');
+  ok(E.shareAlpacas(0) === '' && E.shareAlpacas(1) === '🦙' && E.shareAlpacas(5) === '🦙🦙🦙🦙🦙' && E.shareAlpacas(6) === '🦙×6' && E.shareAlpacas(12) === '🦙×12', 'share line: 🦙 for 1–5, 🦙×N from 6');
+  ok([0, 1, 3, 5, 6, 40].every((n) => !/[a-z]/i.test(E.shareAlpacas(n))), 'the share line never contains letters (so never answers)');
+}
+
 // ---- autocorrect collision report (informational): pairs of different answers in
 // one category whose listed forms are a single slip apart (correction cost ≤ 1).
 // A slip on one of them can land on the other or come back ambiguous.

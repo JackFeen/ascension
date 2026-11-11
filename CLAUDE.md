@@ -18,27 +18,29 @@ The original spec is `docs/product-spec.md`. Where the code differs from it, §1
 2. **Knowledge beats typing speed.** A Sherpa answer is worth about 9× a Crawler one. The per-leg cap stops people farming easy answers.
 3. **Progress you can feel.** Altitude is continuous across the round. Milestones are real places: "I got to Base Camp."
 4. **The summit is rare (target ≈ 5% of rounds).** Scarcity is what makes it worth posting.
-5. **Beautiful, spoiler-free sharing.** The share text shows altitude, the milestone and one colored square per leg. It never shows answers.
+5. **Beautiful, spoiler-free sharing.** The share text shows altitude, the milestone, one colored square per leg and, when there were any, one 🦙 per Sherpa alpaca ride (`E.shareAlpacas()`, never letters). It never shows answers.
 6. **Fair and accessible.** Ranks always use color, icon shape *and* a text label. The game respects reduced motion, offers an extra-time setting, works with a keyboard alone and has screen-reader announcements.
 
 ### Art direction and tone
 
-- **Visual system ("Khumbu dawn"):** the mountain is the hero; the UI is trail equipment.
-  - **Snowfield panels** for content: opaque, crisp 6–10px corners, one soft shadow. No glass blur, no pill soup.
-  - **Khumbu-ink plates** (`--plate`) for instruments on the sky: the seven-peak leg trail, the altimeter, the next-landmark plate, the icon buttons and the canvas landmark signs.
-  - **One loud colour:** down-suit orange for the thing to press. Buttons are pressable, with a solid lip (`--accent-lip`) that compresses on press.
-  - **Answers are trail-blaze tags:** a coloured bar in the rank colour, plus the word and the gain.
-  - **Labels are sentence case.** Uppercase is reserved for display-face signage (category names, headings, buttons).
-- **Mountain:** flat-shaded and illustrated, with parallax layers. It is not photoreal. The base is warm and green, and it gets stark and white higher up. The distant ranges have faceted shadow faces (light from the left) and dissolve into haze at their feet.
-- **Sky:** it moves through one "day" as the climber rises: dawn at Lukla, then midday, golden hour, dusk at the Death Zone and stars at the summit. Legs 6–7, the "summit push", switch the UI to night panels.
+- **Visual system ("cozy pixel trail"):** cozy pixel art in the spirit of a farm game turned sideways onto Everest. The mountain is the hero; the UI is trail kit in the same style. Mockups approved in November 2026 (the "Daily Ascent pixel art mockups" design canvas).
+  - **Parchment panels** for content: a 3 px ink border, a light bevel on top and a dark one below, 4 px notched corners (`--notch`). No blur, no glass, no round corners.
+  - **Wood signs** for names: the wordmark, the countdown, and the canvas milestone plates.
+  - **Ink HUD plates** (`--plate`) for instruments on the sky: the seven-peak leg trail, the altimeter, the next-landmark plate and the icon buttons.
+  - **One loud colour:** down-suit orange for the thing to press. Buttons are chunky and square, with a solid lip (`--accent-lip`) that compresses on press. Text on orange is ink, never white (contrast).
+  - **Answers are parchment tags:** a 6 px bar in the rank colour, the pixel rank icon, the word, the rank name and the gain.
+  - **Labels are sentence case.** Uppercase comes from the display face on signage (category names, headings, buttons).
+- **Pixel art rules:** 1 art pixel = 2 CSS px on phones (3 on big screens); outlines take a darker shade of what they wrap (`selout`), never one flat black line; light from the top left; sprites shade with ordered (Bayer 4×4) dithering, while the big surfaces (sky, ranges, terrain) are flat bands; shapes are soft and round (lit `blob`s), not chunky.
+- **Mountain:** a side view with parallax layers: a banded sky, flat-shaded far and mid ranges that fade into haze, forested foothills, then the main slope in flat altitude bands: meadow, pines to the 3,900 m treeline, scrub, rock, the glacier and wind-blown snow in the Death Zone. The trail keeps a calm corridor so the climber stands out; the scenery sits across the face below it (groves, farmsteads, herders' huts, chortens, cairns, mani walls, prayer-flag poles, outcrops, crevasses, grazing alpacas), chosen by altitude. Landmarks are pixel sprites: the Lukla airstrip and plane, Namche's thatched teahouses (after the reference farmhouse) with a potato field, a stone-ringed pond and a grazing alpaca, Tengboche monastery, tents, the Icefall ladder.
+- **Climber:** a 16 × 24 sprite drawn in layers (pack, body and face, outfit, neck, over-layer, eyes, hat) so cosmetic items can be added later; six draft items are previewable in dev mode only (§15).
+- **Sky:** it moves through one "day" as the climber rises: dawn at Lukla, then midday, golden hour, dusk at the Death Zone and stars (and an aurora) at the summit. Legs 6–7, the "summit push", switch the UI to night panels.
 - **Colors:**
-  - Palette: Khumbu ink `#17203a`, snowfield `#f3f6f9`, glacier `#cfdbe7`, and down-suit orange `#ff5a1f` (`#d4460c` for text-size uses).
-  - Rank colours: slate, juniper, glacier blue, aurora violet and oxygen gold.
+  - Palette: ink `#281e16`, parchment `#f4e7c8`, wood `#8a5a34`, HUD plate `#2d2a4a`, night panel `#2b2747`, down-suit orange `#ff5a1f` (`#a8380c` for text-size uses on parchment).
+  - Rank colours: slate, juniper, glacier blue, aurora violet and oxygen gold, in a darker set for text on parchment and a bright set on night panels (§9).
   - The five prayer-flag colours appear only in flags and confetti.
 - **Type:**
-  - Big Shoulders Display for category names and all numbers.
-  - Big Shoulders Stencil Display (gear-crate stencil) only for the wordmark, milestone names and spotlight rank tags.
-  - Atkinson Hyperlegible for UI text.
+  - Silkscreen (400, 700) for the wordmark, category names, headings, buttons, all numbers and the canvas signs. It is crisp at multiples of 8 px.
+  - Pixelify Sans (400–700) for everything you read. Body text stays at 15 px or more, labels at 12 px or more.
 - **Copy:** short, plain and specific. Errors say what happened and what it cost ("“zzq” isn't a match · −1 s").
 
 ---
@@ -74,7 +76,10 @@ daily-ascent/
 │  ├─ data-broad.js       14 broad categories (legs 1–2)
 │  ├─ data-mid.js         21 mid categories in 3 lanes (legs 3, 4, 6)
 │  ├─ data-hard-wild.js   7 hard (leg 7) + 7 wildcard (leg 5) + 1 practice category
-│  ├─ app.js              everything with a DOM: Store, Sound, Scene (canvas),
+│  ├─ pixel.js            pixel sprite kit (window.DA_PIXEL): dither, rampPick, selout,
+│  │                      blob, text signs, sprite maps (layered climber, alpacas,
+│  │                      draft cosmetics) and scenery sprite builders
+│  ├─ app.js              everything with a DOM: Store, Sound, Scene (pixel canvas),
 │  │                      Judge, game flow, results, dialogs, boot
 │  ├─ dev-lock.js         GENERATED, COMMITTED: dev mode salt + PBKDF2 hash (no password)
 │  ├─ dev-core.js         pure dev mode logic: lap math, password check, answerTable() (Node-testable)
@@ -101,7 +106,8 @@ daily-ascent/
 | Understand why an answer matched or didn't | `normalize()`, `candidateKeys()`, `stripAffixes()`, `match()` in engine; `submit()` in app |
 | Change altitude math | `answerGain()`, `legEffective()`, `finalAltitude()` in engine; `accept()` and `totalAltitude()` in app |
 | See which categories appear on a given day | `dailyCategories()` in engine |
-| Change the mountain, sky, camera or climber art | the `Scene` IIFE in `src/app.js` (§8.4) |
+| Change the mountain, sky, camera or terrain shading | the `Scene` IIFE in `src/app.js` (§8.4) |
+| Change sprites: climber, alpacas, trees, houses, signs, cosmetics | `src/pixel.js` (§8.4) |
 | Change sounds | `Sound.play(kind)` in app |
 | Change LLM answer checking | the `Judge` object in app; `judgePrompt()` / `interpretVerdict()` in engine |
 | Change leg flow, timer or transitions | `beginDaily()`, `startLeg()`, the `Scene.onFrame(...)` handler, `endLeg()`, `showTransition()` |
@@ -120,7 +126,7 @@ daily-ascent/
 2. **The output must stay a single file.** All JS and CSS is inlined.
    - The only external loads are Google Fonts stylesheets. There is one `<link>` per family on purpose: one bad family name makes Google return 400 for the whole request.
    - The claude.ai artifact CSP blocks other network access: no fetch, no image URLs, no non-allowlisted CDNs.
-   - Art is drawn on canvas. Anything else must be embedded.
+   - Art is drawn on canvas, from the sprite maps and helpers in `src/pixel.js`. No image files. Anything else must be embedded.
 3. **Enter is handled on `keydown` on `#answer`, not on form submit.** Sandboxed iframes, like the artifact viewer, block form submission *before* the submit event fires. This shipped as a real bug once. The submit listener stays only as a fallback.
 4. **The input keeps focus for the whole round.** The spec says the mobile keyboard never closes during a leg. `#btn-send` calls `preventDefault()` on `pointerdown`/`mousedown` so tapping it doesn't steal focus. Clicks anywhere on the play screen refocus the input. `beginDaily()` focuses the input inside the click gesture so iOS opens the keyboard.
 5. **`localStorage` can be empty or throw.** Go through `Store`, whose access is wrapped in try/catch. The game must work without persistence.
@@ -129,7 +135,7 @@ daily-ascent/
 8. **Adding or removing a category reshuffles the deal for every date**, because the permutations depend on pool contents. Today's puzzle can change for players mid-day. Ship content changes just after midnight, or move to a fixed calendar (see roadmap). `test.mjs` pins a SHA-256 of the deal for puzzles 1–365, so a category change fails it on purpose: update the hash only when you mean to reshuffle. Adding, removing or retiering *answers* never changes the deal.
 9. **Changing `CONFIG.epoch` renumbers every puzzle and reshuffles the deal.**
 10. **An answer's `eid` is its position in that category's `buildIndex()` entries.** Reordering or inserting answers changes ids. Stored rounds use `eid` only for in-round dedupe and the "missed gems" list, so the damage is cosmetic. Don't build features that rely on `eid` across data versions.
-11. **`test.mjs` hardcodes a few CONFIG values**: Crawler gain 55, Sherpa 500, the five rank names, the leg cap at 750/950/1000, the leg timers (30/30/25/25/25/20/20) and multipliers, `maxQualifiedPerLeg` = 3 and the `CONFIG.correct` defaults. Update the tests when you retune.
+11. **`test.mjs` hardcodes a few CONFIG values**: Crawler gain 55, Sherpa 500, the five rank names, the leg cap at 750/950/1000, the leg timers (30/30/25/25/25/20/20) and multipliers, `maxQualifiedPerLeg` = 3, the `CONFIG.correct` defaults and the `CONFIG.ride` chances and timings (golden 1/20, late 1/10, spit 1/50, 2.6–3.6 s). Update the tests when you retune.
 12. **Never put answers in share text or any future leaderboard** (spoilers).
 13. **Colors go through CSS tokens.** The `.night` class swaps panel tokens. Canvas colors are separate constants inside `Scene` and don't follow the page theme.
 14. **Accessibility is not optional.**
@@ -137,6 +143,11 @@ daily-ascent/
     - Announce state changes through `announce()` into `#sr-live`.
     - Honor `isReduced()`, which comes from the setting or the OS preference.
 15. **Data strings:** commas separate answers and `=` separates aliases, so names can't contain commas ("Washington DC", not "Washington, D.C."). Run `npm test` after every data edit. It fails if any canonical name or alias resolves to a different entry.
+16. **Keep it at 60 fps** (capped there; §8.4).
+    - Never redraw the whole mountain in one frame. Static drawing goes in `staticWorld()` (cached, rebuilt a strip per frame); only things that move are drawn per frame.
+    - No per-frame allocation of sprites: sprite memo keys must be integers or fixed strings (a float radius once leaked a new sprite every frame), and labels that change often (like the pin) show a settled value.
+    - The page around the canvas must stay quiet: write HUD text only when it changes (`hudSet`, `setAlt`), no `:has()` selectors on the play screen, no layout reads inside the frame.
+    - Check with dev mode's FPS meter (Perf tab) and Chrome's CPU throttling (4× and 6×) while climbing, during a ride and on the results zoom.
 
 ---
 
@@ -149,14 +160,14 @@ shell.html
  ├─ <script> engine.js         → window.DA_ENGINE        (pure; also require()-able in Node)
  ├─ <script> var DA_CATS = []; data-*.js call DA_CATS.push(...)  → window.DA_CATS
  ├─ <script> dev-lock.js + dev-core.js + dev.js → DA_DEV_LOCK, DA_DEV_CORE, DA_DEV (inert until unlocked)
- └─ <script> app.js            → one IIFE: Store, ICON, Sound, Scene, Judge, G (state), flow, UI, boot
+ └─ <script> pixel.js + app.js → DA_PIXEL (sprite kit), then one IIFE: Store, ICON, Sound, Scene, Judge, G (state), flow, UI, boot
 ```
 
-There is no framework, bundler or runtime dependency, and the source is about 3,000 lines. The global names `DA_ENGINE` and `DA_CATS` are part of the contract between files and are used by the tests.
+There is no framework, bundler or runtime dependency, and the source is about 7,200 lines (the word lists are long data strings in about 460 of them). The global names `DA_ENGINE` and `DA_CATS` are part of the contract between files and are used by the tests.
 
 ### 5.2 Build flavours (`build.mjs`)
 
-- **`dist/game.html`** is the shell with the three scripts inlined. It starts with `<title>` and has no `<html>`/`<head>` tags: the claude.ai artifact host wraps the body in its own document skeleton and reads the title from the first 8 KB.
+- **`dist/game.html`** is the shell with the scripts inlined (`pixel.js` is prepended to `app.js` in the last one). It starts with `<title>` and has no `<html>`/`<head>` tags: the claude.ai artifact host wraps the body in its own document skeleton and reads the title from the first 8 KB.
 - **`index.html`** (repo root) is a complete document. Everything up to the first `</style>` (title, metas, fonts, CSS) moves into `<head>`.
 - The build throws if any inlined source contains `</script`.
 
@@ -175,6 +186,7 @@ keydown Enter on #answer ─▶ submit()
    │                         chip, sound, Scene.burst/confetti, Scene.setClimb(totalAltitude())
    │                         Crawler–Climber: gainPop() floats "+N m" over the answer box
    │                         Mountaineer/Sherpa: spotlight() freezes the leg (tiers[].pause ms)
+   │                         Sherpa: then the alpaca ride (queueRide → runNextRide → Scene.ride), clock still held; §8.6
    ├─ hit, already found ─▶ duplicate(): pulse the existing chip, no penalty, chain unchanged
    └─ no hit ─▶ Judge.ready() && E.judgeEligible() && under the per-leg judge cap?
                 ├─ yes ─▶ judgeAnswer(): pending chip ─▶ Judge.check() ─▶ resolveJudged() ─▶ accept() / reject / "unchecked"
@@ -216,6 +228,7 @@ The engine is pure: no DOM and no storage. It exports `window.DA_ENGINE`, or `mo
 | `invalidPenaltySecs` | 1 | Time lost per wrong answer |
 | `maxAcceptedPerLeg` / `minSubmitGapMs` | 30 / 150 | Anti-scripting guards |
 | `correct.*` | keyboardCost 0.5, doubleLetterCost 0.5, soundCost 1, soundMinLen 7, margin 1, shortLen 4, minRatio 0.6, maxRatio 1.4 | Autocorrect tuning (§6.3) |
+| `ride.*` | minMs 2600, maxMs 3600, fullAtMeters 1000, herd 4–6, goldenChance 1/20, lateChance 1/10, spitChance 1/50, styles (conga .35, pyramid .30, crowdsurf .30, paraglide .05), shortHopMeters 100, treelineAlt 3900, glacierFrom basecamp, deathZoneFrom deathzone, speed 1 | Alpaca ride after a Sherpa spotlight (§8.6); `speed` shortens it in tests |
 | `maxQualifiedPerLeg` | 3 | Qualified answers ("women's soccer", "dark purple") that can score per leg. Past it: "Variant limit reached", no penalty, chain unchanged |
 | `extraTimeFactor` | 1.5 | Accessibility setting; noted on results |
 | `chainStep` / `chainMax` | 0.05 / 0.25 | +5% per consecutive valid answer, up to +25%. A wrong answer resets it |
@@ -271,6 +284,8 @@ answerGain(tier, chain, leg) = round( tiers[tier].gain × (1 + min(chainStep × 
 legEffective(raw)            = raw ≤ 750 ? raw : min(1000, 750 + (raw − 750) × 0.35)
 finalAltitude(legRaws)       = min(8849, 2860 + Σ legEffective(raw_i))
 ```
+
+**Alpaca ride plan.** `ridePlan({fromAlt, toAlt, meters, night, seed, reduced, force})` is pure and seeded (the game passes `date|leg|answer id`, so a resumed round replays the same ride). It returns `{style, golden, late, spit, band, headlamps, herd, durationMs, shortHop, noMove, crossesSummit}`, or `{reduced: true, durationMs: 0}`; `force` overrides any field. Bands come from the start altitude: `grass` below the treeline, `trail` to Base Camp, `glacier` to 8,000 m, `deathzone` above (`rideBand()`). `shareAlpacas(n)` gives the share line: "" for 0, 🦙 repeated up to 5, then 🦙×N.
 
 `chain` is the number of consecutive valid answers *before* this one in the leg. Chips show the **effective** meters gained, so gains past the cap look small; that is intended. `milestoneFor(alt)` returns the highest milestone reached and `nextMilestone(alt)` the next one up. `airPercent(alt)` is the standard-atmosphere share of sea-level pressure (about 31% at the summit) and is shown in the HUD as "Air 31%".
 
@@ -377,49 +392,71 @@ Streaks (`updateStreak`, `liveStreak`): playing the day after your last climb ex
 
 ### 8.2 Icons: `ICON[tier]`
 
-These are inline 14×14 SVG strings that use `currentColor`, colored through a `.t0`–`.t4` class that sets `--c`. They are trusted markup; never build them from user input.
+These are 8 × 8 pixel SVG strings (`pxIcon()`, `shape-rendering="crispEdges"`, drawn at 16 px so each pixel is 2 × 2) that use `currentColor`, colored through a `.t0`–`.t4` class that sets `--c`. The shapes are the same as ever: Crawler dot, Hiker tree, Climber diamond, Mountaineer sparkle (plus), Sherpa peak with a flag. `ALPACA_ICON` is a tiny pixel alpaca for the results' "Alpaca rides" row. The icon buttons in `shell.html` use the same 10-unit pixel style. They are trusted markup; never build them from user input.
 
 ### 8.3 Sound: `Sound`
 
 Everything is synthesized with WebAudio (no files) and sound is **off by default**. `Sound.ensure()` creates the AudioContext; call it only in a user gesture and only when sound is on.
-- `play(kind)` takes `t0`–`t4` (rank chimes; t3 is a thump plus rising bells, t4 a singing bowl with a fanfare chord and shimmer), `bad`, `dup`, `tick` (last 3 s), `count`, `go` and `end`.
+- `play(kind)` takes `t0`–`t4` (rank chimes; t3 is a thump plus rising bells, t4 a singing bowl with a fanfare chord and shimmer), `bad`, `dup`, `tick` (last 3 s), `count`, `go` and `end`, plus the alpaca ride's `hooves` (clip-clop gallop), `alpaca` (a hum and a "mwaa"), `golden` (fanfare for the golden alpaca) and `splat` (the farewell spit).
 - `wind(alt, active)` is a looping filtered-noise bed whose gain and pitch rise with altitude, with random gusts. A 1 s interval calls it.
 
-### 8.4 Scene: `Scene` (canvas, the biggest section)
+### 8.4 Scene: `Scene` (pixel canvas, the biggest section) and the sprite kit (`src/pixel.js`)
+
+**Render pipeline (built for 60 fps).**
+- `#scene` **is** the low-res **art canvas**: one canvas pixel per art pixel, scaled up by CSS (`image-rendering: pixelated`), so there is no full-screen upscale copy per frame. `PX` (CSS px per art pixel) is 2, or 3 when the viewport's shorter side is at least 900 px; `UP = round(PX × devicePixelRatio)` device px per art pixel. The canvas is `ceil(device px / UP) + 2` art pixels each way (one spare art pixel past every edge) and positioned at (`LX`, `LY`) device px. `resize()` recomputes all of it and mirrors the size on the element (`#scene[data-art-w|h|px]`, read by the smoke test); `Scene.artSize` returns `{w, h, px, up}`.
+- The camera still works in CSS px (`computeTarget()`), and `mapCamera()` converts it each frame: `X(p)`/`Y(alt)` return art pixels with the camera offset **floored to whole art pixels** (no shimmer). The remainder becomes a whole-device-pixel CSS `translate` on the canvas (`shX`, `shY`), so motion glides between art pixels. The camera's ease ends once it is within a third of a CSS pixel, and the zoom snaps home within 0.4%.
+- **Frames are capped at 60** (`frame()` skips animation frames that arrive early on 90/120 Hz screens).
+- **Static vs live.** Everything that doesn't animate is drawn by `staticWorld()`: terrain, the scenery across the face (`drawScape`), the trailside trees, landmarks (airstrip and plane, Namche, Tengboche, Icefall seracs and ladder, wands, camp tents) and the dashed route. Everything that moves is drawn every frame in `render()`: clouds, prayer flags and chimney smoke, the solid route behind the climber, the altitude scale and Death Zone line, milestone plates, the ghost, the climber or the ride, bursts, weather, confetti, the spit.
+- **Cached layers.** The world (`staticWorld`, drawn untinted, plus a route-height array) and each of the three ranges live in canvases bigger than the screen (margins `WMX/WMY`, `RMX/RMY`, with extra room in the climbing direction: up and to the right). Each layer has a **front** copy that is drawn with an offset while the camera only slides, and a **back** copy that a *job* redraws a vertical strip per frame (world 8 strips, ranges 6), then swaps in. A job freezes the camera, light and haze it started with, so its strips line up; terrain and range facet runs use a lead-in (`SL`) so strips meet without seams. Jobs start when a front can't cover the screen, drifts 40% from its ideal position, or (when still) its colours are stale. `stripBudget` allows one strip per frame while moving, four when the scene is still (`still`: the camera has arrived, nothing has moved for 3 frames and no ride is running).
+- **Light on the world:** one multiply pass over each strip of the cached world (alpha kept), never sprite by sprite. Sprites drawn outside the caches use `draw(sprite, x, y, tinted)`, which keeps tinted copies per light step.
+- **When a front can't serve the frame** (zooming, or the camera outran a cache): sky and ranges are written in one pixel pass (`renderRangesFlat`, each range clipped by the one in front and by the ground; stars, sun and moon clipped to the open sky) and the world is drawn directly (`directWorld`, holding its light step until the scene is still).
+- **Backdrop.** Sky, stars, sun, moon and the three range fronts are composed into `bdCv` and reused until one of them moves by a pixel (stars twinkle in 1/8 s steps). Range fronts are copied only over the rows where they can be seen.
+- Other caches: the sky (`renderSky`, flat bands, rebuilt when the time of day moves one of 64 steps, at most every 0.25 s while moving), sprite frames (built once from the maps, and pre-built in idle time by `warmSprites()` for every size class and the ride), text and sign sprites (bounded; cleared when the web fonts arrive).
+
+**Sprite kit (`window.DA_PIXEL`, `src/pixel.js`; `K` inside the Scene).**
+- Helpers: `dither(x, y)` (Bayer 4×4), `rampPick(ramp, v, x, y)` (dark→light ramp, dithered between steps), `selout(buffer)` (the outline: empty pixels next to filled ones become a darkened copy of them, darkest underneath), `blob(buffer, cx, cy, r, ramp, squash)` (a lit, dithered sphere), `fromMap(buffer, x, y, rows, palette)` (string maps), `sprite(buffer, ax, ay)` (canvas plus anchor).
+- Text: `text(str, {color, outline, bold})` draws Silkscreen at 8 art px and thresholds the alpha so letters stay crisp (a gentler fallback when Silkscreen hasn't loaded); `sign(title, sub, {accent})` is a wood sign (or an orange tag) for milestone plates, the "Your best" ghost, the overview pin and the ride's ALPACA EXPRESS sign.
+- Climber: `buildClimber(pose, outfit, {ghost})` builds the 16 × 24 sprite from layer maps (`HEAD`, `BODIES.stand|walk|cheer|sit`, `CHEER_ARMS`, `DEFAULT_HAT`, `CLIMBER_PAL`), back to front: pack, body and face, outfit, neck, over-layer, eyes, hat. `outfit = {hat, eyes, neck, over, suit}` names entries of `COSMETICS` (`hat: null` = bare head; `suit` recolours the outfit letters J/L/j/q). The head sits at the same place in every pose, so hat, eyes and neck items need no art per pose. Results are cached per pose and outfit. `hatSprites(outfit)` gives the hat alone in four 90° rotations (the flying hat). `Scene.setOutfit(outfit|null)` sets the outfit; the game only ever leaves it null, and only dev mode's preview changes it.
+- Alpacas: `buildAlpaca(coat, 'stand'|'run'|'sled', {sad, seed})` from `ALPACA`/`ALPACA_RUN` (24 × 22). Fleece is shaded per pixel over a four-step ramp from the coat pair (`COATS`: cream, fawn, brown, white, black; `GOLD_COAT`). `overlay(kind)`: `mask`, `lamp`, `beam`, `map`, `sparkle`, `dizzy`, `flag`, `canopy`, `splat`.
+- Scenery: `tree`, `pine`, `bush`, `stone`, `teahouse('XL'|'L'|'S')`, `monastery`, `tent`, `serac`, `plane`, `cloud`, `disc` (sun), `moon`, `ring` (bursts, the pin pulse), `puff`, `wand`, `smokePuff`, `field`, `pond`, and for the mountain face `stoneHut`, `chorten`, `cairn`, `outcrop` (tone 0 rock, 1 snow-capped, 2 summit), `crevasse`, `flagPole`, `maniWall`, `flowers`. Most take a size class: `L` in the follow view, `M` in between, `S` in the overview (`sizeClass()`), because pixel sprites are never scaled.
+- **Scenery layout.** A calm corridor along the trail: `TRAIL_TREES` (7), three Namche `HOUSES`, a few tents per camp. Across the face, `SCAPE` (sorted by `p`) holds groves, farmsteads (house, field, trees), grazing alpacas and seeded singles at a depth `d` (CSS px below the trail, 80 or more). Each single picks its sprite from the **altitude band of the pixel it lands on**: meadow (trees, bushes, flowers, stones, cairns), pine belt, scrub (huts, chortens, flag poles), rock (stones, outcrops, mani walls) and ice (crevasses, snow-capped outcrops). The overview keeps only the bigger pieces.
 
 **Coordinates.**
 - **World x is `p`**, progress along a stylized side profile. Lukla is at `p = 0.07` (`P0`) and the summit at `p = 0.868` (`PS`); the far face drops away beyond that.
 - **World y is altitude** in meters.
-- The camera is `{p, alt, sx /* px per p-unit */, sy /* px per meter */}`. `X(p)` and `Y(alt)` map world to screen.
+- The camera is `{p, alt, sx /* CSS px per p-unit */, sy /* CSS px per meter */}`. `X(p)` and `Y(alt)` map world to art pixels (above).
 
 **Ground.** `CP` holds control points (p, alt), interpolated with a monotone cubic (`smooth`), plus deterministic jaggedness (`rough`). `rough` is suppressed near `SHELVES`, the flat spots where landmarks sit. `ground(p) = smooth + rough`. `pFor(alt)` is a binary search for the climber's position. The route is monotonic between P0 and PS by construction, so **keep `CP` monotonic in that range** if you edit it.
 
 **Views** (`setView(view, rect?, {pin, snap})`):
 - `overview` frames the whole mountain into a screen rect (home, results). The aspect is limited so it doesn't get squashed.
-- `follow` puts the climber at about 72% of screen height, showing roughly 1,400–2,100 m of vertical range.
+- `follow` puts the climber at about 72% of screen height, showing roughly 1,400–2,100 m of vertical range. During play `layoutScene()` passes the **open strip** (below the answer card and the room its tags can take, above the next-landmark plate or the phone keyboard), and the climber's feet are clamped into it (at least 60 px below its top, 26 px above its bottom). The zoom never changes for the keyboard; the camera only pans. `#scene[data-climber-y]` mirrors where the feet are framed (CSS px) for tests.
 - `peek` is `follow` raised by 30% of the range, used during leg transitions.
+- `ride` keeps the `follow` zoom (pixel sprites never scale, and every zoom frame is a full redraw) and pans so the climber sits at about 60% of the *visible* height (`visualViewport`), with 110 px of room under the HUD for the herd and banner and its feet above the phone keyboard. `Scene.ride()` switches to it and restores the previous view at the end. Milestone plates hide during a ride.
 
 `layoutScene()` in the app computes the rect from the DOM layout for each screen. The camera eases toward its target every frame (snaps under reduced motion).
 
-**Time of day.** `SKY` keyframes are indexed by **the climber's altitude**: top color, horizon color, ambient tint for the terrain, and star opacity. `tint()` multiplies canvas colors by the ambient tint. The sun follows an arc and fades out above about 8,500 m, when the moon appears.
+**Time of day.** `SKY` keyframes are indexed by **the climber's altitude**: top color, horizon color, ambient tint for the terrain, and star opacity. The ambient tint (`AMB`, quantized to 24 steps) colours the ranges, multiplies the cached world and every tinted sprite. The sky is a banded gradient (6 flat bands). The sun follows an arc and fades out above about 8,500 m, when a crescent moon appears; at the summit a dithered aurora joins the stars.
 
-**Draw order** (`draw(dt)`):
-1. Sky gradient, then stars, sun and moon.
-2. The far range (`farAlt`, named neighbors such as Ama Dablam, Nuptse, Lhotse and Makalu, parallax 0.22/0.17).
-3. The mid range (`midAlt`).
-4. The cloud sea at about 4,500 m.
-5. Terrain: an altitude gradient (`TERRAIN`), a Yellow Band stripe on the Lhotse face, shading bands under a lit rim, and a snow cornice line.
-6. Decorations: forest (below the 3,900 m treeline), the Lukla airstrip, Namche houses and prayer flags, Tengboche monastery, Khumbu Icefall seracs with a ladder, camp tents and summit flags.
-7. The route: dashed ahead of the climber, solid orange behind.
-8. The altitude scale (follow view only) and the 8,000 m Death Zone line.
-9. Milestone plates, the personal-best ghost and the climber (`climber()`; walks while moving, cheers on rare finds, plants a flag at the summit).
-10. Bursts, then snow and wind streaks, then prayer-flag confetti.
+**Draw order** (`render(dt)`, all on the art canvas):
+1. The backdrop: the cached sky (6 bands, an aurora at the summit), stars (1 px, the brightest with a 4-point cross), sun or moon, then the three range fronts: the far range (`farAlt`, named neighbours such as Ama Dablam, Nuptse, Lhotse and Makalu, parallax 0.22/0.17), the mid range (`midAlt`) and forested foothills (`nearAlt`, low altitudes only). Ranges are flat-shaded column runs: a lit or shaded face, a wobbly snow cap, a hazed foot.
+2. The cloud sea at about 4,500 m (puffy pixel clouds).
+3. The world front: terrain as flat bands per column (meadow below 3,900 m, scrub to 4,300, rock to 5,300, ice to 8,050, snow above) with a lit or shaded face, a darker body and a 1 px highlight on the top edge; then the scenery, landmarks and the dashed route (see "Static vs live").
+4. Live: Namche's prayer flags and chimney smoke, the Base Camp and summit flags, the solid route behind the climber (from the front's route heights).
+5. The altitude scale (follow view only) and the 8,000 m Death Zone line.
+6. Milestone plates (wood signs; hidden during a ride), the personal-best ghost (the default climber at 35%, no outline) and the climber (walks while moving, cheers on rare finds, plants a flag and cheers at the summit) or the ride.
+7. Bursts (pixel rings and sparks), snow and wind streaks, prayer-flag confetti (batched by colour) and the farewell spit.
+8. The sub-pixel CSS shift.
 
-**Public API:** `start`, `resize`, `setView`, `setClimb(alt, {snap})`, `setGhost(alt|null)`, `setReduced(bool)`, `onFrame(fn(alt, dt))`, `alt` (the displayed, animated altitude), `burst(tier)` and `confetti()`.
+**Alpaca ride.** `ride(plan, {fromAlt, toAlt, answer, seed, on})` draws a ride from `E.ridePlan()` and returns a promise (true when it finishes, false if `cancelRide()` stopped it). While it runs it drives the climber's altitude itself. The timeline runs on u = elapsed ÷ duration: enter 0–.18, scoop .18–.26, gallop .26–.78 (altitude eases from→to), drop .78–.86, exit .86–1. The `on(event, plan)` callback gets `enter`, `scoop`, `gallop` or `shrug`, `drop`, `late` and `spit` (the app plays sounds and haptics from these). It draws in art pixels with the kit's sprites: alpacas (run and stand frames alternate while moving; `sled` on the glacier), `banner()` (the answer in Silkscreen 8 px capitals on a parchment strip with a gentle sag, between two wooden poles from the holders' heads, with the ALPACA EXPRESS sign on top; bold, then regular, then ellipsized to fit), the flying hat (`hatSprites`, 90° steps), the `?` (a text sprite), dizzy stars, the golden shimmer, `drawSplat()` and a preallocated `puffs` pool. When there is no banner (a no-move shrug), the sign stands over the lead alpaca. Styles: conga, a pyramid that stacks as the climber is lifted, crowd-surf (the climber lies along the herd, rotated 90°), and a paraglider (`overlay('canopy')`). Bands: dust puffs on the trail, belly-sledding on the glacier, oxygen masks in the Death Zone, headlamps with a dithered beam at night. `rideState()` → `{phase, u, from, to, plan}` drives the slot-machine altimeter; `night` reports whether the sky is at night.
+
+**Public API:** `start`, `resize`, `setView`, `setClimb(alt, {snap})`, `setGhost(alt|null)`, `setReduced(bool)`, `setSkyOverride(alt|null)`, `setOutfit(outfit|null)`, `outfit`, `artSize`, `onFrame(fn(alt, dt))`, `alt` (the displayed, animated altitude), `burst(tier)`, `confetti()`, `ride()`, `cancelRide()`, `riding`, `rideState()` and `night`.
+
+**Reduced motion:** the camera snaps, and no ambient animation runs (drifting clouds, chimney smoke, flag flutter, twinkling, snow and wind, the walk cycle).
 
 **To add a landmark:**
 1. Add a shelf point to `CP` and its `p` to `SHELVES`.
-2. Draw it in `draw()` near the other decorations, guarded by `visible(p)`.
+2. Build its sprite in `src/pixel.js` (with size classes if it should show in the overview), add it to `warmSprites()`, and draw it in `staticWorld()` near the other landmarks, guarded by `visible(p)`; pass `tinted = true` so it follows the time of day outside the caches. Anything that animates goes in the live part of `render()` instead. Patterns must be world-anchored (`x - oxA`, not `x`), or strips will show seams.
 3. If it is a milestone, add it to `CONFIG.milestones`. Plates are positioned automatically; the overview label side is chosen in the milestone-plate loop.
 
 ### 8.5 Judge: `Judge` (LLM answer checking, spec §5.5)
@@ -438,17 +475,18 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 - **`ui`** holds cached element references.
 - `beginDaily()` → `enterPlay()` → `countdown()` → the round is created → `startLeg(0)`.
 - `startLeg(i)` sets the deadline, category text, leg label, the night class through `setNight()`, and an announcement.
-- **Per-frame handler** (`Scene.onFrame(...)`): the HUD altitude, Air %, the "Next: … in … m" plate, the timer bar (`--k` scale) and seconds, and the urgent state in the last 3 s. It calls `endLeg()` when time is up.
+- **Per-frame handler** (`Scene.onFrame(...)`): the HUD altitude, Air %, the "Next: … in … m" plate, the timer bar (`--k` scale) and seconds, and the urgent state in the last 3 s. It writes to the page only when a value changes (`hudSet`; the altimeter changes one text node via `setAlt`), and while the numbers roll the text updates at most 20 times a second (exact when they stop). It calls `endLeg()` when time is up.
 - **Answers:** `submit()`, `accept()`, `reject()`, `duplicate()`, `variantLimit()` (a 4th qualified answer: "Variant limit reached", dup sound, no penalty), `judgeAnswer()`, `resolveJudged()`. Qualified answers store `q` (the qualifier) and show the qualified canon on the chip. Autocorrected answers store `x` (the fix kind) and their chip shows the listed name with a small "you typed …" line underneath (`.chip.fixed`); screen readers hear "Corrected to Fuchsia. Climber, plus 200 meters". They score at the entry's full tier. Chips are created with `chipEl()`/`fillChip()` and prepended (newest first). CSS fades older ones.
 - **Find feedback** (scales with rank): every rank gets a chime and a canvas burst. Crawler–Climber also get `gainPop()`, a floating "+N m" over the answer box (bigger per rank); Climber chips pop harder and the climber cheers.
 - **Spotlight** (`spotlight()` / `clearSpotlight()`, `#spot` overlay): Mountaineer and Sherpa freeze the leg for `tiers[].pause` ms and show the rank, the answer huge, a counting-up "+N m" and the category. The clock is **held, not spent**: `leg.deadline` is pushed back by the pause, `G.pauseUntil` freezes the timer display, and `submit()` ignores Enter (keeping the typed text) until it clears. The input keeps focus. Mountaineer adds a purple flash; Sherpa adds a gold flash, spinning rays, prayer-flag confetti, a screen quake and strong haptics. Overlapping spotlights extend rather than stack.
+- **Alpaca ride** (every live Sherpa answer, after its spotlight): `accept()` queues a job (`queueRide`) instead of moving the climber, and the spotlight's timer starts it (`runNextRide`). The ride holds the clock with `holdClock(plan.durationMs)`, and `clearSpotlight()` keeps `G.pauseUntil` at the ride's end while one runs, so the ride never costs time, Enter waits (typed text kept) and dev pause and speed still behave. The climber lands exactly where the answer put it (`landRide`; a dev ride over the summit then hands off to `devLapUp()`). Rides queue (a judge result can land mid-ride); `cancelRides()` runs wherever the leg or climb is torn down (`startLeg`, `endLeg`, `finishDev`, `devSimulateReload`). While riding, `.riding` on `#play` fades the leg card and chips (the input stays focused, the HUD stays), and the altimeter digits spin like a slot machine during the gallop (`.slot`). The announcement is "Alpaca express! Carried up 625 meters, to Camp 1." (plus "Golden alpaca!"). Reduced motion skips the ride: the altitude snaps and the feedback line says "Carried up by alpacas · +625 m".
 - **End of leg:** `endLeg()` → `showTransition()`, or `finishPractice()`, or `finishRound()` → `showResults(round, {fresh})`.
-- **Results** (`showResults`): milestone, altitude, personal-best badge, per-leg rows (bar = effective gain / legCap, icon = rarest rank), best finds (top 3 by rank), **missed gems** (one Climber or Mountaineer unfound answer from up to 4 categories, seeded by puzzle), the share box, Copy, streak, best and a countdown to the next climb.
+- **Results** (`showResults`): milestone, altitude, personal-best badge, per-leg rows (bar = effective gain / legCap, icon = rarest rank), best finds (top 3 by rank), **missed gems** (one Climber or Mountaineer unfound answer from up to 4 categories, seeded by puzzle), "Alpaca rides: N" when there were any (`alpacaRides(r)` counts ok Sherpa answers, judge-accepted ones included), the share box, Copy, streak, best and a countdown to the next climb.
 - **Sharing:**
-  - `shareText()`: `Daily Ascent #N ⛰️ / <emoji> <milestone> · <m> / 7 squares / [url]`.
+  - `shareText()`: `Daily Ascent #N ⛰️ / <emoji> <milestone> · <m> / 7 squares / [🦙 per alpaca ride] / [url]`.
   - `shareUrl()`: uses `window.DA_SHARE_URL` if set; otherwise it auto-detects github.io or a top-level https host. Inside the artifact frame there is no URL.
   - `copyShare()`: uses the clipboard, falling back to selecting the text.
-- **Dialogs:** these are native `<dialog>` elements (`openDialog`, `closeDialogs`; `[data-close]` buttons; clicking the backdrop closes them). `openStats()` and `openSettings()` render their bodies when opened. Extra time is locked while a round is in progress.
+- **Dialogs:** these are native `<dialog>` elements (`openDialog`, `closeDialogs`; `[data-close]` buttons; clicking the backdrop closes them). `openStats()` and `openSettings()` render their bodies when opened; Stats includes lifetime alpaca rides and the longest ride (meters, answer and category). Extra time is locked while a round is in progress.
 - **Boot:** `start(hot)` loads the store and applies motion, sound and help settings. It then starts the Scene and **forfeits any unfinished round** (it is scored on what was entered and the streak updates). Next it renders the home screen, shows results if today's round was forfeited, auto-opens help on the first visit, and calls `Judge.init()`.
 - **Hot reload (artifact only):** `window.claude.hot.snapshot()` saves `{resume}`. If a new version is published mid-round, `start({resume: true})` calls `resumeRound()` instead of forfeiting.
 
@@ -456,22 +494,27 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 
 ## 9. UI and design system (`src/shell.html`)
 
-- **Tokens** are defined on `:root`, light by default, with the dark set under `prefers-color-scheme` and `[data-theme="dark"]`:
-  - palette: `--khumbu`, `--snow`, `--glacier`, `--suit`, `--suit-deep`, `--suit-lip`
-  - surfaces: `--bg`, `--panel` (opaque snowfield), `--panel-solid`, `--panel-edge`, `--line`, `--track` (timer and bar tracks), `--plate` (ink instrument plates), `--shadow`, `--shadow-sm`
+- **Tokens** are defined on `:root` (day, parchment) with the night set under `prefers-color-scheme: dark`, `[data-theme="dark"]` and `.night`:
+  - palette: `--px-ink` #281e16, `--parch` #f4e7c8 (`--parch-hi` #fff7e0, `--parch-lo` #d8c08f), `--wood` #8a5a34 (`--wood-hi`, `--wood-lo`), `--plate-bg` #2d2a4a (`--plate-hi`, `--plate-edge`), `--suit` #ff5a1f (`--suit-hi`, `--suit-lip` #b23c0e), `--cream`
+  - surfaces: `--bg`, `--panel` (parchment; night #2b2747), `--panel-solid` (inputs), `--panel-edge` (the 3 px border), `--panel-hi` / `--panel-lo` (bevels), `--line`, `--track`, `--plate` (HUD plates), `--shadow`, `--shadow-sm`, `--notch` (the 4 px corner clip-path)
   - motion: `--ease-out`, `--ease-spring`
   - text: `--ink`, `--ink-2`, `--ink-3`
-  - action and state: `--accent` / `--accent-hi` / `--accent-ink`, `--bad`
-  - rank colors: `--t0` … `--t4`
-  - fonts and radius: `--f-display`, `--f-stencil`, `--f-body`, `--r`
+  - action and state: `--accent` / `--accent-hi` / `--accent-ink` (ink: white on orange fails contrast), `--accent-text`, `--bad`
+  - rank colors: `--t0` … `--t4` as text colours (day: #4b5260, #2e6a2b, #1f5f96, #6a35b0, #8a5e00, all 4.5:1 or better on parchment; night: the bright set), `--tf0` … `--tf4` fills
+  - fonts and radius: `--f-display` and `--f-stencil` (Silkscreen), `--f-body` (Pixelify Sans), `--r` / `--r-sm` (0)
 
-  **`.night`** on `#app` swaps the panel tokens to night values (legs 6–7, any altitude ≥ 8,000 m, and results that finish ≥ 8,000 m).
+  The base component rules come first; the **pixel layer** block after them restyles every component (panels, buttons, HUD, chips, spotlight, results, dialogs, switches) in one place, and the dev panel follows the tokens at the end of the stylesheet. **`.night`** on `#app` swaps the panel tokens to night values (legs 6–7, any altitude ≥ 8,000 m, and results that finish ≥ 8,000 m).
+- **Pixel UI rules:** square corners notched with `--notch` on panels only (a clip-path would cut a button's focus ring, so buttons stay square with no clip); Silkscreen at multiples of 8 px where possible (16, 24, 32, 40); focus rings are a 3 px orange outline with a 2 px offset.
 - **Layout:**
   - `#scene` is a fixed full-viewport canvas behind `#app`. Each screen is an absolutely positioned flex column with safe-area gutters (`max(16px, env(safe-area-inset-*))`).
   - On phones, the home card and the results sheet are bottom sheets flush to the screen edges.
   - Breakpoints: `min-width: 900px` (results sheet docks right, home card floats left, the mountain fills the rest), `max-height: 640px` (compact leg screen) and `max-width: 360px` (tighter HUD).
-  - Between legs, `.play:has(#transition:not([hidden]))` fades the leg card out, so the camp report has the screen to itself. The input keeps focus.
+  - Between legs, `.camp-report` on `#play` (set by a small observer on `#transition[hidden]`; a `:has()` rule here used to re-check on every change in the play screen) fades the leg card out, so the camp report has the screen to itself. The input keeps focus. `.popping` on the answer form (same idea) hides the placeholder under a gain pop.
+  - `#scene` is sized and positioned by `Scene.resize()` (one spare art pixel past each edge) and shifted by whole device pixels each frame.
+  - The answer box (`.answer`) types in Pixelify Sans 500 at 22 px, a touch lighter than the 600 it had, so typed words read easily; the placeholder is 400.
   - `.reduced` on `<html>` kills animations, matching the OS reduced-motion media query.
+  - `.riding` on `#play` (alpaca ride) fades `.play-card` and `#chips` and hides the next-landmark plate; the HUD stays and the input keeps focus.
+  - **Phone keyboard:** the page uses `interactive-widget=resizes-visual` (set in `build.mjs`), so the keyboard shrinks only the visual viewport and the canvas never resizes. `measureKeyboard()` (app) sets `--kb` and `.kb-open` on `<html>` when it covers more than 80 px; `.kb-open` compacts the leg screen (a smaller category, a tighter card, one row of answer tags, no next-landmark plate) and `layoutScene()` frames the climber in the strip left above the keyboard. It reruns on `visualViewport` resize and scroll and at every leg start.
 - **Key element ids:**
   - Home: `#btn-begin`, `#btn-practice`, `#judge-row`, `#fact-*`.
   - Play: `#legs`, `#alt-num`, `#air`, `#category`, `#timer-fill`, `#secs`, `#answer`, `#btn-send`, `#feedback`, `#chips`, `#next-mark`, `#countdown`, `#transition` (with `#tr-*` and `#tr-actions`).
@@ -495,18 +538,20 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
   - qualifier rules: qualified matches and their display canon, explicit entries winning, no stacking, base-tier scoring, (entry, qualifier) dedupe and the per-leg variant cap
   - leg timers (30/30/25/25/25/20/20) with multipliers, extra time, countdown, transitions and penalty unchanged
   - `MUST_ACCEPT` (every category, 5–8 answers) and `MUST_REJECT`
+  - the alpaca ride plan: chances over 200,000 seeded rolls (golden ≈ 5%, late ≈ 10%, spit ≈ 2%), every style appearing with paraglide the rarest, a herd of 4–6, same seed same plan, band boundaries, headlamps, short hop, no move, crossesSummit, `force`, duration bounds and `speed`, the reduced plan, and `shareAlpacas()` (never letters)
   - autocorrect: `MUST_CORRECT` (52 real misspellings in 39 categories, covering typo, keyboard, sound and word-by-word fixes) and `MUST_NOT_CORRECT` (short words, gibberish, too-short inputs, exact answers near another, an ambiguous pair), plus the helpers and CONFIG defaults
 
   It also prints an informational **autocorrect near-pairs report** (answers one slip apart, with the ones where both are Crawler or Hiker listed) and the **autocorrect speed** in the largest category (target under 3 ms per `match()`).
 
   It then prints per-category tier counts and a **calibration Monte Carlo**. The calibration uses four player archetypes (casual, solid, strong, expert) with guessed answer speeds and tier mixes, and reports how many rounds land in each band (below Base Camp, Base Camp, Camp 1–2, Camp 2–Death Zone, Death Zone, Summit). Treat it as a sanity check until real play data exists.
 - **`npm test`** also checks dev mode: lap math (wrap at the summit, uncapped total, lap count), `answerTable()` (one row per entry in every category, rank counts adding up, natural legs, gains at leg 1 and leg 7, the chain bonus, every leg multiplier, commonness bands from CONFIG), the constant-time compare, the lock's shape, that a wrong password fails, and (only when `dev.local.mjs` exists) that the private password matches `src/dev-lock.js`.
-- **`npm run smoke`** builds a sandboxed iframe, speeds up the CONFIG, plays all 7 legs typing seed answers plus one invalid answer per leg, and asserts that chip counts match, the results and share text appear, and a reload shows "View Results". Then, if `dev.local.mjs` exists, it opens `?dev`, checks a wrong password is refused, unlocks, pauses (the clock must hold), runs the autoplay bot until lap 2, ends the climb and asserts `daily-ascent:v1` is byte-for-byte unchanged. During the dev lap the bot misspells every third answer, and the smoke checks that the log shows corrected answers and that the debugger explains "fuschia" → Fuchsia. It then opens the Answers tab on Islands, checks the count matches the category's entries, and checks the rank filter (Sherpa only, searching "ice" and "island"). It fails on any page error.
+- **`npm run smoke`** builds a sandboxed iframe, speeds up the CONFIG, plays all 7 legs typing seed answers plus one invalid answer per leg, and asserts that chip counts match, the results and share text appear, and a reload shows "View Results". Then, if `dev.local.mjs` exists, it opens `?dev`, checks a wrong password is refused, unlocks, pauses (the clock must hold), runs the autoplay bot until lap 2, ends the climb and asserts `daily-ascent:v1` is byte-for-byte unchanged. During the dev lap the bot misspells every third answer, and the smoke checks that the log shows corrected answers and that the debugger explains "fuschia" → Fuchsia. It also moves the section slider to Answers and steps with › to Effects. It then opens the Answers tab on Islands, checks the count matches the category's entries, and checks the rank filter (Sherpa only, searching "ice" and "island"). Finally it stops the bot and plays the alpaca ride from the Effects tab once per band (forcing golden, late and spit across the runs), with the UI hidden, printing the frame rate and saving `shots/alpaca-<band>.png`, and checks the dev log has a ride line. The daily climb (with `CONFIG.ride.speed` = 3) checks each Sherpa answer's ride: `.riding` appears after the spotlight, the clock holds, the ride ends, `#answer` keeps focus and text typed mid-ride is kept. It also checks the share text has 🦙 and no answers, that results list alpaca rides, and that with reduced motion a Sherpa answer gives "Carried up by alpacas" and no ride. During leg 1 it simulates a phone keyboard (the visual viewport 300 px shorter) and checks `.kb-open` and that the climber is framed above it, then that everything returns when it closes. It also checks the pixel renderer: the art canvas size from `#scene[data-art-*]` (2 or 3 CSS px per art pixel, width ≈ viewport ÷ px + 2 spare art pixels), that the answer box types at weight 500, that leg 6 is on night panels, that each dev alpaca ride runs at 30 fps or more, and the draft outfit preview (bobble hat, summit shades and scarf; logged as "outfit: …", never saved to either save). It saves `shots/newlook-home.png`, `newlook-leg1.png`, `newlook-leg6.png`, `newlook-ride.png`, `newlook-results.png` and, in dev mode, `newlook-outfit.png`. Google Fonts may be unreachable where the smoke runs; the screenshots then show the fallback faces. It fails on any page error.
 - **Manual checks the scripts can't do:**
-  - real phone keyboards (iOS Safari, Android Chrome); the keyboard must stay up between legs
+  - real phone keyboards (iOS Safari, Android Chrome); the keyboard must stay up between legs, and the climber must stay visible above it
   - artifact consent for answer checking
   - sound on a real device
   - dark mode and reduced motion
+  - the pixel look on real phones (crispness at odd device pixel ratios, frame rate on a mid-range phone)
   - time zones around midnight
 
 ---
@@ -539,7 +584,11 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 | Content volume | MVP: 30 days | 49 categories = 7 days of unique deals, then reshuffled cycles | Content pipeline (§7.3) still to build |
 | Answer variants | Not covered | Per-category `qualifiers` (§6.3, §7): one leading word makes a listed answer a distinct variant ("women's soccer"), scored at the base tier, at most 3 per leg | Players typed real variants and were penalized; listing every "adjective + answer" combination would bloat the lists, and the cap stops farming |
 | Autocorrect | §5.3 stage 3: edit distance 1 (5–8 letters) or 2 (longer), only with exactly one candidate | Silent correction on Enter: weighted typo cost, keyboard slips, repeated letters, sound-alikes, word by word, with a clear-winner margin (§6.3). Corrections score at the full tier and show "you typed …" on the tag | Players who know an answer shouldn't lose time to spelling. No visible autofill or suggestions: they would leak the answer bank and reward guessing over knowledge |
+| Alpaca ride | Sherpa: "something even more grand" (the spotlight row above) | After the Sherpa spotlight, a herd of alpacas carries the climber up by the meters earned (about 3 s, clock held), every time: altitude-aware herds, random styles, answer banner, ALPACA EXPRESS sign, climber reactions, slot-machine altimeter; rare golden (1/20) and late (1/10) alpacas and a farewell spit (1/50) | Make the rarest find a comic event worth remembering, without costing the player time. Alpacas over (true-to-Everest) yaks, for comedy. Defaults: under 100 m a map-and-shrug short hop, at 0 m the herd just shrugs; rides queue; rare variants can stack |
+| Share text | Altitude, milestone, squares | Adds one 🦙 per Sherpa alpaca ride (🦙×N from 6) | A playful brag that reveals no answers (`shareAlpacas()` never contains letters) |
+| Art style | Not specified | Khumbu dawn flat illustration → cozy pixel art (mockups approved November 2026): a low-res art canvas scaled up crisply, dithered gradients, selective outlines, puffy trees, thatched teahouses, a layered climber ready for cosmetics, and pixel menus (parchment, wood signs, HUD plates, Silkscreen and Pixelify Sans) | Kevin picked the look from a cozy farm-game reference; the side view and every rule stay the same. Cosmetic items are drafted (dev preview only) and not planned for a while |
 | Leg timers | 20 s for every leg, shrinking later | 30, 30, 25, 25, 25, 20, 20 (+10 s each, 175 s total); nothing else retuned | More time per category, so the bigger word lists have room to pay off. The unchanged calibration sim now gives about 33% summits (target 5%), so a retune is due |
+| Frame rate | Not specified | 60 fps, capped: the art canvas is the visible canvas (CSS-scaled, sub-pixel CSS shift), cached world and range layers redrawn a strip per frame, flat-shaded terrain and ranges, a calmer trail with scenery across the face, rides that pan instead of zoom, a quiet HUD | The first pixel renderer shaded every pixel each frame: 8–23 fps with the CPU slowed 4–6×. Now 56–60 at 4× (mid-range phone) and 51–59 at 6× in headless Chrome without a GPU. Kevin asked for a constant 60 and smoother movement, keeping the cozy pixel look and the detailed climber |
 
 ---
 
@@ -567,7 +616,11 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 - Autocorrect can't tell two real answers one slip apart (waiter/writer, shirt/skirt, Monet/Manet); exact answers always win, and a typo between them usually comes back ambiguous. `npm test` prints these near pairs. It also shows duplicate-looking entries such as Goat cheese / Goats cheese, worth merging in a data pass.
 - The overview milestone labels can crowd on very small screens (Lukla/Tea House, Camp 1/Camp 2).
 - Dev mode is client-side too. The password check is real (PBKDF2, no plaintext anywhere public) but anyone who can edit the page or its storage can reach the same code. Dev mode only changes the viewer's own browser, so that's acceptable.
-- `app.js` is about 1,850 lines in one IIFE. If it grows much more, split it into modules (`scene.js`, `judge.js`, `flow.js`) and extend `build.mjs` to concatenate them. Keep the `DA_ENGINE` / `DA_CATS` globals.
+- `app.js` is about 2,600 lines in one IIFE (the sprite kit already lives in `src/pixel.js`). If it grows much more, split it further (`scene.js`, `judge.js`, `flow.js`) and extend `build.mjs` to concatenate them. Keep the `DA_ENGINE` / `DA_CATS` globals.
+- Pixel sprites are never scaled, so the overview uses small size classes; the climber stays 16 × 24 art pixels even there. Alpacas don't tilt with the slope (pixel art can't rotate smoothly).
+- Canvas text needs Silkscreen; until it loads (or where Google Fonts is blocked) the signs use a thresholded fallback face that is legible but rougher.
+- Frame rate: pressing Begin has one short hitch while the play screen first draws, and with the CPU slowed 6× the busiest moments (spotlights and rides back to back) dip to about 54 fps.
+- While the camera moves, the world's light and the sky step at most every 0.25 s and the cached layers refresh a strip at a time, so a long teleport (dev mode) can show the old light for a moment before it catches up.
 
 ---
 
@@ -604,13 +657,15 @@ An infinite version of the game plus tools for testing changes. It ships in ever
 | Move | Jump to pattern leg 1–7, altitude slider, teleport to any milestone, set lap, scrub the sky's time of day (`Scene.setSkyOverride`), night panels auto/on/off |
 | Content | Queue the next leg's category (searchable, all 49 + practice), autoplay bot (rank or mix, 1–6/s, a wrong answer every N, a typo every N: drops a doubled letter or swaps in a keyboard neighbour so autocorrect gets exercised), live cheat sheet for the current leg (also lists the category's qualifiers, the variants found and "N/3 used this leg"; the bot types plain answers only), preview any date or puzzle number's 7 categories |
 | Answers | The full answer bank for any category (all 49 + practice, grouped by kind and lane), from `DA_DEV_CORE.answerTable()`: each answer's rank (icon, colour, name), aliases, base gain, score at a chosen pattern leg (default the category's natural leg) and at the full chain bonus, and a ✓ for answers found in the current leg. Search (through `normalize()`), rank filter chips, leg and sort (rarest first, most common, A–Z, list order) selects, and Copy as CSV (falls back to a dialog with the text selected). The header shows counts per rank with bars, each rank's commonness band ("Sherpa: under 1% of players"), the multiplier and the qualifiers. Rows render 200 at a time |
-| Effects | Each rank's full find feedback (no score change; spotlight uses `noHold`), every `Sound.play` kind (plays even with sound off via `Sound.force`), summit flag, confetti, wrong-answer shake (`rejectFx`) |
+| Effects | Each rank's full find feedback (no score change; spotlight uses `noHold`), every `Sound.play` kind (plays even with sound off via `Sound.force`), summit flag, confetti, wrong-answer shake (`rejectFx`), and **Alpaca ride**: style (random or each), band (current altitude or each), meters 0–1,500, golden, late and spit toggles (unticked = off) and a reduced-motion preview; plays through `playRide` without changing the score or holding the clock. The four ride sounds join the sound buttons, and rides are logged ("alpaca ride: conga · glacier · golden · +625 m"). **Climber outfit (draft)**: one select per slot (hat, eyes, neck, over-layer, suit) with Default or None plus the draft items from `DA_PIXEL.COSMETICS`, and Reset; calls `Scene.setOutfit()` through the `setOutfit` hook, is never saved (dev save or real save), resets on lock or reload, and is logged ("outfit: yak-wool bobble hat + summit shades") |
 | Debugger | Live analysis of the answer box or a test box against any category: raw, `normalize()`, `candidateKeys()`, affix-stripped forms, the category's qualifiers, the qualifier step (stripped qualifier and base form, or why it didn't apply), match (`via` or "corrected (fix)", ambiguous competitors, none), a Correction section (the input's phonetic key; the top 3 candidates with form, cost, fix kind, allowance, key, and in or out with the reason; the margin check; the verdict), entry, dedupe key (`eid|qualifier`), would-gain (zero for a duplicate or past the variant cap). A timestamped submission log with Copy; qualified hits are labelled "qualified (q)", corrected hits read "corrected (sound): fuschia → Fuchsia", and variant-limit hits get their own line |
 | Checker | Mocks `Judge` everywhere (never calls `window.claude`, never writes the verdict cache): state off/prompt/on/denied/rate-limited (60 s), default verdict, a queue of next verdicts, response delay up to 10 s (past the 7 s settle wait → "unchecked"). Verdicts go through `interpretVerdict()`/`resolveJudged()` |
 | Save & dates | Fake clock (calendar only, via `E.setClockOffset`; never persisted), simulate a mid-climb reload (forfeit or resume, re-read from the dev save), dev save streak/rest days/last date, generate fake past rounds, open Stats with the dev save, record a climb today, reset dev save, read-only real save + verdict cache JSON, reset real save (confirm dialog lists exactly what goes) |
 | Perf | FPS meter with frame-time graph, hide UI (Alt+H, or tap the canvas to restore), screenshot of the mountain canvas (download, or a dialog to save it from when framed) |
 
-Alt+D opens or closes the panel. Shortcuts need Alt so they never capture typed answers. Panel buttons `preventDefault()` on pointer/mouse down and mouse clicks refocus `#answer`, so the keyboard stays up during a leg.
+**Section slider:** under the tab row (which runs off the edge on a phone, with soft fades on the sides that hide more tabs), a slider steps through the nine sections, with ‹ › buttons, a "Section 4 of 9 · Answers" label and Alt+[ / Alt+]. The selected tab always scrolls into view. Dragging switches live and announces the section on release; after a pointer lets go during a leg, `#answer` gets focus back (arrow keys keep focus on the slider).
+
+Alt+D opens or closes the panel, and Alt+[ / Alt+] step to the previous or next section. Shortcuts need Alt so they never capture typed answers. Panel buttons `preventDefault()` on pointer/mouse down and mouse clicks refocus `#answer`, so the keyboard stays up during a leg.
 
 ### Gotchas
 

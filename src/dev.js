@@ -134,6 +134,11 @@
     if (k === 'KeyD') { e.preventDefault(); togglePanel(); }
     else if (k === 'KeyP') { e.preventDefault(); doPause(); }
     else if (k === 'KeyH') { e.preventDefault(); hideUI(!document.body.classList.contains('dev-ui-hidden')); }
+    else if (k === 'BracketLeft' || k === 'BracketRight') {
+      e.preventDefault();
+      if ($('#dev-panel').hidden) togglePanel(true);
+      goSection(tabIndex() + (k === 'BracketLeft' ? -1 : 1));
+    }
   }
 
   // Panel buttons must not steal focus from the answer box during a climb
@@ -153,6 +158,33 @@
     ['debug', 'Debugger'], ['checker', 'Checker'], ['save', 'Save & dates'], ['perf', 'Perf'],
   ];
   let tab = 'time';
+  let secByPointer = false;
+  const tabIndex = () => Math.max(0, TABS.findIndex(([id]) => id === tab));
+  const sectionLabel = (i = tabIndex()) => `Section ${i + 1} of ${TABS.length} · ${TABS[i][1]}`;
+  // moves to section i (slider, ‹ ›, Alt+[ / Alt+]) and says where it landed
+  function goSection(i, quiet) {
+    const n = Math.max(0, Math.min(TABS.length - 1, i));
+    if (TABS[n][0] === tab) { if (!quiet) notice(sectionLabel(n)); return; }
+    tab = TABS[n][0];
+    renderTab();
+    if (!quiet) notice(sectionLabel(n));
+  }
+  // a soft fade on whichever edge of the tab row has more tabs past it
+  function tabFades() {
+    const row = $('#dev-tabs'), wrap = $('#dev-tabs-wrap');
+    if (!row || !wrap) return;
+    wrap.classList.toggle('more-left', row.scrollLeft > 2);
+    wrap.classList.toggle('more-right', row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
+  }
+  // keeps the slider, its label and the tab row in step with the selected tab
+  function syncSection() {
+    const i = tabIndex(), r = $('#dev-section'), out = $('#dev-section-out');
+    if (r) { if (Number(r.value) !== i) r.value = String(i); r.setAttribute('aria-valuetext', sectionLabel(i)); }
+    if (out) out.textContent = sectionLabel(i);
+    const b = $('#dev-tab-' + tab);
+    if (b && !$('#dev-panel').hidden) { try { b.scrollIntoView({ inline: 'nearest', block: 'nearest' }); } catch (e) { /* old browsers */ } }
+    tabFades();
+  }
 
   function buildPanel() {
     const p = $('#dev-panel');
@@ -160,9 +192,19 @@
       <div class="dev-head"><h2>Dev tools</h2><p class="dev-status" id="dev-status" role="status"></p>
         <button class="dlg-close" data-act="close-panel" aria-label="Close dev tools">✕</button></div>
       <div class="dev-acts" id="dev-acts"></div>
-      <div class="dev-tabs" role="tablist" aria-label="Dev tool groups">${TABS.map(([id, label]) =>
-        `<button role="tab" id="dev-tab-${id}" aria-controls="dev-body" aria-selected="${id === tab}" data-tab="${id}">${label}</button>`).join('')}</div>
+      <div class="dev-tabs-wrap" id="dev-tabs-wrap"><div class="dev-tabs" id="dev-tabs" role="tablist" aria-label="Dev tool groups">${TABS.map(([id, label]) =>
+        `<button role="tab" id="dev-tab-${id}" aria-controls="dev-body" aria-selected="${id === tab}" data-tab="${id}">${label}</button>`).join('')}</div></div>
+      <div class="dev-section" role="group" aria-label="Move through the dev tool sections">
+        <output class="dev-section-out" id="dev-section-out" for="dev-section">${sectionLabel()}</output>
+        <button class="dev-btn dev-section-step" data-act="sec-prev" aria-label="Previous section" title="Previous section (Alt+[)">‹</button>
+        <input type="range" class="dev-range" id="dev-section" min="0" max="${TABS.length - 1}" step="1" value="${tabIndex()}" aria-label="Dev tools section" aria-valuetext="${sectionLabel()}">
+        <button class="dev-btn dev-section-step" data-act="sec-next" aria-label="Next section" title="Next section (Alt+])">›</button>
+      </div>
       <div class="dev-body" id="dev-body" role="tabpanel"></div>`;
+    // the slider hands focus back to the answer box when a pointer lets go of it (not after arrow keys)
+    const sec = $('#dev-section');
+    sec.addEventListener('pointerdown', () => { secByPointer = true; });
+    $('#dev-tabs').addEventListener('scroll', tabFades, { passive: true });
     p.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
     p.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
     p.addEventListener('click', (e) => {
@@ -198,6 +240,7 @@
     body.setAttribute('aria-labelledby', 'dev-tab-' + tab);
     body.innerHTML = ({ time: tabTime, move: tabMove, content: tabContent, answers: tabAnswers, effects: tabEffects, debug: tabDebug, checker: tabChecker, save: tabSave, perf: tabPerf })[tab]();
     afterRender[tab] && afterRender[tab]();
+    syncSection();
   }
   const afterRender = {};
 
@@ -216,6 +259,8 @@
     const d = b.dataset;
     switch (a) {
       case 'close-panel': togglePanel(false); break;
+      case 'sec-prev': goSection(tabIndex() - 1); break;
+      case 'sec-next': goSection(tabIndex() + 1); break;
       case 'start-climb': H.startDev(); renderActs(); break;
       case 'end-climb': stopBot(); H.finishDev(); renderActs(); break;
       case 'exit-dev': H.exitDev(); renderActs(); break;
@@ -269,7 +314,9 @@
       case 'sound': H.playSound(d.v); break;
       case 'flag': H.plantFlag(); notice('Flag planted (visual only; your next answer moves the climber back).'); break;
       case 'confetti': H.confetti(); break;
+      case 'ride-fx': notice(H.playRide(Object.assign({}, rideFx))); break;
       case 'shake': H.rejectFx(); break;
+      case 'outfit-reset': for (const [k] of OUTFIT_SLOTS) outfit[k] = ''; applyOutfit(true); renderTab(); notice('Outfit back to the default climber.'); break;
       // debugger
       case 'log-copy': copyText(LOG.map(logLine).join('\n'), 'Debugger log copied.'); break;
       case 'log-clear': LOG.length = 0; renderLog(); break;
@@ -302,6 +349,11 @@
 
   function onChange(e) {
     const t = e.target;
+    if (t.id === 'dev-section') {
+      goSection(Number(t.value));
+      if (secByPointer) { secByPointer = false; refocusGame({ detail: 1 }); }
+      return;
+    }
     if (t.id === 'dev-alt') act('goto-alt', t);
     else if (t.id === 'dev-bot-rank') { bot.rank = t.value; }
     else if (t.id === 'dev-bot-wrong') { bot.wrongEvery = Math.max(0, Math.round(Number(t.value) || 0)); }
@@ -310,6 +362,11 @@
     else if (t.id === 'dev-mock-default') { mock.dflt = t.value; }
     else if (t.id === 'dev-mock-comm') { mock.comm = Number(t.value); }
     else if (t.id === 'dev-dbg-cat') { dbgCat = t.value; analyseNow(); }
+    else if (t.id === 'dev-ride-style') rideFx.style = t.value;
+    else if (t.id === 'dev-ride-band') rideFx.band = t.value;
+    else if (t.id === 'dev-ride-m') rideFx.meters = Math.max(0, Math.min(1500, Math.round(Number(t.value) || 0)));
+    else if (/^dev-ride-(golden|late|spit|reduced)$/.test(t.id)) rideFx[t.id.slice(9)] = t.checked;
+    else if (/^dev-outfit-(hat|eyes|neck|over|suit)$/.test(t.id)) { outfit[t.id.slice(11)] = t.value; applyOutfit(true); }
     else if (t.id === 'dev-ans-cat') { ans.cat = t.value; ans.picked = true; ans.pos = null; ans.shown = ANS_CHUNK; renderAnswersControls(); renderAnswers(true); }
     else if (t.id === 'dev-ans-pos') { ans.pos = t.value === '' ? null : Number(t.value); renderAnswers(false); }
     else if (t.id === 'dev-ans-sort') { ans.sort = t.value; ans.shown = ANS_CHUNK; renderAnswers(false); }
@@ -318,6 +375,7 @@
   }
   function onInput(e) {
     const t = e.target;
+    if (t.id === 'dev-section') { goSection(Number(t.value), true); return; }   // announced on release
     if (t.id === 'dev-sky') { H.Scene.setSkyOverride(Number(t.value)); $('#dev-sky-out').textContent = skyName(Number(t.value)); }
     else if (t.id === 'dev-alt') { $('#dev-alt-out').textContent = fmt(Number(t.value)) + ' m'; }
     else if (t.id === 'dev-bot-rate') { bot.rate = Number(t.value); $('#dev-bot-rate-out').textContent = bot.rate + '/s'; if (bot.on) startBot(); }
@@ -339,6 +397,7 @@
     if (H.devActive()) H.finishDev();
     if (H.G.mode === 'dev') H.exitDev();
     H.Scene.setSkyOverride(null);
+    H.setOutfit(null);
     fpsToggle(false);
     hideUI(false);
     try { sessionStorage.removeItem(UNLOCK_KEY); } catch (e) { /* ignore */ }
@@ -349,6 +408,7 @@
   // ---------------------------------------------------------------- events from the game
   function onEvent(type, data) {
     switch (type) {
+      case 'ride': logRide(data); break;
       case 'answer': logAnswer(data); if (tab === 'content') renderCheat(); if (tab === 'answers') renderAnswers(false); if (tab === 'checker' && data.kind === 'judged') renderMockLog(); break;
       case 'leg-start': if (tab === 'content') renderCheat(); if (tab === 'answers') { if (!ans.picked) { ans.cat = null; renderTab(); } else renderAnswers(false); } if (tab === 'debug') analyseNow(); if (tab === 'time') renderTab(); break;
       case 'lap': showLap(data); break;
@@ -704,8 +764,25 @@
   }
 
   // ---------------------------------------------------------------- effects
+  // alpaca ride preview settings (Effects tab)
+  const rideFx = { style: 'auto', band: 'auto', golden: false, late: false, spit: false, reduced: false, meters: 625 };
+  // draft climber cosmetics (preview only: never saved, gone on lock or reload). '' = the slot's default.
+  const outfit = { hat: '', eyes: '', neck: '', over: '', suit: '' };
+  const OUTFIT_SLOTS = [['hat', 'Hat', 'Default beanie', 'None (bare head)'], ['eyes', 'Eyes', 'None'], ['neck', 'Neck', 'None'], ['over', 'Over-layer', 'None'], ['suit', 'Suit', 'Default down suit']];
+  function applyOutfit(log) {
+    const o = {}; let any = false;
+    for (const [k] of OUTFIT_SLOTS) { if (outfit[k] === '-') { o[k] = null; any = true; } else if (outfit[k]) { o[k] = outfit[k]; any = true; } }
+    H.setOutfit(any ? o : null);
+    if (log) {
+      const names = OUTFIT_SLOTS.map(([k]) => (outfit[k] === '-' ? 'no hat' : outfit[k] ? H.cosmetics[outfit[k]].name.toLowerCase() : '')).filter(Boolean);
+      LOG.unshift({ t: new Date(), kind: 'note', text: '', line: 'outfit: ' + (names.length ? names.join(' + ') : 'default') });
+      if (LOG.length > 300) LOG.length = 300;
+    }
+  }
   function tabEffects() {
-    const kinds = ['t0', 't1', 't2', 't3', 't4', 'bad', 'dup', 'tick', 'count', 'go', 'end'];
+    const kinds = ['t0', 't1', 't2', 't3', 't4', 'bad', 'dup', 'tick', 'count', 'go', 'end', 'hooves', 'alpaca', 'golden', 'splat'];
+    const opt = (list, cur) => list.map(([v, l]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${l}</option>`).join('');
+    const chk = (id, label, on) => `<label class="dev-check"><input type="checkbox" id="${id}"${on ? ' checked' : ''}> ${label}</label>`;
     return `<div class="dev-sec">
       <p class="dev-note">Fires the full find feedback for a rank without changing the score. The spotlight and the "+N m" pop appear on the play screen; elsewhere you get the sound, canvas burst and flash. Sound buttons play even when sound is off.</p>
       <h3>Rank finds</h3>
@@ -714,6 +791,23 @@
       <div class="dev-row">${kinds.map((k) => btn('sound', k, { v: k })).join('')}</div>
       <h3>Moments</h3>
       <div class="dev-row">${btn('flag', 'Plant summit flag')}${btn('confetti', 'Prayer-flag confetti')}${btn('shake', 'Wrong-answer shake')}</div>
+      <h3>Alpaca ride</h3>
+      <p class="dev-note">Plays the Sherpa alpaca ride without changing the score or holding the clock. Unticked rare variants are off, so each preview shows exactly what you pick.</p>
+      <div class="dev-row">
+        <label>Style <select class="dev-in" id="dev-ride-style">${opt([['auto', 'Random']].concat(H.C.ride.styles.map((st) => [st.id, st.id])), rideFx.style)}</select></label>
+        <label>Band <select class="dev-in" id="dev-ride-band">${opt([['auto', 'Current altitude'], ['grass', 'Grass'], ['trail', 'Trail'], ['glacier', 'Glacier'], ['deathzone', 'Death Zone']], rideFx.band)}</select></label>
+        <label>Meters <input class="dev-in" type="number" id="dev-ride-m" min="0" max="1500" step="25" value="${rideFx.meters}"></label>
+      </div>
+      <div class="dev-row">${chk('dev-ride-golden', 'Golden alpaca', rideFx.golden)}${chk('dev-ride-late', 'Late alpaca', rideFx.late)}${chk('dev-ride-spit', 'Farewell spit', rideFx.spit)}${chk('dev-ride-reduced', 'Reduced-motion preview', rideFx.reduced)}</div>
+      <div class="dev-row">${btn('ride-fx', 'Play alpaca ride', { cls: 'primary' })}</div>
+      <h3>Climber outfit (draft)</h3>
+      <p class="dev-note">Draft cosmetics, for checking how items layer on the climber. Preview only: never saved and never shown to players. It resets when dev mode locks or the page reloads.</p>
+      <div class="dev-row">${OUTFIT_SLOTS.map(([k, label, dflt, none]) => {
+        const items = Object.entries(H.cosmetics).filter(([, c]) => c.slot === k);
+        const list = [['', dflt]].concat(none ? [['-', none]] : [], items.map(([id, c]) => [id, c.name]));
+        return `<label>${label} <select class="dev-in" id="dev-outfit-${k}">${opt(list, outfit[k])}</select></label>`;
+      }).join('')}</div>
+      <div class="dev-row">${btn('outfit-reset', 'Reset outfit')}</div>
     </div>`;
   }
 
@@ -844,12 +938,20 @@
     if (LOG.length > 300) LOG.length = 300;
     if (tab === 'debug' && !$('#dev-panel').hidden) renderLog();
   }
+  function logRide(d) {
+    const p = d.plan || {};
+    const what = p.reduced ? 'reduced motion, no ride' : [p.style, p.band, p.golden && 'golden', p.late && 'late', p.spit && 'spit', p.shortHop && 'short hop', p.noMove && 'no move'].filter(Boolean).join(' · ');
+    LOG.unshift({ t: new Date(), kind: 'ride', text: d.ans ? d.ans.c : '', line: `alpaca ride${d.test ? ' (effect test)' : ''}: ${what} · +${fmt(d.eff || 0)} m` });
+    if (LOG.length > 300) LOG.length = 300;
+    if (tab === 'debug' && !$('#dev-panel').hidden) renderLog();
+  }
   function logLine(e) {
     const head = `${clockStr(e.t)}  ${JSON.stringify(e.text)}`;
     switch (e.kind) {
       case 'ok': return e.fix
         ? `${clockStr(e.t)}  corrected (${e.fix}): ${e.text} → ${e.canon}${e.via && e.via.startsWith('qualified') ? ' · ' + e.via : ''} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`
         : `${head} → ACCEPTED via ${e.via || 'seed'} → ${e.canon} · ${H.tierName(e.tier)} · +${fmt(e.raw)} raw / +${fmt(e.eff)} m`;
+      case 'ride': case 'note': return `${clockStr(e.t)}  ${e.line}`;
       case 'dup': return `${head} → DUPLICATE of ${e.canon} (no penalty)`;
       case 'variant-limit': return `${head} → VARIANT LIMIT reached (no points, no penalty) · ${e.match}`;
       case 'rejected': return `${head} → REJECTED${e.penalized ? ' · −1 s' : ''} · ${e.match}`;
@@ -1076,7 +1178,7 @@
       <div class="dev-row">${btn('fps', 'FPS meter', { pressed: fps.on, cls: fps.on ? 'on' : '' })}${btn('hide-ui', 'Hide UI (Alt+H)')}${btn('shot', 'Screenshot the mountain')}</div>
       <p class="dev-note">Hide UI leaves only the mountain canvas. Press Alt+H or tap the screen to bring everything back.</p>
       <h3>Shortcuts</h3>
-      <dl class="dev-kv"><dt>Alt+D</dt><dd>Open or close the dev tools</dd><dt>Alt+P</dt><dd>Pause or resume a dev climb</dd><dt>Alt+H</dt><dd>Hide or show the UI</dd></dl>
+      <dl class="dev-kv"><dt>Alt+D</dt><dd>Open or close the dev tools</dd><dt>Alt+P</dt><dd>Pause or resume a dev climb</dd><dt>Alt+H</dt><dd>Hide or show the UI</dd><dt>Alt+[ / Alt+]</dt><dd>Previous or next section</dd></dl>
     </div>`;
   }
   const fps = { on: false, raf: 0, last: 0, times: [] };
@@ -1115,7 +1217,13 @@
   function screenshot() {
     const cv = $('#scene');
     let url = '';
-    try { url = cv.toDataURL('image/png'); } catch (e) { notice('Couldn’t capture the canvas.'); return; }
+    // the scene canvas holds one pixel per art pixel; scale it up crisply to its on-screen size
+    try {
+      const k = Math.max(1, Math.round(cv.getBoundingClientRect().width * (window.devicePixelRatio || 1) / cv.width));
+      const big = document.createElement('canvas'); big.width = cv.width * k; big.height = cv.height * k;
+      const g = big.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(cv, 0, 0, big.width, big.height);
+      url = big.toDataURL('image/png');
+    } catch (e) { notice('Couldn’t capture the canvas.'); return; }
     const d = new Date();
     const name = `daily-ascent-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.png`;
     let framed = true;
