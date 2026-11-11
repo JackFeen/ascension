@@ -430,6 +430,9 @@ dialog::backdrop { background: rgba(10, 16, 36, 0.55); }
    Restyles the components above in the cozy pixel look. Kept as one block so the
    structure (ids, classes, layout) stays exactly as the game and tests expect. */
 body { font: 400 16px/1.45 var(--f-body); -webkit-font-smoothing: auto; }
+/* Pixelify's "fi" ligature reads as "A" ("best find" → "best And"). Every `font` shorthand resets
+   font-variant-ligatures, so it is set on every element, not inherited from body. */
+*, *::before, *::after { font-variant-ligatures: none !important; }
 .panel { background: var(--panel); border: 3px solid var(--panel-edge); border-radius: 0; clip-path: var(--notch);
   box-shadow: inset 0 3px 0 var(--panel-hi), inset 0 -5px 0 var(--panel-lo); }
 .wordmark { font: 700 24px/1 var(--f-stencil); letter-spacing: 0.02em; }
@@ -755,6 +758,42 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
 .kb-open .play-card { gap: 8px; padding-top: 10px; padding-bottom: 10px; }
 .kb-open .chips { max-height: 44px; }
 .kb-open .next-mark { display: none; }
+
+/* ---------------------------------------------------------------- phones (under 900 px wide)
+   The mountain is the hero, so every card is as short as it can be and the scene gets the rest:
+   a compact home card, a slim leg card and answer tags, a short camp report, and a results sheet
+   that starts low (the final mountain first) and scrolls up over it. */
+@media (max-width: 899px) {
+  /* home */
+  .home-card { padding: 16px 16px calc(14px + env(safe-area-inset-bottom, 0px)); gap: 10px; }
+  .home-title { font-size: 24px; }
+  .home-sub { font-size: 15px; line-height: 1.4; }
+  .home-facts .fact { padding: 4px 8px; }
+  .fact dd { margin-top: 2px; }
+  .home-actions { gap: 2px; }
+  .home-actions .btn-primary { margin-bottom: 4px; }
+  .judge-row { padding-top: 10px; }
+  /* leg */
+  .play-card { gap: 8px; padding: 10px 12px 12px; }
+  .category { min-height: 2.2em; }
+  .chips { max-height: 84px; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+  /* camp report */
+  .trans-card { padding: 14px 16px 14px; gap: 2px; }
+  .trans-gain { font-size: 40px; }
+  .trans-gain small { font-size: 20px; }
+  .trans-row { padding-top: 7px; margin-top: 3px; }
+  .trans-next { font-size: 20px; margin: 2px 0 4px; }
+  /* results: the screen scrolls, not the sheet, so the sheet starts low and is pulled up over the mountain */
+  .results { overflow-y: auto; overscroll-behavior: contain; }
+  .sheet { margin-top: 56vh; flex: none; overflow: visible; position: relative; }
+  .sheet::before { content: ""; position: absolute; top: 7px; left: 50%; width: 40px; height: 4px; margin-left: -20px; background: var(--line); }
+}
+/* short phones (iPhone SE and the like): the intro line lives in the help dialog */
+@media (max-width: 899px) and (max-height: 760px) {
+  .home-sub { display: none; }
+  .sheet { margin-top: 50vh; }
+}
+@media (max-width: 899px) and (max-height: 640px) { .category { min-height: 0; } }
 </style>
 
 <canvas id="scene" aria-hidden="true"></canvas>
@@ -842,6 +881,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
         <div class="trans-row" id="tr-next-row"><span>Next landmark</span><b id="tr-next-dist"></b></div>
         <div class="trans-next" id="tr-next">The Tea House</div>
         <div class="trans-row" id="tr-leg-row"><span id="tr-leg">Leg 2</span><b id="tr-leg-info">30 s  ×1</b></div>
+        <button class="btn btn-primary tr-go-next" id="tr-go-next" type="button" hidden>Next leg <span aria-hidden="true">›</span></button>
         <div class="res-actions" id="tr-actions" hidden></div>
       </div>
     </div>

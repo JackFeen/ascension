@@ -326,6 +326,10 @@
     const scapeFrom = (p) => { let lo = 0, hi = SCAPE.length; while (lo < hi) { const m = (lo + hi) >> 1; if (SCAPE[m].p < p) lo = m + 1; else hi = m; } return lo; };
     const TENT = ['#f2b81f', '#ef7a1a', '#f2b81f', '#d94f2a', '#3d6fc0', '#f2b81f'];
     function tents(p0, p1, n, seed) { const r = E.rng(seed), out = []; for (let i = 0; i < n; i++) out.push({ p: p0 + r() * (p1 - p0), d: r() * 10, c: TENT[(i + seed) % TENT.length] }); return out.sort((a, b) => a.d - b.d); }
+    // overview signs, most important first (they give way in this order when space is short)
+    const PLATE_ORDER = ['summit', 'basecamp', 'lukla', 'deathzone', 'camp2', 'camp1', 'teahouse']
+      .map((id) => C.milestones.find((m) => m.id === id)).filter(Boolean)
+      .concat(C.milestones.filter((m) => !['summit', 'basecamp', 'lukla', 'deathzone', 'camp2', 'camp1', 'teahouse'].includes(m.id)));
     const CAMPS = [tents(0.538, 0.556, 6, 11), tents(0.62, 0.63, 3, 12), tents(0.662, 0.672, 4, 13), tents(0.731, 0.739, 2, 14), tents(0.79, 0.8, 3, 15)];
     const SERACS = [];
     for (let i = 0; i < 9; i++) SERACS.push({ p: 0.562 + R() * 0.046, d: R() * 14, w: 5 + R() * 9, h: 6 + R() * 10, shade: i % 3 });
@@ -356,13 +360,19 @@
     // where the climber's feet are framed on screen (CSS px), mirrored on the element for tests
     let climberY = -1;
     function noteClimberY(y) { const r = Math.round(y); if (r !== climberY) { climberY = r; cv.dataset.climberY = r; } }
+    // the follow (and ride) zoom: metres shown top to bottom, and the p-span left to right. Phones pull
+    // out a little further, so the open strip under the answer card shows the slope ahead, not one field
+    function followSpan() {
+      // (1.2 keeps phones on the large sprite size class: sizeClass() switches below cam.sy ≈ 0.44)
+      const z = W < 600 ? 1.2 : 1;
+      return { range: clamp(H * 1.8 * z, 1350, 2100 * z), wp: clamp(0.3 * (W / H) / 0.462 * z, 0.24, 0.6) };
+    }
     function computeTarget() {
       if (view === 'ride') {
         // same zoom as the climb (pixel sprites never scale, so zooming only stretched the terrain,
         // and every zoom frame is a full redraw); the camera pans to frame the herd
-        const range = clamp(H * 1.8, 1350, 2100);
+        const { range, wp } = followSpan();
         tgt.sy = H / range;
-        const wp = clamp(0.3 * (W / H) / 0.462, 0.24, 0.6);
         tgt.sx = W / wp;
         const vv = window.visualViewport;
         const vh = vv && vv.height > 100 ? Math.min(H, vv.height) : H, vTop = vv ? vv.offsetTop : 0;
@@ -375,9 +385,8 @@
         return;
       }
       if (view === 'follow') {
-        const range = clamp(H * 1.8, 1350, 2100);
+        const { range, wp } = followSpan();
         tgt.sy = H / range;
-        const wp = clamp(0.3 * (W / H) / 0.462, 0.24, 0.6);
         tgt.sx = W / wp;
         tgt.p = pFor(climbTarget) + 0.02 * wp;
         // the climber stands at 72% of the screen, moved up into the open strip below the answer card
@@ -562,11 +571,11 @@
     const cssOf = (c) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
     // facets as broad runs: a lit/shaded flag per column, with runs shorter than `min` folded into their neighbours
     const LIT = new Uint8Array(4096);
-    function settleRuns(n, min) {
+    function settleRuns(n, min, A = LIT) {
       let i = 0;
       while (i < n) {
-        let j = i; while (j + 1 < n && LIT[j + 1] === LIT[i]) j++;
-        if (j - i + 1 < min && i > 0) for (let k = i; k <= j; k++) LIT[k] = LIT[i - 1];
+        let j = i; while (j + 1 < n && A[j + 1] === A[i]) j++;
+        if (j - i + 1 < min && i > 0) for (let k = i; k <= j; k++) A[k] = A[i - 1];
         i = j + 1;
       }
     }
@@ -756,12 +765,15 @@
         LIT[x + SL] = sl > -2 ? 1 : 0;
       }
       settleRuns(AW + 2 * SL, 8);
+      // the body below the face is shaded only on the far side of the summit: facet runs shaded all
+      // the way down read as vertical stripes, most of all in the overview
+      const xFar = X(PS);
       const runs = new Map();
       const add = (st, x, y, h) => { let r = runs.get(st); if (!r) runs.set(st, (r = [])); r.push(x, y, h); };
       for (let x = 0; x < AW; x++) {
         const top = tops[x + M], ty = Math.max(0, top);
         if (ty >= AH) continue;
-        const lit = LIT[x + SL] === 1;
+        const lit = LIT[x + SL] === 1, litBody = x < xFar;
         const wob = Math.round(Math.sin((x - oxA) * 0.31) * 3 + Math.sin((x - oxA) * 0.11 + 1) * 4);
         let y = ty;
         for (let bi = BANDS.length - 1; bi >= 0 && y < AH; bi--) {
@@ -771,7 +783,7 @@
           const deepAt = top + 34;
           if (y === top) { add(c.hi, x, y, 1); y++; if (y >= end) continue; }
           if (y < deepAt) { const e = Math.min(end, deepAt); add(lit ? c.lit : c.sh, x, y, e - y); y = e; }
-          if (y < end) { add(c.sh === c.deep ? c.deep : (lit ? c.sh : c.deep), x, y, end - y); y = end; }
+          if (y < end) { add(c.sh === c.deep ? c.deep : (litBody ? c.sh : c.deep), x, y, end - y); y = end; }
         }
       }
       for (const [st, r] of runs) { actx.fillStyle = st; for (let q = 0; q < r.length; q += 3) actx.fillRect(r[q], r[q + 1], 1, r[q + 2]); }
@@ -1335,16 +1347,39 @@
       if (dzy > -4 && dzy < AH + 4) { actx.fillStyle = 'rgba(255,110,90,0.75)'; for (let x = 0; x < AW; x++) if (((x - oxA) % 6 + 6) % 6 < 3) actx.fillRect(x, dzy, 1, 1); }
       const wide = W >= 700;
       // landmark signs step aside during an alpaca ride, so the herd and its banner have the stage
-      if (!ride) for (const m of C.milestones) {
+      // overview: signs are placed in priority order, each on its preferred side, else the other side,
+      // else left out, so they never pile up when the mountain is small (a phone above a card)
+      const cx0 = Math.round(X(pc)), cy0 = Math.round(gy(pc));
+      const taken = [];
+      const hits = (a) => taken.some((b) => a.x < b.x + b.w + 2 && b.x < a.x + a.w + 2 && a.y < b.y + b.h + 1 && b.y < a.y + a.h + 1);
+      if (overview && !ride) {
+        taken.push({ x: cx0 - 8, y: cy0 - 24, w: 16, h: 24 });   // the climber
+        if (view === 'overview' && showPin) { const s = K.sign(fmt(Math.round(climbTarget)) + ' m', null, { accent: true }); taken.push({ x: clamp(cx0 - s.w / 2, 2, AW - s.w - 2), y: cy0 - 30 - s.h, w: s.w, h: s.h }); }
+      }
+      if (!ride) for (const m of (overview ? PLATE_ORDER : C.milestones)) {
         const p = m._p != null ? m._p : (m._p = pFor(m.alt)), x = Math.round(X(p)), y = Math.round(gy(p));
+        if (m.id === 'deathzone') {
+          if (dzy < -30 || dzy > AH + 30) continue;
+          const s = K.sign('8,000 m', 'Death Zone'), r = { x: AW - s.w - 5, y: dzy - s.h - 3, w: s.w, h: s.h };
+          if (overview && hits(r)) continue;
+          taken.push(r); actx.drawImage(s.cv, r.x, r.y); continue;
+        }
         if (x < -80 || x > AW + 80 || y < -30 || y > AH + 30) continue;
-        if (m.id === 'deathzone') { const s = K.sign('8,000 m', 'Death Zone'); actx.drawImage(s.cv, AW - s.w - 5, dzy - s.h - 3); continue; }
         if (overview) {
           const s = K.sign(m.short, wide ? fmt(m.alt) + ' m' : null);
-          const left = !['lukla', 'camp1'].includes(m.id);
-          const yy = y - (m.id === 'summit' ? 9 : m.id === 'teahouse' ? 8 : 4) - Math.floor(s.h / 2);
-          const xx = clamp(left ? x - 4 - s.w : x + 4, 2, AW - s.w - 2);
-          actx.drawImage(s.cv, Math.round(xx), Math.round(yy));
+          const yy = Math.round(y - (m.id === 'summit' ? 9 : m.id === 'teahouse' ? 8 : 4) - Math.floor(s.h / 2));
+          // keep signs inside the framed rect (not under the home card or the results sheet)
+          const xL = rect ? Math.max(2, Math.round((rect.x0 * DPR - LX - shX) / UP)) : 2;
+          const xR = rect ? Math.min(AW - 2, Math.round((rect.x1 * DPR - LX - shX) / UP)) : AW - 2;
+          const lx = Math.round(clamp(x - 4 - s.w, xL, xR - s.w)), rx = Math.round(clamp(x + 4, xL, xR - s.w));
+          const sides = ['lukla', 'camp1'].includes(m.id) ? [rx, lx] : [lx, rx];
+          // the summit sign may also sit straight above the peak
+          if (m.id === 'summit') sides.push({ x: Math.round(clamp(x - s.w / 2, xL, xR - s.w)), y: y - 12 - s.h });
+          for (const sd of sides) {
+            const r = typeof sd === 'number' ? { x: sd, y: yy, w: s.w, h: s.h } : { x: sd.x, y: sd.y, w: s.w, h: s.h };
+            if (hits(r)) continue;
+            taken.push(r); actx.drawImage(s.cv, r.x, r.y); break;
+          }
         } else {
           pline(x, y, x, y - 14, 'rgba(40,30,22,0.85)');
           const s = K.sign(m.short, fmt(m.alt) + ' m');
@@ -1622,7 +1657,7 @@
   // ===========================================================================
   const G = {
     screen: 'home', state: 'idle', mode: 'daily', today: '', puzzle: 1, cats: [], index: [], round: null,
-    legIdx: 0, aid: 0, lastSubmit: 0, camp: false, lastSec: -1, pauseUntil: 0,
+    legIdx: 0, aid: 0, lastSubmit: 0, camp: false, campGo: null, campT: 0, lastSec: -1, pauseUntil: 0,
     rideQ: [], rideActive: null, slotT: 0, slotTxt: '',   // alpaca rides (queued, playing) and the slot-machine altimeter
     dev: null,   // dev climb tool state (mode 'dev' only), see the dev mode section
   };
@@ -2312,13 +2347,31 @@
     G.state = 'transition';
     showTransition({});
     G.camp = true; layoutScene();   // after the card is shown, so the mountain is framed around it
-    await sleep(C.transitionMs);
+    await campWait();
     if (G.round !== round || G.state !== 'transition') return;
     G.camp = false;
     $('#transition').hidden = true;
     startLeg(G.legIdx + 1);
     layoutScene();
   }
+  // The camp break waits for Next (the button, or Enter in the answer box, which keeps focus so the
+  // phone keyboard stays up). Next unlocks after campLockMs so an Enter mashed at time-up can't skip it.
+  function campWait() {
+    const btn = $('#tr-go-next');
+    btn.hidden = false; btn.disabled = true;
+    return new Promise((resolve) => {
+      G.campGo = null;
+      G.campT = setTimeout(() => {
+        if (G.state !== 'transition') return;
+        btn.disabled = false;
+        ui.input.placeholder = 'Enter for the next leg';
+        G.campGo = () => { G.campGo = null; btn.hidden = true; resolve(); };
+        announce(`Leg ${G.legIdx + 2} ready. Press Next to continue.`);
+      }, C.campLockMs);
+    });
+  }
+  function campNext() { if (G.state === 'transition' && G.campGo) { G.campGo(); return true; } return false; }
+  function campClear() { clearTimeout(G.campT); G.campGo = null; $('#tr-go-next').hidden = true; }
 
   function showTransition(o) {
     const tr = $('#transition');
@@ -2344,6 +2397,7 @@
       $('#tr-leg-info').textContent = `${Math.round(c.secs * (G.round.extra ? C.extraTimeFactor : 1))} s  ×${c.mult}`;
     }
     const acts = $('#tr-actions'); acts.hidden = true; acts.innerHTML = '';
+    campClear();
     tr.hidden = false;
     if (!o.checking) announce(`${G.mode === 'dev' ? 'Dev leg' : 'Leg'} ${G.legIdx + 1} complete. Plus ${fmt(E.legEffective(leg.raw))} meters. Altitude ${fmt(alt)} meters.`);
   }
@@ -2579,8 +2633,14 @@
     if (e.key !== 'Enter' && e.keyCode !== 13) return;
     if (e.isComposing || e.keyCode === 229) return;
     e.preventDefault();
+    if (G.state === 'transition') { campNext(); ui.input.value = ''; return; }
     submit();
   });
+  // Next (camp break): like the send button, it never takes focus from the answer box
+  const goNext = $('#tr-go-next');
+  goNext.addEventListener('pointerdown', (e) => e.preventDefault());
+  goNext.addEventListener('mousedown', (e) => e.preventDefault());
+  goNext.addEventListener('click', () => { campNext(); ui.input.focus({ preventScroll: true }); });
   const send = $('#btn-send');
   send.addEventListener('pointerdown', (e) => e.preventDefault());
   send.addEventListener('mousedown', (e) => e.preventDefault());
@@ -2727,7 +2787,7 @@
     clearSpotlight();
     $('#transition').hidden = true;
     $('#countdown').hidden = true;
-    G.camp = false;
+    G.camp = false; campClear();
     r.legs.forEach((l) => {
       if (!l) return;
       l.answers.forEach((a) => { if (a.s === 'pending') a.s = 'unchecked'; });
@@ -2822,7 +2882,7 @@
     clearTimeout(G.dev.lapT1); clearTimeout(G.dev.lapT2);
     $('#transition').hidden = true;
     $('#countdown').hidden = true;
-    G.state = 'idle'; G.camp = false; G.round = null;
+    G.state = 'idle'; G.camp = false; campClear(); G.round = null;
     DevStore.load();
     const r = DevStore.data.devRound;
     if (!r || !Array.isArray(r.legs)) { exitDev(); return 'The dev save could not be read back. Storage may be blocked here.'; }
@@ -2990,6 +3050,7 @@
       // draft cosmetics preview (Effects tab); the game itself never sets an outfit
       cosmetics: window.DA_PIXEL.COSMETICS, setOutfit(o) { Scene.setOutfit(o); },
       submit: devSubmit,
+      campNext,   // the autoplay bot presses Next at camp breaks
       openStatsWith(store) { withStore(store, openStats); },
       recordClimbToday(store) { return withStore(store, () => { updateStreak(E.localDateStr()); store.save(); return Object.assign({}, store.data.streak); }); },
       liveStreakOf(store) { return withStore(store, liveStreak); },
