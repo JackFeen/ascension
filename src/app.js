@@ -562,11 +562,11 @@
     const cssOf = (c) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
     // facets as broad runs: a lit/shaded flag per column, with runs shorter than `min` folded into their neighbours
     const LIT = new Uint8Array(4096);
-    function settleRuns(n, min) {
+    function settleRuns(n, min, A = LIT) {
       let i = 0;
       while (i < n) {
-        let j = i; while (j + 1 < n && LIT[j + 1] === LIT[i]) j++;
-        if (j - i + 1 < min && i > 0) for (let k = i; k <= j; k++) LIT[k] = LIT[i - 1];
+        let j = i; while (j + 1 < n && A[j + 1] === A[i]) j++;
+        if (j - i + 1 < min && i > 0) for (let k = i; k <= j; k++) A[k] = A[i - 1];
         i = j + 1;
       }
     }
@@ -756,12 +756,15 @@
         LIT[x + SL] = sl > -2 ? 1 : 0;
       }
       settleRuns(AW + 2 * SL, 8);
+      // the body below the face is shaded only on the far side of the summit: facet runs shaded all
+      // the way down read as vertical stripes, most of all in the overview
+      const xFar = X(PS);
       const runs = new Map();
       const add = (st, x, y, h) => { let r = runs.get(st); if (!r) runs.set(st, (r = [])); r.push(x, y, h); };
       for (let x = 0; x < AW; x++) {
         const top = tops[x + M], ty = Math.max(0, top);
         if (ty >= AH) continue;
-        const lit = LIT[x + SL] === 1;
+        const lit = LIT[x + SL] === 1, litBody = x < xFar;
         const wob = Math.round(Math.sin((x - oxA) * 0.31) * 3 + Math.sin((x - oxA) * 0.11 + 1) * 4);
         let y = ty;
         for (let bi = BANDS.length - 1; bi >= 0 && y < AH; bi--) {
@@ -771,7 +774,7 @@
           const deepAt = top + 34;
           if (y === top) { add(c.hi, x, y, 1); y++; if (y >= end) continue; }
           if (y < deepAt) { const e = Math.min(end, deepAt); add(lit ? c.lit : c.sh, x, y, e - y); y = e; }
-          if (y < end) { add(c.sh === c.deep ? c.deep : (lit ? c.sh : c.deep), x, y, end - y); y = end; }
+          if (y < end) { add(c.sh === c.deep ? c.deep : (litBody ? c.sh : c.deep), x, y, end - y); y = end; }
         }
       }
       for (const [st, r] of runs) { actx.fillStyle = st; for (let q = 0; q < r.length; q += 3) actx.fillRect(r[q], r[q + 1], 1, r[q + 2]); }
