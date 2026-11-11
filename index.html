@@ -500,7 +500,7 @@ body { font: 400 16px/1.45 var(--f-body); -webkit-font-smoothing: auto; }
 .send { right: 8px; top: 8px; width: 46px; height: 45px; border-radius: 0; border: 3px solid var(--px-ink); color: var(--px-ink);
   box-shadow: inset 0 3px 0 var(--suit-hi), inset 0 -5px 0 var(--suit-lip); }
 .send:active { transform: translateY(2px); box-shadow: inset 0 3px 0 var(--suit-hi), inset 0 -2px 0 var(--suit-lip); }
-.answer { height: 61px; border-radius: 0; border: 3px solid var(--panel-edge); background: var(--panel-solid); box-shadow: inset 0 3px 0 rgba(40, 30, 22, 0.12); font: 600 22px var(--f-body); }
+.answer { height: 61px; border-radius: 0; border: 3px solid var(--panel-edge); background: var(--panel-solid); box-shadow: inset 0 3px 0 rgba(40, 30, 22, 0.12); font: 500 22px var(--f-body); }
 .answer:focus { border-color: var(--panel-edge); box-shadow: inset 0 3px 0 rgba(40, 30, 22, 0.12), 0 0 0 3px var(--accent); }
 .answer.shake { border-color: var(--bad); box-shadow: 0 0 0 3px var(--bad); }
 .feedback { font: 500 15px/1.35 var(--f-body); }
@@ -622,6 +622,23 @@ dialog::backdrop { background: rgba(40, 30, 22, 0.6); }
 .dev-tabs { display: flex; gap: 2px; overflow-x: auto; padding: 0 8px; border-bottom: 1px solid var(--line); scrollbar-width: none; flex: none; }
 .dev-tabs button { appearance: none; border: 0; background: none; padding: 8px 10px; font: 800 14px/1 var(--f-display); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
 .dev-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--suit); }
+.dev-tabs-wrap { position: relative; flex: none; }
+.dev-tabs-wrap::before, .dev-tabs-wrap::after { content: ""; position: absolute; top: 0; bottom: 1px; width: 28px; pointer-events: none; opacity: 0; transition: opacity .15s ease; }
+.dev-tabs-wrap::before { left: 0; background: linear-gradient(90deg, var(--panel), transparent); }
+.dev-tabs-wrap::after { right: 0; background: linear-gradient(270deg, var(--panel), transparent); }
+.dev-tabs-wrap.more-left::before, .dev-tabs-wrap.more-right::after { opacity: 1; }
+/* section slider: steps through the tabs (the row runs off the edge on a phone) */
+.dev-section { display: grid; grid-template-columns: 44px 1fr 44px; grid-template-areas: "out out out" "prev range next"; align-items: center; gap: 2px 8px; padding: 6px 12px 8px; border-bottom: 1px solid var(--line); flex: none; }
+.dev-section-out { grid-area: out; font: 500 12px/1.2 var(--f-body); color: var(--ink-2); }
+.dev-section-step { min-height: 44px; padding: 0; font-size: 20px; }
+.dev-section-step[data-act="sec-prev"] { grid-area: prev; } .dev-section-step[data-act="sec-next"] { grid-area: next; }
+.dev-range { grid-area: range; -webkit-appearance: none; appearance: none; width: 100%; height: 44px; margin: 0; background: transparent; cursor: pointer; }
+.dev-range:focus { outline: none; }
+.dev-range:focus-visible { outline: 3px solid var(--suit); outline-offset: 2px; }
+.dev-range::-webkit-slider-runnable-track { height: 10px; background: var(--plate-bg); border: 2px solid var(--px-ink); box-shadow: inset 0 2px 0 var(--plate-hi); }
+.dev-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 28px; margin-top: -11px; background: var(--suit); border: 3px solid var(--px-ink); border-radius: 0; box-shadow: inset 0 3px 0 var(--suit-hi); }
+.dev-range::-moz-range-track { height: 6px; background: var(--plate-bg); border: 2px solid var(--px-ink); }
+.dev-range::-moz-range-thumb { width: 14px; height: 22px; background: var(--suit); border: 3px solid var(--px-ink); border-radius: 0; }
 .dev-body { flex: 1; overflow-y: auto; padding: 10px 12px 16px; overscroll-behavior: contain; }
 .dev-sec { display: flex; flex-direction: column; gap: 10px; }
 .dev-sec h3 { margin: 6px 0 0; font: 800 15px/1 var(--f-display); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
@@ -2366,6 +2383,11 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     if (k === 'KeyD') { e.preventDefault(); togglePanel(); }
     else if (k === 'KeyP') { e.preventDefault(); doPause(); }
     else if (k === 'KeyH') { e.preventDefault(); hideUI(!document.body.classList.contains('dev-ui-hidden')); }
+    else if (k === 'BracketLeft' || k === 'BracketRight') {
+      e.preventDefault();
+      if ($('#dev-panel').hidden) togglePanel(true);
+      goSection(tabIndex() + (k === 'BracketLeft' ? -1 : 1));
+    }
   }
 
   // Panel buttons must not steal focus from the answer box during a climb
@@ -2385,6 +2407,33 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     ['debug', 'Debugger'], ['checker', 'Checker'], ['save', 'Save & dates'], ['perf', 'Perf'],
   ];
   let tab = 'time';
+  let secByPointer = false;
+  const tabIndex = () => Math.max(0, TABS.findIndex(([id]) => id === tab));
+  const sectionLabel = (i = tabIndex()) => `Section ${i + 1} of ${TABS.length} · ${TABS[i][1]}`;
+  // moves to section i (slider, ‹ ›, Alt+[ / Alt+]) and says where it landed
+  function goSection(i, quiet) {
+    const n = Math.max(0, Math.min(TABS.length - 1, i));
+    if (TABS[n][0] === tab) { if (!quiet) notice(sectionLabel(n)); return; }
+    tab = TABS[n][0];
+    renderTab();
+    if (!quiet) notice(sectionLabel(n));
+  }
+  // a soft fade on whichever edge of the tab row has more tabs past it
+  function tabFades() {
+    const row = $('#dev-tabs'), wrap = $('#dev-tabs-wrap');
+    if (!row || !wrap) return;
+    wrap.classList.toggle('more-left', row.scrollLeft > 2);
+    wrap.classList.toggle('more-right', row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
+  }
+  // keeps the slider, its label and the tab row in step with the selected tab
+  function syncSection() {
+    const i = tabIndex(), r = $('#dev-section'), out = $('#dev-section-out');
+    if (r) { if (Number(r.value) !== i) r.value = String(i); r.setAttribute('aria-valuetext', sectionLabel(i)); }
+    if (out) out.textContent = sectionLabel(i);
+    const b = $('#dev-tab-' + tab);
+    if (b && !$('#dev-panel').hidden) { try { b.scrollIntoView({ inline: 'nearest', block: 'nearest' }); } catch (e) { /* old browsers */ } }
+    tabFades();
+  }
 
   function buildPanel() {
     const p = $('#dev-panel');
@@ -2392,9 +2441,19 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
       <div class="dev-head"><h2>Dev tools</h2><p class="dev-status" id="dev-status" role="status"></p>
         <button class="dlg-close" data-act="close-panel" aria-label="Close dev tools">✕</button></div>
       <div class="dev-acts" id="dev-acts"></div>
-      <div class="dev-tabs" role="tablist" aria-label="Dev tool groups">${TABS.map(([id, label]) =>
-        `<button role="tab" id="dev-tab-${id}" aria-controls="dev-body" aria-selected="${id === tab}" data-tab="${id}">${label}</button>`).join('')}</div>
+      <div class="dev-tabs-wrap" id="dev-tabs-wrap"><div class="dev-tabs" id="dev-tabs" role="tablist" aria-label="Dev tool groups">${TABS.map(([id, label]) =>
+        `<button role="tab" id="dev-tab-${id}" aria-controls="dev-body" aria-selected="${id === tab}" data-tab="${id}">${label}</button>`).join('')}</div></div>
+      <div class="dev-section" role="group" aria-label="Move through the dev tool sections">
+        <output class="dev-section-out" id="dev-section-out" for="dev-section">${sectionLabel()}</output>
+        <button class="dev-btn dev-section-step" data-act="sec-prev" aria-label="Previous section" title="Previous section (Alt+[)">‹</button>
+        <input type="range" class="dev-range" id="dev-section" min="0" max="${TABS.length - 1}" step="1" value="${tabIndex()}" aria-label="Dev tools section" aria-valuetext="${sectionLabel()}">
+        <button class="dev-btn dev-section-step" data-act="sec-next" aria-label="Next section" title="Next section (Alt+])">›</button>
+      </div>
       <div class="dev-body" id="dev-body" role="tabpanel"></div>`;
+    // the slider hands focus back to the answer box when a pointer lets go of it (not after arrow keys)
+    const sec = $('#dev-section');
+    sec.addEventListener('pointerdown', () => { secByPointer = true; });
+    $('#dev-tabs').addEventListener('scroll', tabFades, { passive: true });
     p.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
     p.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
     p.addEventListener('click', (e) => {
@@ -2430,6 +2489,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     body.setAttribute('aria-labelledby', 'dev-tab-' + tab);
     body.innerHTML = ({ time: tabTime, move: tabMove, content: tabContent, answers: tabAnswers, effects: tabEffects, debug: tabDebug, checker: tabChecker, save: tabSave, perf: tabPerf })[tab]();
     afterRender[tab] && afterRender[tab]();
+    syncSection();
   }
   const afterRender = {};
 
@@ -2448,6 +2508,8 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     const d = b.dataset;
     switch (a) {
       case 'close-panel': togglePanel(false); break;
+      case 'sec-prev': goSection(tabIndex() - 1); break;
+      case 'sec-next': goSection(tabIndex() + 1); break;
       case 'start-climb': H.startDev(); renderActs(); break;
       case 'end-climb': stopBot(); H.finishDev(); renderActs(); break;
       case 'exit-dev': H.exitDev(); renderActs(); break;
@@ -2536,6 +2598,11 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
 
   function onChange(e) {
     const t = e.target;
+    if (t.id === 'dev-section') {
+      goSection(Number(t.value));
+      if (secByPointer) { secByPointer = false; refocusGame({ detail: 1 }); }
+      return;
+    }
     if (t.id === 'dev-alt') act('goto-alt', t);
     else if (t.id === 'dev-bot-rank') { bot.rank = t.value; }
     else if (t.id === 'dev-bot-wrong') { bot.wrongEvery = Math.max(0, Math.round(Number(t.value) || 0)); }
@@ -2557,6 +2624,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
   }
   function onInput(e) {
     const t = e.target;
+    if (t.id === 'dev-section') { goSection(Number(t.value), true); return; }   // announced on release
     if (t.id === 'dev-sky') { H.Scene.setSkyOverride(Number(t.value)); $('#dev-sky-out').textContent = skyName(Number(t.value)); }
     else if (t.id === 'dev-alt') { $('#dev-alt-out').textContent = fmt(Number(t.value)) + ' m'; }
     else if (t.id === 'dev-bot-rate') { bot.rate = Number(t.value); $('#dev-bot-rate-out').textContent = bot.rate + '/s'; if (bot.on) startBot(); }
@@ -3359,7 +3427,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
       <div class="dev-row">${btn('fps', 'FPS meter', { pressed: fps.on, cls: fps.on ? 'on' : '' })}${btn('hide-ui', 'Hide UI (Alt+H)')}${btn('shot', 'Screenshot the mountain')}</div>
       <p class="dev-note">Hide UI leaves only the mountain canvas. Press Alt+H or tap the screen to bring everything back.</p>
       <h3>Shortcuts</h3>
-      <dl class="dev-kv"><dt>Alt+D</dt><dd>Open or close the dev tools</dd><dt>Alt+P</dt><dd>Pause or resume a dev climb</dd><dt>Alt+H</dt><dd>Hide or show the UI</dd></dl>
+      <dl class="dev-kv"><dt>Alt+D</dt><dd>Open or close the dev tools</dd><dt>Alt+P</dt><dd>Pause or resume a dev climb</dd><dt>Alt+H</dt><dd>Hide or show the UI</dd><dt>Alt+[ / Alt+]</dt><dd>Previous or next section</dd></dl>
     </div>`;
   }
   const fps = { on: false, raf: 0, last: 0, times: [] };

@@ -134,6 +134,11 @@
     if (k === 'KeyD') { e.preventDefault(); togglePanel(); }
     else if (k === 'KeyP') { e.preventDefault(); doPause(); }
     else if (k === 'KeyH') { e.preventDefault(); hideUI(!document.body.classList.contains('dev-ui-hidden')); }
+    else if (k === 'BracketLeft' || k === 'BracketRight') {
+      e.preventDefault();
+      if ($('#dev-panel').hidden) togglePanel(true);
+      goSection(tabIndex() + (k === 'BracketLeft' ? -1 : 1));
+    }
   }
 
   // Panel buttons must not steal focus from the answer box during a climb
@@ -153,6 +158,33 @@
     ['debug', 'Debugger'], ['checker', 'Checker'], ['save', 'Save & dates'], ['perf', 'Perf'],
   ];
   let tab = 'time';
+  let secByPointer = false;
+  const tabIndex = () => Math.max(0, TABS.findIndex(([id]) => id === tab));
+  const sectionLabel = (i = tabIndex()) => `Section ${i + 1} of ${TABS.length} · ${TABS[i][1]}`;
+  // moves to section i (slider, ‹ ›, Alt+[ / Alt+]) and says where it landed
+  function goSection(i, quiet) {
+    const n = Math.max(0, Math.min(TABS.length - 1, i));
+    if (TABS[n][0] === tab) { if (!quiet) notice(sectionLabel(n)); return; }
+    tab = TABS[n][0];
+    renderTab();
+    if (!quiet) notice(sectionLabel(n));
+  }
+  // a soft fade on whichever edge of the tab row has more tabs past it
+  function tabFades() {
+    const row = $('#dev-tabs'), wrap = $('#dev-tabs-wrap');
+    if (!row || !wrap) return;
+    wrap.classList.toggle('more-left', row.scrollLeft > 2);
+    wrap.classList.toggle('more-right', row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
+  }
+  // keeps the slider, its label and the tab row in step with the selected tab
+  function syncSection() {
+    const i = tabIndex(), r = $('#dev-section'), out = $('#dev-section-out');
+    if (r) { if (Number(r.value) !== i) r.value = String(i); r.setAttribute('aria-valuetext', sectionLabel(i)); }
+    if (out) out.textContent = sectionLabel(i);
+    const b = $('#dev-tab-' + tab);
+    if (b && !$('#dev-panel').hidden) { try { b.scrollIntoView({ inline: 'nearest', block: 'nearest' }); } catch (e) { /* old browsers */ } }
+    tabFades();
+  }
 
   function buildPanel() {
     const p = $('#dev-panel');
@@ -160,9 +192,19 @@
       <div class="dev-head"><h2>Dev tools</h2><p class="dev-status" id="dev-status" role="status"></p>
         <button class="dlg-close" data-act="close-panel" aria-label="Close dev tools">✕</button></div>
       <div class="dev-acts" id="dev-acts"></div>
-      <div class="dev-tabs" role="tablist" aria-label="Dev tool groups">${TABS.map(([id, label]) =>
-        `<button role="tab" id="dev-tab-${id}" aria-controls="dev-body" aria-selected="${id === tab}" data-tab="${id}">${label}</button>`).join('')}</div>
+      <div class="dev-tabs-wrap" id="dev-tabs-wrap"><div class="dev-tabs" id="dev-tabs" role="tablist" aria-label="Dev tool groups">${TABS.map(([id, label]) =>
+        `<button role="tab" id="dev-tab-${id}" aria-controls="dev-body" aria-selected="${id === tab}" data-tab="${id}">${label}</button>`).join('')}</div></div>
+      <div class="dev-section" role="group" aria-label="Move through the dev tool sections">
+        <output class="dev-section-out" id="dev-section-out" for="dev-section">${sectionLabel()}</output>
+        <button class="dev-btn dev-section-step" data-act="sec-prev" aria-label="Previous section" title="Previous section (Alt+[)">‹</button>
+        <input type="range" class="dev-range" id="dev-section" min="0" max="${TABS.length - 1}" step="1" value="${tabIndex()}" aria-label="Dev tools section" aria-valuetext="${sectionLabel()}">
+        <button class="dev-btn dev-section-step" data-act="sec-next" aria-label="Next section" title="Next section (Alt+])">›</button>
+      </div>
       <div class="dev-body" id="dev-body" role="tabpanel"></div>`;
+    // the slider hands focus back to the answer box when a pointer lets go of it (not after arrow keys)
+    const sec = $('#dev-section');
+    sec.addEventListener('pointerdown', () => { secByPointer = true; });
+    $('#dev-tabs').addEventListener('scroll', tabFades, { passive: true });
     p.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
     p.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
     p.addEventListener('click', (e) => {
@@ -198,6 +240,7 @@
     body.setAttribute('aria-labelledby', 'dev-tab-' + tab);
     body.innerHTML = ({ time: tabTime, move: tabMove, content: tabContent, answers: tabAnswers, effects: tabEffects, debug: tabDebug, checker: tabChecker, save: tabSave, perf: tabPerf })[tab]();
     afterRender[tab] && afterRender[tab]();
+    syncSection();
   }
   const afterRender = {};
 
@@ -216,6 +259,8 @@
     const d = b.dataset;
     switch (a) {
       case 'close-panel': togglePanel(false); break;
+      case 'sec-prev': goSection(tabIndex() - 1); break;
+      case 'sec-next': goSection(tabIndex() + 1); break;
       case 'start-climb': H.startDev(); renderActs(); break;
       case 'end-climb': stopBot(); H.finishDev(); renderActs(); break;
       case 'exit-dev': H.exitDev(); renderActs(); break;
@@ -304,6 +349,11 @@
 
   function onChange(e) {
     const t = e.target;
+    if (t.id === 'dev-section') {
+      goSection(Number(t.value));
+      if (secByPointer) { secByPointer = false; refocusGame({ detail: 1 }); }
+      return;
+    }
     if (t.id === 'dev-alt') act('goto-alt', t);
     else if (t.id === 'dev-bot-rank') { bot.rank = t.value; }
     else if (t.id === 'dev-bot-wrong') { bot.wrongEvery = Math.max(0, Math.round(Number(t.value) || 0)); }
@@ -325,6 +375,7 @@
   }
   function onInput(e) {
     const t = e.target;
+    if (t.id === 'dev-section') { goSection(Number(t.value), true); return; }   // announced on release
     if (t.id === 'dev-sky') { H.Scene.setSkyOverride(Number(t.value)); $('#dev-sky-out').textContent = skyName(Number(t.value)); }
     else if (t.id === 'dev-alt') { $('#dev-alt-out').textContent = fmt(Number(t.value)) + ' m'; }
     else if (t.id === 'dev-bot-rate') { bot.rate = Number(t.value); $('#dev-bot-rate-out').textContent = bot.rate + '/s'; if (bot.on) startBot(); }
@@ -1127,7 +1178,7 @@
       <div class="dev-row">${btn('fps', 'FPS meter', { pressed: fps.on, cls: fps.on ? 'on' : '' })}${btn('hide-ui', 'Hide UI (Alt+H)')}${btn('shot', 'Screenshot the mountain')}</div>
       <p class="dev-note">Hide UI leaves only the mountain canvas. Press Alt+H or tap the screen to bring everything back.</p>
       <h3>Shortcuts</h3>
-      <dl class="dev-kv"><dt>Alt+D</dt><dd>Open or close the dev tools</dd><dt>Alt+P</dt><dd>Pause or resume a dev climb</dd><dt>Alt+H</dt><dd>Hide or show the UI</dd></dl>
+      <dl class="dev-kv"><dt>Alt+D</dt><dd>Open or close the dev tools</dd><dt>Alt+P</dt><dd>Pause or resume a dev climb</dd><dt>Alt+H</dt><dd>Hide or show the UI</dd><dt>Alt+[ / Alt+]</dt><dd>Previous or next section</dd></dl>
     </div>`;
   }
   const fps = { on: false, raf: 0, last: 0, times: [] };

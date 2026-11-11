@@ -37,6 +37,9 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
   // the art canvas is the visible canvas, with one spare art pixel on each side for the sub-pixel shift
   if (![2, 3].includes(art.px) || Math.abs(art.w - (art.vw / art.px + 2)) > 1.5) fail(`art canvas ${art.w}×${art.h} at ${art.px} px doesn't match a ${art.vw} px viewport`);
   else console.log(`art canvas: ${art.w}×${art.h} art pixels at ${art.px} CSS px each`);
+  // typed answers use the lighter weight (500); everything else keeps its font
+  const answerWeight = await f.evaluate(() => getComputedStyle(document.querySelector('#answer')).fontWeight);
+  if (answerWeight !== '500') fail(`answer box font weight is ${answerWeight}, want 500`);
   // Speed the climb up: short legs, fast transitions.
   await f.evaluate(() => { const C = DA_ENGINE.CONFIG; C.legs.forEach((l) => (l.secs = 6)); C.transitionMs = 700; C.countdownSecs = 1; C.ride.speed = 3; });
   const legs = await f.evaluate(() => {
@@ -145,7 +148,9 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
     await d.fill('#dev-lock-pw', 'not-the-password'); await d.press('#dev-lock-pw', 'Enter');
     await page.waitForTimeout(1600);
     if (!/isn’t right/.test(await d.textContent('#dev-lock-err'))) fail('wrong dev password was not rejected');
-    await d.fill('#dev-lock-pw', DEV_PASSWORD); await d.press('#dev-lock-pw', 'Enter');
+    // set the password without passing it through a call that could echo it in an error message
+    await d.evaluate((pw) => { const i = document.querySelector('#dev-lock-pw'); i.value = pw; i.dispatchEvent(new Event('input', { bubbles: true })); }, DEV_PASSWORD).catch(() => fail('could not enter the dev password'));
+    await d.press('#dev-lock-pw', 'Enter');
     try { await d.waitForSelector('#dev-badge:not([hidden])', { timeout: 5000 }); } catch (e) { fail('dev mode did not unlock'); }
     const realBefore = await d.evaluate(() => localStorage.getItem('daily-ascent:v1'));
     await d.evaluate(() => { const C = DA_ENGINE.CONFIG; C.legs.forEach((l) => (l.secs = 6)); C.transitionMs = 700; C.countdownSecs = 1; });
@@ -158,6 +163,13 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
     if (await d.evaluate(() => document.querySelector('#dev-pause').hidden)) fail('no PAUSED overlay');
     await page.screenshot({ path: path.join(SHOTS, 'dev-paused.png') });
     await d.click('#dev-acts [data-act="pause"]');
+    // the section slider steps through the tabs (the tab row runs off the edge on a phone)
+    await d.evaluate(() => { const r = document.querySelector('#dev-section'); r.value = '3'; r.dispatchEvent(new Event('input', { bubbles: true })); r.dispatchEvent(new Event('change', { bubbles: true })); });
+    try { await d.waitForSelector('#dev-body #dev-ans-table', { timeout: 3000 }); } catch (e) { fail('section slider did not open the Answers section'); }
+    if (await d.getAttribute('#dev-tab-answers', 'aria-selected') !== 'true') fail('section slider: Answers tab not selected');
+    await d.click('[data-act="sec-next"]');
+    if (await d.getAttribute('#dev-tab-effects', 'aria-selected') !== 'true') fail('section › button did not move to Effects');
+    if (await d.$eval('#dev-section', (r) => r.value) !== '4') fail('section slider did not follow the › button');
     // autoplay bot until the climber passes the summit
     await d.click('#dev-tab-content');
     await d.selectOption('#dev-bot-rank', '2');
