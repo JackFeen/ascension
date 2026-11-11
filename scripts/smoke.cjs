@@ -69,7 +69,9 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
   else if (!kb.closed || kb.yAfter <= kb.y) fail('keyboard: the leg screen did not return when the keyboard closed');
   else console.log(`keyboard: climber framed at ${kb.y} px, above a keyboard from ${kb.top} px (${kb.yAfter} px without it)`);
 
-  for (let i = 0; i < 7; i++) {
+  const NL = legs.length;   // legs in the daily climb (CONFIG.legs)
+  if (NL !== 5) fail(`the daily climb has ${NL} legs, expected 5`);
+  for (let i = 0; i < NL; i++) {
     const shown = await f.textContent('#category');
     if (shown !== legs[i].text) fail(`leg ${i + 1} shows "${shown}", expected "${legs[i].text}"`);
     await f.click('#answer');
@@ -105,13 +107,21 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
     const chips = await f.locator('.chip:not(.rejected)').count();
     if (chips !== legs[i].words.length) fail(`leg ${i + 1}: ${chips} chips for ${legs[i].words.length} valid answers`);
     if (i === 0) { await page.screenshot({ path: path.join(SHOTS, 'leg1.png') }); await page.screenshot({ path: path.join(SHOTS, 'newlook-leg1.png') }); }
-    if (i === 5) {
-      // legs 6–7 are the summit push: night panels
-      if (!(await f.evaluate(() => document.querySelector('#app').classList.contains('night')))) fail('leg 6 is not on night panels');
-      await page.screenshot({ path: path.join(SHOTS, 'newlook-leg6.png') });
+    if (i === NL - 2) {
+      // the last two legs are the summit push: night panels
+      if (!(await f.evaluate(() => document.querySelector('#app').classList.contains('night')))) fail(`leg ${i + 1} is not on night panels`);
+      await page.screenshot({ path: path.join(SHOTS, 'newlook-night.png') });
     }
     await f.waitForFunction(() => !document.querySelector('#transition').hidden || !document.querySelector('#results').hidden, null, { timeout: 20000 });
-    if (i < 6) await f.waitForFunction(() => document.querySelector('#transition').hidden, null, { timeout: 20000 });
+    if (i < NL - 1) {
+      // camp break: the camera pulls out to the whole mountain, then back to the climber for the next leg
+      const camp = await f.evaluate(() => document.querySelector('#scene').dataset.view);
+      if (camp !== 'overview') fail(`leg ${i + 1} camp break: camera view is "${camp}", expected the mountain overview`);
+      if (i === 0) { await page.waitForTimeout(450); await page.screenshot({ path: path.join(SHOTS, 'newlook-camp.png') }); }
+      await f.waitForFunction(() => document.querySelector('#transition').hidden, null, { timeout: 20000 });
+      const back = await f.evaluate(() => document.querySelector('#scene').dataset.view);
+      if (back !== 'follow') fail(`leg ${i + 2}: camera view is "${back}" after the camp break, expected follow`);
+    }
   }
   await f.waitForSelector('#results:not([hidden])', { timeout: 20000 });
   await page.waitForTimeout(1500);

@@ -6,7 +6,7 @@ This is the map of the codebase for anyone, human or agent, changing the game. S
 
 ## 1. What this is
 
-**Daily Ascent** is a free, browser-based daily word game. Every day, everyone gets the same seven categories ("Things that can be cracked", "Countries in Africa", …). Each category is a timed **leg**. Players type as many valid answers as they can. Obvious answers gain a little altitude, rare ones gain a lot, and the running total moves a climber up an illustrated Everest, from Lukla (2,860 m) to the summit (8,849 m).
+**Daily Ascent** is a free, browser-based daily word game. Every day, everyone gets the same five categories ("Things that can be cracked", "Countries in Africa", …). Each category is a timed **leg**. Players type as many valid answers as they can. Obvious answers gain a little altitude, rare ones gain a lot, and the running total moves a climber up an illustrated Everest, from Lukla (2,860 m) to the summit (8,849 m).
 
 > Pitch: Wordle's daily ritual and Scattergories' rare-answer tension, played as a climb up Everest.
 
@@ -14,8 +14,8 @@ The original spec is `docs/product-spec.md`. Where the code differs from it, §1
 
 ### Product pillars (protect these in every change)
 
-1. **A three-minute daily ritual.** About three minutes of answering (175 s across seven legs, plus a short countdown and camp breaks). One scored attempt per day per device. Everyone gets the same puzzle, which resets at local midnight.
-2. **Knowledge beats typing speed.** A Sherpa answer is worth about 9× a Crawler one. The per-leg cap stops people farming easy answers.
+1. **A short daily ritual.** About two minutes of answering (120 s across five legs, plus a short countdown and camp breaks). One scored attempt per day per device. Everyone gets the same puzzle, which resets at local midnight.
+2. **Knowledge beats typing speed.** A Sherpa answer is worth about 11× a Crawler one. The per-leg cap stops people farming easy answers.
 3. **Progress you can feel.** Altitude is continuous across the round. Milestones are real places: "I got to Base Camp."
 4. **The summit is rare (target ≈ 5% of rounds).** Scarcity is what makes it worth posting.
 5. **Beautiful, spoiler-free sharing.** The share text shows altitude, the milestone, one colored square per leg and, when there were any, one 🦙 per Sherpa alpaca ride (`E.shareAlpacas()`, never letters). It never shows answers.
@@ -26,14 +26,14 @@ The original spec is `docs/product-spec.md`. Where the code differs from it, §1
 - **Visual system ("cozy pixel trail"):** cozy pixel art in the spirit of a farm game turned sideways onto Everest. The mountain is the hero; the UI is trail kit in the same style. Mockups approved in November 2026 (the "Daily Ascent pixel art mockups" design canvas).
   - **Parchment panels** for content: a 3 px ink border, a light bevel on top and a dark one below, 4 px notched corners (`--notch`). No blur, no glass, no round corners.
   - **Wood signs** for names: the wordmark, the countdown, and the canvas milestone plates.
-  - **Ink HUD plates** (`--plate`) for instruments on the sky: the seven-peak leg trail, the altimeter, the next-landmark plate and the icon buttons.
+  - **Ink HUD plates** (`--plate`) for instruments on the sky: the leg trail (one peak per leg), the altimeter, the next-landmark plate and the icon buttons.
   - **One loud colour:** down-suit orange for the thing to press. Buttons are chunky and square, with a solid lip (`--accent-lip`) that compresses on press. Text on orange is ink, never white (contrast).
   - **Answers are parchment tags:** a 6 px bar in the rank colour, the pixel rank icon, the word, the rank name and the gain.
   - **Labels are sentence case.** Uppercase comes from the display face on signage (category names, headings, buttons).
 - **Pixel art rules:** 1 art pixel = 2 CSS px on phones (3 on big screens); outlines take a darker shade of what they wrap (`selout`), never one flat black line; light from the top left; sprites shade with ordered (Bayer 4×4) dithering, while the big surfaces (sky, ranges, terrain) are flat bands; shapes are soft and round (lit `blob`s), not chunky.
 - **Mountain:** a side view with parallax layers: a banded sky, flat-shaded far and mid ranges that fade into haze, forested foothills, then the main slope in flat altitude bands: meadow, pines to the 3,900 m treeline, scrub, rock, the glacier and wind-blown snow in the Death Zone. The trail keeps a calm corridor so the climber stands out; the scenery sits across the face below it (groves, farmsteads, herders' huts, chortens, cairns, mani walls, prayer-flag poles, outcrops, crevasses, grazing alpacas), chosen by altitude. Landmarks are pixel sprites: the Lukla airstrip and plane, Namche's thatched teahouses (after the reference farmhouse) with a potato field, a stone-ringed pond and a grazing alpaca, Tengboche monastery, tents, the Icefall ladder.
 - **Climber:** a 16 × 24 sprite drawn in layers (pack, body and face, outfit, neck, over-layer, eyes, hat) so cosmetic items can be added later; six draft items are previewable in dev mode only (§15).
-- **Sky:** it moves through one "day" as the climber rises: dawn at Lukla, then midday, golden hour, dusk at the Death Zone and stars (and an aurora) at the summit. Legs 6–7, the "summit push", switch the UI to night panels.
+- **Sky:** it moves through one "day" as the climber rises: dawn at Lukla, then midday, golden hour, dusk at the Death Zone and stars (and an aurora) at the summit. The last two legs (4–5), the "summit push", switch the UI to night panels.
 - **Colors:**
   - Palette: ink `#281e16`, parchment `#f4e7c8`, wood `#8a5a34`, HUD plate `#2d2a4a`, night panel `#2b2747`, down-suit orange `#ff5a1f` (`#a8380c` for text-size uses on parchment).
   - Rank colours: slate, juniper, glacier blue, aurora violet and oxygen gold, in a darker set for text on parchment and a bright set on night panels (§9).
@@ -73,9 +73,9 @@ daily-ascent/
 ├─ src/
 │  ├─ engine.js           pure logic, no DOM: CONFIG, normalization, matching,
 │  │                      scoring, daily deal, LLM-judge prompt and verdicts
-│  ├─ data-broad.js       14 broad categories (legs 1–2)
-│  ├─ data-mid.js         21 mid categories in 3 lanes (legs 3, 4, 6)
-│  ├─ data-hard-wild.js   7 hard (leg 7) + 7 wildcard (leg 5) + 1 practice category
+│  ├─ data-broad.js       14 broad categories (leg 1)
+│  ├─ data-mid.js         21 mid categories in 3 lanes (legs 2 and 4)
+│  ├─ data-hard-wild.js   7 hard (leg 5) + 7 wildcard (leg 3) + 1 practice category
 │  ├─ pixel.js            pixel sprite kit (window.DA_PIXEL): dither, rampPick, selout,
 │  │                      blob, text signs, sprite maps (layered climber, alpacas,
 │  │                      draft cosmetics) and scenery sprite builders
@@ -135,7 +135,7 @@ daily-ascent/
 8. **Adding or removing a category reshuffles the deal for every date**, because the permutations depend on pool contents. Today's puzzle can change for players mid-day. Ship content changes just after midnight, or move to a fixed calendar (see roadmap). `test.mjs` pins a SHA-256 of the deal for puzzles 1–365, so a category change fails it on purpose: update the hash only when you mean to reshuffle. Adding, removing or retiering *answers* never changes the deal.
 9. **Changing `CONFIG.epoch` renumbers every puzzle and reshuffles the deal.**
 10. **An answer's `eid` is its position in that category's `buildIndex()` entries.** Reordering or inserting answers changes ids. Stored rounds use `eid` only for in-round dedupe and the "missed gems" list, so the damage is cosmetic. Don't build features that rely on `eid` across data versions.
-11. **`test.mjs` hardcodes a few CONFIG values**: Crawler gain 55, Sherpa 500, the five rank names, the leg cap at 750/950/1000, the leg timers (30/30/25/25/25/20/20) and multipliers, `maxQualifiedPerLeg` = 3, the `CONFIG.correct` defaults and the `CONFIG.ride` chances and timings (golden 1/20, late 1/10, spit 1/50, 2.6–3.6 s). Update the tests when you retune.
+11. **`test.mjs` hardcodes a few CONFIG values**: the rank gains (75/170/280/500/850), the five rank names, the leg cap at 1050/1250/1400, the leg timers (30/25/25/20/20), multipliers and kinds, the 4.5 s camp break, `maxQualifiedPerLeg` = 3, the `CONFIG.correct` defaults and the `CONFIG.ride` chances and timings (golden 1/20, late 1/10, spit 1/50, 2.6–3.6 s). Update the tests when you retune.
 12. **Never put answers in share text or any future leaderboard** (spoilers).
 13. **Colors go through CSS tokens.** The `.night` class swaps panel tokens. Canvas colors are separate constants inside `Scene` and don't follow the page theme.
 14. **Accessibility is not optional.**
@@ -202,8 +202,8 @@ keydown Enter on #answer ─▶ submit()
 ```
 home/idle ─Begin─▶ play/countdown ─(3-2-1, leg 1 only)─▶ play/leg ─time up─▶ play/settle
     ▲                                                  ▲                      │ waits ≤ 7 s for pending checks
-    │                                                  └── play/transition ◀──┘ 3.5 s between legs 1–6 (camera "peek")
-    └─ "Back to base" ── results/results ◀── finishRound() ◀── after leg 7
+    │                                                  └── play/transition ◀──┘ 4.5 s between legs 1–4 (camera pulls out to the mountain)
+    └─ "Back to base" ── results/results ◀── finishRound() ◀── after leg 5
 
 practice: same path with mode='practice', one 20 s leg, nothing saved, ends in finishPractice()
 reload mid-round: start() forfeits the round (spec §8.1) unless the artifact hot-reload asked to resume
@@ -221,18 +221,18 @@ The engine is pure: no DOM and no storage. It exports `window.DA_ENGINE`, or `mo
 | --- | --- | --- |
 | `epoch` | `'2026-11-08'` | Local date of puzzle #1 |
 | `startAlt` / `summitAlt` | 2860 / 8849 | Lukla, and the summit (final altitude is capped here) |
-| `legs[i].secs` | 30, 30, 25, 25, 25, 20, 20 | Leg timers ("thin air"); 175 s in all. The practice leg is a fixed 20 s in `legConf()` |
-| `legs[i].mult` | 1, 1, 1.25, 1.25, 1.25, 1.5, 1.5 | Later legs score more, to offset shorter timers |
-| `legKinds` | broad, broad, mid, mid, wild, mid, hard | The category pool each leg draws from |
-| `countdownSecs` / `transitionMs` | 3 / 3500 | 3-2-1 before leg 1; pause between legs |
+| `legs[i].secs` | 30, 25, 25, 20, 20 | Leg timers ("thin air"); 120 s in all. The practice leg is a fixed 20 s in `legConf()`. The number of legs is `legs.length` everywhere (app, dev mode, tests) |
+| `legs[i].mult` | 1, 1.25, 1.25, 1.5, 1.5 | Later legs score more, to offset shorter timers |
+| `legKinds` | broad, mid, wild, mid, hard | The category pool each leg draws from (same length as `legs`) |
+| `countdownSecs` / `transitionMs` | 3 / 4500 | 3-2-1 before leg 1; the camp break between legs, while the camera shows the whole mountain |
 | `invalidPenaltySecs` | 1 | Time lost per wrong answer |
 | `maxAcceptedPerLeg` / `minSubmitGapMs` | 30 / 150 | Anti-scripting guards |
 | `correct.*` | keyboardCost 0.5, doubleLetterCost 0.5, soundCost 1, soundMinLen 7, margin 1, shortLen 4, minRatio 0.6, maxRatio 1.4 | Autocorrect tuning (§6.3) |
-| `ride.*` | minMs 2600, maxMs 3600, fullAtMeters 1000, herd 4–6, goldenChance 1/20, lateChance 1/10, spitChance 1/50, styles (conga .35, pyramid .30, crowdsurf .30, paraglide .05), shortHopMeters 100, treelineAlt 3900, glacierFrom basecamp, deathZoneFrom deathzone, speed 1 | Alpaca ride after a Sherpa spotlight (§8.6); `speed` shortens it in tests |
+| `ride.*` | minMs 2600, maxMs 3600, fullAtMeters 1400, herd 4–6, goldenChance 1/20, lateChance 1/10, spitChance 1/50, styles (conga .35, pyramid .30, crowdsurf .30, paraglide .05), shortHopMeters 100, treelineAlt 3900, glacierFrom basecamp, deathZoneFrom deathzone, speed 1 | Alpaca ride after a Sherpa spotlight (§8.6); `speed` shortens it in tests |
 | `maxQualifiedPerLeg` | 3 | Qualified answers ("women's soccer", "dark purple") that can score per leg. Past it: "Variant limit reached", no penalty, chain unchanged |
 | `extraTimeFactor` | 1.5 | Accessibility setting; noted on results |
 | `chainStep` / `chainMax` | 0.05 / 0.25 | +5% per consecutive valid answer, up to +25%. A wrong answer resets it |
-| `legFullUpTo` / `legOverRate` / `legCap` | 750 / 0.35 / 1000 | Raw gain counts in full to 750 m, then at 35%, with an effective maximum of 1,000 m per leg |
+| `legFullUpTo` / `legOverRate` / `legCap` | 1050 / 0.35 / 1400 | Raw gain counts in full to 1,050 m, then at 35%, with an effective maximum of 1,400 m per leg (5 × 1,400 = 7,000 m, so the 5,989 m climb fits) |
 | `tiers[]` | see below | Five climber ranks |
 | `noFindEmoji` | ⬛ | Share square for a leg with no answers |
 | `judge.*` | see §8.5 | LLM judge thresholds and batching |
@@ -242,11 +242,11 @@ The engine is pure: no DOM and no storage. It exports `window.DA_ENGINE`, or `mo
 
 | # | id | keys | Name | Theme | Commonness ≥ | Gain | Spotlight | Share emoji |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 0 | crawler | c, f | Crawler | Trail dust (grey dot) | 0.30 | 55 m | — | ⬜ |
-| 1 | hiker | u | Hiker | Pine (green tree) | 0.10 | 120 m | — | 🟩 |
-| 2 | climber | r | Climber | Glacier (blue diamond) | 0.03 | 200 m | — | 🟦 |
-| 3 | mountaineer | e | Mountaineer | Aurora (purple sparkle) | 0.01 | 320 m | 1,000 ms | 🟪 |
-| 4 | sherpa | l | Sherpa | Summit gold (peak + flag) | 0 | 500 m | 1,400 ms | 🟨 |
+| 0 | crawler | c, f | Crawler | Trail dust (grey dot) | 0.30 | 75 m | — | ⬜ |
+| 1 | hiker | u | Hiker | Pine (green tree) | 0.10 | 170 m | — | 🟩 |
+| 2 | climber | r | Climber | Glacier (blue diamond) | 0.03 | 280 m | — | 🟦 |
+| 3 | mountaineer | e | Mountaineer | Aurora (purple sparkle) | 0.01 | 500 m | 1,000 ms | 🟪 |
+| 4 | sherpa | l | Sherpa | Summit gold (peak + flag) | 0 | 850 m | 1,400 ms | 🟨 |
 
 "Commonness" means the share of players who would think of the answer within about 20 seconds. The data files still use six keys (c, f, u, r, e, l) so content authors can keep tiering finely; `buildIndex()` folds c and f into Crawler. Entry order (and so `eid`) is unchanged by the fold.
 
@@ -281,7 +281,7 @@ Singular/plural folding is **not** applied to the stored key. Instead, `candidat
 
 ```
 answerGain(tier, chain, leg) = round( tiers[tier].gain × (1 + min(chainStep × chain, chainMax)) × legs[leg].mult )
-legEffective(raw)            = raw ≤ 750 ? raw : min(1000, 750 + (raw − 750) × 0.35)
+legEffective(raw)            = raw ≤ 1050 ? raw : min(1400, 1050 + (raw − 1050) × 0.35)
 finalAltitude(legRaws)       = min(8849, 2860 + Σ legEffective(raw_i))
 ```
 
@@ -293,10 +293,11 @@ finalAltitude(legRaws)       = min(8849, 2860 + Σ legEffective(raw_i))
 
 `puzzleNumber(localDate) = days since epoch + 1`. Every player sees the same number on the same calendar date, and each player's day rolls over at their own local midnight.
 
-How the seven categories are chosen:
+How the five categories are chosen:
 - Each pool (broad, wild, hard, and each mid lane) is dealt in **cycles**. A cycle is a seeded shuffle (`cyclePerm`, seeded by `hashStr('ascent:'+pool+':'+cycle)`), so every category appears once per cycle. `cyclePerm` also makes sure the first picks of a cycle don't repeat the last picks of the previous one.
-- **Broad** deals two per day and wild and hard one each. Mid deals one from each **lane** (`geo`, `nature`, `culture`), and the three are shuffled across legs 3, 4 and 6.
-- With the current inventory, nothing repeats within a 7-day cycle.
+- Each pool deals as many per day as `legKinds` asks for: broad, wild and hard one each.
+- **Mid** deals two per day from the three **lanes** (`geo`, `nature`, `culture`) in rotation: with m mid legs and L lanes, day d fills slots (d−1)·m to (d−1)·m+m−1, slot s takes lane s mod L, and that lane's pool advances only on the days it is used (its "day" is floor(s ÷ L) + 1), so no lane skips categories. Each lane appears on two days out of three, and the two mids are shuffled across legs 2 and 4. With m = L it reduces to the old one-per-lane deal.
+- With the current inventory, nothing repeats within a 7-day cycle (broad cycles every 14 days, mid lanes about every 10).
 
 `rng(seed)` is mulberry32 and `hashStr` is FNV-1a. Both are deterministic, so the whole deal can be recomputed offline.
 
@@ -331,7 +332,7 @@ DA_CATS.push(
 );
 ```
 
-**Inventory today:** 49 dealt categories and 26,034 answers: 14 broad, 21 mid (7 per lane), 7 wild and 7 hard, plus the practice category (Ice cream flavors, 393). Answers per data key, all 50 categories: 336 c, 851 f, 2,262 u, 7,477 r, 9,079 e, 6,422 l (so per rank: 1,187 Crawler, 2,262 Hiker, 7,477 Climber, 9,079 Mountaineer, 6,422 Sherpa). Open categories run from about 310 (Fruits) to 1,300 (Islands); most are 450–750. Complete closed sets (US states, African, European and Asian countries, elements, IAU constellations) are full lists that grow only by aliases; `test.mjs` checks their counts. The November 2026 expansion added only Hiker-and-up answers and never moved an existing answer between tiers.
+**Inventory today:** 49 dealt categories and 27,958 answers: 14 broad, 21 mid (7 per lane), 7 wild and 7 hard, plus the practice category (Ice cream flavors, 431). Answers per data key, all 50 categories: 336 c, 851 f, 2,336 u, 8,729 r, 9,700 e, 6,437 l (so per rank: 1,187 Crawler, 2,336 Hiker, 8,729 Climber, 9,700 Mountaineer, 6,437 Sherpa). Open categories run from about 360 (Vegetables) to 1,370 (Islands); most are 480–800. Complete closed sets (US states, African, European and Asian countries, elements, IAU constellations) are full lists that grow only by aliases; `test.mjs` checks their counts. The November 2026 expansions (the second, on the five-leg branch, added about 1,960 answers: specific varieties and species, regional dishes and cheeses, world instruments and sports, everyday objects for the broad and wildcard lists) added only Hiker-and-up answers and never moved an existing answer between tiers.
 
 **Qualifiers** (`qualifiers: [...]`, §6.3). Use them where a leading word turns a listed answer into a genuinely different thing a player would type: "women's soccer", "dark purple", "dried mango", "smoked gouda", "assistant manager", "toy car". Rules:
 - Explicit list entries always win. "Beach volleyball" or "Electric scooter" listed in the data is a normal entry, not a qualified one; list a compound when it is its own thing (wheelchair basketball, sitting volleyball, goalball), and leave the generic "adjective + answer" combinations to qualifiers.
@@ -347,7 +348,7 @@ Categories with qualifiers today: Sports (womens, mens, youth, junior, college, 
 - Open-ended, with 150 or more valid answers, or a complete closed set.
 - A wide spread from obvious to obscure answers, so every tier can be reached.
 - Unambiguous validity.
-- Broad categories (legs 1–2) are confidence-builders. Wildcards are playful and lateral. Hard categories still need easy ways in (everyone knows oxygen and gold).
+- Broad categories (leg 1) are confidence-builders. Wildcards are playful and lateral. Hard categories still need easy ways in (everyone knows oxygen and gold).
 
 **Tiering heuristic:** about 5–10 common answers, 10–20 familiar, then a widening tail. Put an answer in the tier for "how many players type this within 20 seconds", not "how impressive is this".
 
@@ -431,7 +432,7 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 **Views** (`setView(view, rect?, {pin, snap})`):
 - `overview` frames the whole mountain into a screen rect (home, results). The aspect is limited so it doesn't get squashed.
 - `follow` puts the climber at about 72% of screen height, showing roughly 1,400–2,100 m of vertical range. During play `layoutScene()` passes the **open strip** (below the answer card and the room its tags can take, above the next-landmark plate or the phone keyboard), and the climber's feet are clamped into it (at least 60 px below its top, 26 px above its bottom). The zoom never changes for the keyboard; the camera only pans. `#scene[data-climber-y]` mirrors where the feet are framed (CSS px) for tests.
-- `peek` is `follow` raised by 30% of the range, used during leg transitions.
+- **Camp break:** between legs the app frames the `overview` (with the pin) in the space the camp report leaves: above it on phones (the card sits at the bottom of the visible area, above the keyboard), left of it from 900 px wide (the card docks right). `G.camp` makes `layoutScene()` choose it; `startLeg` clears it and the camera eases back to `follow`. `#scene[data-view]` mirrors the current view for tests.
 - `ride` keeps the `follow` zoom (pixel sprites never scale, and every zoom frame is a full redraw) and pans so the climber sits at about 60% of the *visible* height (`visualViewport`), with 110 px of room under the HUD for the herd and banner and its feet above the phone keyboard. `Scene.ride()` switches to it and restores the previous view at the end. Milestone plates hide during a ride.
 
 `layoutScene()` in the app computes the rect from the DOM layout for each screen. The camera eases toward its target every frame (snaps under reduced motion).
@@ -471,7 +472,7 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 
 ### 8.6 Game flow and UI
 
-- **`G`** is the single mutable game state. Other fields: `cats` (the 7 category objects), `index` (their `buildIndex` results), `legIdx`, `aid` (answer id counter), `lastSubmit`, `peek`, `lastSec`.
+- **`G`** is the single mutable game state. Other fields: `cats` (the day's category objects, one per leg), `index` (their `buildIndex` results), `legIdx`, `aid` (answer id counter), `lastSubmit`, `camp` (true during the camp break, which frames the mountain overview), `lastSec`.
 - **`ui`** holds cached element references.
 - `beginDaily()` → `enterPlay()` → `countdown()` → the round is created → `startLeg(0)`.
 - `startLeg(i)` sets the deadline, category text, leg label, the night class through `setNight()`, and an announcement.
@@ -483,7 +484,7 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 - **End of leg:** `endLeg()` → `showTransition()`, or `finishPractice()`, or `finishRound()` → `showResults(round, {fresh})`.
 - **Results** (`showResults`): milestone, altitude, personal-best badge, per-leg rows (bar = effective gain / legCap, icon = rarest rank), best finds (top 3 by rank), **missed gems** (one Climber or Mountaineer unfound answer from up to 4 categories, seeded by puzzle), "Alpaca rides: N" when there were any (`alpacaRides(r)` counts ok Sherpa answers, judge-accepted ones included), the share box, Copy, streak, best and a countdown to the next climb.
 - **Sharing:**
-  - `shareText()`: `Daily Ascent #N ⛰️ / <emoji> <milestone> · <m> / 7 squares / [🦙 per alpaca ride] / [url]`.
+  - `shareText()`: `Daily Ascent #N ⛰️ / <emoji> <milestone> · <m> / one square per leg / [🦙 per alpaca ride] / [url]`.
   - `shareUrl()`: uses `window.DA_SHARE_URL` if set; otherwise it auto-detects github.io or a top-level https host. Inside the artifact frame there is no URL.
   - `copyShare()`: uses the clipboard, falling back to selecting the text.
 - **Dialogs:** these are native `<dialog>` elements (`openDialog`, `closeDialogs`; `[data-close]` buttons; clicking the backdrop closes them). `openStats()` and `openSettings()` render their bodies when opened; Stats includes lifetime alpaca rides and the longest ride (meters, answer and category). Extra time is locked while a round is in progress.
@@ -533,10 +534,10 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
   - spot checks: plurals, "Mt.", "oak tree", fuzzy typos, aliases such as Holland → Netherlands, and cases that must *not* match
   - closed-set counts (118 elements, 88 IAU constellations, 50 states, 54 African countries)
   - scoring and cap math, and verdict interpretation
-  - 120 days of deals: 7 unique categories per day, correct kinds, all 3 lanes, no category repeated from the day before, every category dealt
+  - 120 days of deals: 5 unique categories per day, correct kinds, two different mid lanes a day with every lane used equally, no category repeated from the day before, every category dealt
   - the deal for puzzles 1–365 against a pinned SHA-256 (gotcha 8)
   - qualifier rules: qualified matches and their display canon, explicit entries winning, no stacking, base-tier scoring, (entry, qualifier) dedupe and the per-leg variant cap
-  - leg timers (30/30/25/25/25/20/20) with multipliers, extra time, countdown, transitions and penalty unchanged
+  - leg timers (30/25/25/20/20) with multipliers and kinds, the 120 s total, the 4.5 s camp break, extra time, countdown and penalty, and that 5 × the leg cap clears the climb
   - `MUST_ACCEPT` (every category, 5–8 answers) and `MUST_REJECT`
   - the alpaca ride plan: chances over 200,000 seeded rolls (golden ≈ 5%, late ≈ 10%, spit ≈ 2%), every style appearing with paraglide the rarest, a herd of 4–6, same seed same plan, band boundaries, headlamps, short hop, no move, crossesSummit, `force`, duration bounds and `speed`, the reduced plan, and `shareAlpacas()` (never letters)
   - autocorrect: `MUST_CORRECT` (52 real misspellings in 39 categories, covering typo, keyboard, sound and word-by-word fixes) and `MUST_NOT_CORRECT` (short words, gibberish, too-short inputs, exact answers near another, an ambiguous pair), plus the helpers and CONFIG defaults
@@ -544,8 +545,8 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
   It also prints an informational **autocorrect near-pairs report** (answers one slip apart, with the ones where both are Crawler or Hiker listed) and the **autocorrect speed** in the largest category (target under 3 ms per `match()`).
 
   It then prints per-category tier counts and a **calibration Monte Carlo**. The calibration uses four player archetypes (casual, solid, strong, expert) with guessed answer speeds and tier mixes, and reports how many rounds land in each band (below Base Camp, Base Camp, Camp 1–2, Camp 2–Death Zone, Death Zone, Summit). Treat it as a sanity check until real play data exists.
-- **`npm test`** also checks dev mode: lap math (wrap at the summit, uncapped total, lap count), `answerTable()` (one row per entry in every category, rank counts adding up, natural legs, gains at leg 1 and leg 7, the chain bonus, every leg multiplier, commonness bands from CONFIG), the constant-time compare, the lock's shape, that a wrong password fails, and (only when `dev.local.mjs` exists) that the private password matches `src/dev-lock.js`.
-- **`npm run smoke`** builds a sandboxed iframe, speeds up the CONFIG, plays all 7 legs typing seed answers plus one invalid answer per leg, and asserts that chip counts match, the results and share text appear, and a reload shows "View Results". Then, if `dev.local.mjs` exists, it opens `?dev`, checks a wrong password is refused, unlocks, pauses (the clock must hold), runs the autoplay bot until lap 2, ends the climb and asserts `daily-ascent:v1` is byte-for-byte unchanged. During the dev lap the bot misspells every third answer, and the smoke checks that the log shows corrected answers and that the debugger explains "fuschia" → Fuchsia. It also moves the section slider to Answers and steps with › to Effects. It then opens the Answers tab on Islands, checks the count matches the category's entries, and checks the rank filter (Sherpa only, searching "ice" and "island"). Finally it stops the bot and plays the alpaca ride from the Effects tab once per band (forcing golden, late and spit across the runs), with the UI hidden, printing the frame rate and saving `shots/alpaca-<band>.png`, and checks the dev log has a ride line. The daily climb (with `CONFIG.ride.speed` = 3) checks each Sherpa answer's ride: `.riding` appears after the spotlight, the clock holds, the ride ends, `#answer` keeps focus and text typed mid-ride is kept. It also checks the share text has 🦙 and no answers, that results list alpaca rides, and that with reduced motion a Sherpa answer gives "Carried up by alpacas" and no ride. During leg 1 it simulates a phone keyboard (the visual viewport 300 px shorter) and checks `.kb-open` and that the climber is framed above it, then that everything returns when it closes. It also checks the pixel renderer: the art canvas size from `#scene[data-art-*]` (2 or 3 CSS px per art pixel, width ≈ viewport ÷ px + 2 spare art pixels), that the answer box types at weight 500, that leg 6 is on night panels, that each dev alpaca ride runs at 30 fps or more, and the draft outfit preview (bobble hat, summit shades and scarf; logged as "outfit: …", never saved to either save). It saves `shots/newlook-home.png`, `newlook-leg1.png`, `newlook-leg6.png`, `newlook-ride.png`, `newlook-results.png` and, in dev mode, `newlook-outfit.png`. Google Fonts may be unreachable where the smoke runs; the screenshots then show the fallback faces. It fails on any page error.
+- **`npm test`** also checks dev mode: lap math (wrap at the summit, uncapped total, lap count), `answerTable()` (one row per entry in every category, rank counts adding up, natural legs, gains at leg 1 and leg 5, the chain bonus, every leg multiplier, commonness bands from CONFIG), the constant-time compare, the lock's shape, that a wrong password fails, and (only when `dev.local.mjs` exists) that the private password matches `src/dev-lock.js`.
+- **`npm run smoke`** builds a sandboxed iframe, speeds up the CONFIG, plays all 5 legs typing seed answers plus one invalid answer per leg, and asserts that chip counts match, the results and share text appear, and a reload shows "View Results". Then, if `dev.local.mjs` exists, it opens `?dev`, checks a wrong password is refused, unlocks, pauses (the clock must hold), runs the autoplay bot until lap 2, ends the climb and asserts `daily-ascent:v1` is byte-for-byte unchanged. During the dev lap the bot misspells every third answer, and the smoke checks that the log shows corrected answers and that the debugger explains "fuschia" → Fuchsia. It also moves the section slider to Answers and steps with › to Effects. It then opens the Answers tab on Islands, checks the count matches the category's entries, and checks the rank filter (Sherpa only, searching "ice" and "island"). Finally it stops the bot and plays the alpaca ride from the Effects tab once per band (forcing golden, late and spit across the runs), with the UI hidden, printing the frame rate and saving `shots/alpaca-<band>.png`, and checks the dev log has a ride line. The daily climb (with `CONFIG.ride.speed` = 3) checks each Sherpa answer's ride: `.riding` appears after the spotlight, the clock holds, the ride ends, `#answer` keeps focus and text typed mid-ride is kept. It also checks the share text has 🦙 and no answers, that results list alpaca rides, and that with reduced motion a Sherpa answer gives "Carried up by alpacas" and no ride. During leg 1 it simulates a phone keyboard (the visual viewport 300 px shorter) and checks `.kb-open` and that the climber is framed above it, then that everything returns when it closes. After every leg but the last it checks the camp break shows the mountain (`#scene[data-view]` is `overview`) and that the next leg is back on `follow`. It also checks the pixel renderer: the art canvas size from `#scene[data-art-*]` (2 or 3 CSS px per art pixel, width ≈ viewport ÷ px + 2 spare art pixels), that the answer box types at weight 500, that leg 4 (the summit push) is on night panels, that each dev alpaca ride runs at 30 fps or more, and the draft outfit preview (bobble hat, summit shades and scarf; logged as "outfit: …", never saved to either save). It saves `shots/newlook-home.png`, `newlook-leg1.png`, `newlook-camp.png`, `newlook-night.png`, `newlook-ride.png`, `newlook-results.png` and, in dev mode, `newlook-outfit.png`. Google Fonts may be unreachable where the smoke runs; the screenshots then show the fallback faces. It fails on any page error.
 - **Manual checks the scripts can't do:**
   - real phone keyboards (iOS Safari, Android Chrome); the keyboard must stay up between legs, and the climber must stay visible above it
   - artifact consent for answer checking
@@ -567,12 +568,12 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 
 | Topic | Spec | Built | Why |
 | --- | --- | --- | --- |
-| Gain tiers | §6.1 lists 4 (Crawler/Hiker/Mountaineer/Sherpa: 15/90/180/600) | 5 ranks: Crawler/Hiker/Climber/Mountaineer/Sherpa at 55/120/200/320/500 | Uses the spec's climber names plus Climber in the middle. The data keeps six keys; Common+Familiar fold into Crawler so the top ranks stay scarce. Simulation still gives about 6% summits |
-| Later-leg bonus | "1x, 1x, 1.2x…" | 1, 1, 1.25, 1.25, 1.25, 1.5, 1.5 | Roughly offsets the shorter timers |
-| Leg cap | 900 m full, 50% beyond, 1,200 max | 750 / 35% / 1,000 | The spec values gave about 15% summits in simulation; these give about 6% (target 5%) |
+| Gain tiers | §6.1 lists 4 (Crawler/Hiker/Mountaineer/Sherpa: 15/90/180/600) | 5 ranks: Crawler/Hiker/Climber/Mountaineer/Sherpa, first at 55/120/200/320/500, now 75/170/280/500/850 (see Leg count) | Uses the spec's climber names plus Climber in the middle. The data keeps six keys; Common+Familiar fold into Crawler so the top ranks stay scarce. Simulation still gives about 6% summits |
+| Later-leg bonus | "1x, 1x, 1.2x…" | 1, 1.25, 1.25, 1.5, 1.5 (7-leg build: 1, 1, 1.25, 1.25, 1.25, 1.5, 1.5) | Roughly offsets the shorter timers |
+| Leg cap | 900 m full, 50% beyond, 1,200 max | 750 / 35% / 1,000 with 7 legs; 1,050 / 35% / 1,400 with 5 | The spec values gave about 15% summits in simulation; these give about 6% (target 5%) |
 | Outcome distribution | Bands add up to 80% | The missing 20% is read as Camp 2 → Death Zone | The spec table omits that band |
 | Invalid answers (open question 3) | Time, altitude or both? | 1 s of time, plus a reset of the chain bonus | Matches §9.3 ("timer visibly ticks down") |
-| Leg order (open question 4) | Undecided | Fixed: broad, broad, mid, mid, wild, mid, hard | Ramps gently, wildcard as a breather, hardest category last |
+| Leg order (open question 4) | Undecided | Fixed: broad, mid, wild, mid, hard | Ramps gently, wildcard as a breather, hardest category last |
 | Mid-category variety | "Mixing knowledge types" | One per lane per day: geo, nature, culture | Guarantees the mix |
 | "Sherpa: something even more grand" | Undefined | Mountaineer and Sherpa freeze the leg (1 s / 1.4 s, clock held) and spotlight the answer. Sherpa adds a gold flare, rays, confetti, a quake, singing bowl + fanfare and strong haptics | A rare find should feel like an event, without costing the player time |
 | Mountain (open question 1) | Real Everest or fictional | Real Everest, South Col route, stylized side profile | Matches the spec's assumption |
@@ -581,13 +582,16 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 | LLM judge | Server-side, shared cache | Artifact-only via the viewer's Claude account; per-browser cache | No backend; GitHub Pages builds use the word list only |
 | Stack | React + Vite + Supabase suggested | Vanilla JS, single file, no build dependencies | Opens anywhere, publishes as an artifact, uploads to Pages as one file |
 | Report-an-answer button | §5.5 | Not built | Needs a backend review queue |
-| Content volume | MVP: 30 days | 49 categories = 7 days of unique deals, then reshuffled cycles | Content pipeline (§7.3) still to build |
+| Content volume | MVP: 30 days | 49 categories = 7 days of unique deals (5 a day), then reshuffled cycles | Content pipeline (§7.3) still to build |
 | Answer variants | Not covered | Per-category `qualifiers` (§6.3, §7): one leading word makes a listed answer a distinct variant ("women's soccer"), scored at the base tier, at most 3 per leg | Players typed real variants and were penalized; listing every "adjective + answer" combination would bloat the lists, and the cap stops farming |
 | Autocorrect | §5.3 stage 3: edit distance 1 (5–8 letters) or 2 (longer), only with exactly one candidate | Silent correction on Enter: weighted typo cost, keyboard slips, repeated letters, sound-alikes, word by word, with a clear-winner margin (§6.3). Corrections score at the full tier and show "you typed …" on the tag | Players who know an answer shouldn't lose time to spelling. No visible autofill or suggestions: they would leak the answer bank and reward guessing over knowledge |
 | Alpaca ride | Sherpa: "something even more grand" (the spotlight row above) | After the Sherpa spotlight, a herd of alpacas carries the climber up by the meters earned (about 3 s, clock held), every time: altitude-aware herds, random styles, answer banner, ALPACA EXPRESS sign, climber reactions, slot-machine altimeter; rare golden (1/20) and late (1/10) alpacas and a farewell spit (1/50) | Make the rarest find a comic event worth remembering, without costing the player time. Alpacas over (true-to-Everest) yaks, for comedy. Defaults: under 100 m a map-and-shrug short hop, at 0 m the herd just shrugs; rides queue; rare variants can stack |
 | Share text | Altitude, milestone, squares | Adds one 🦙 per Sherpa alpaca ride (🦙×N from 6) | A playful brag that reveals no answers (`shareAlpacas()` never contains letters) |
 | Art style | Not specified | Khumbu dawn flat illustration → cozy pixel art (mockups approved November 2026): a low-res art canvas scaled up crisply, dithered gradients, selective outlines, puffy trees, thatched teahouses, a layered climber ready for cosmetics, and pixel menus (parchment, wood signs, HUD plates, Silkscreen and Pixelify Sans) | Kevin picked the look from a cozy farm-game reference; the side view and every rule stay the same. Cosmetic items are drafted (dev preview only) and not planned for a while |
-| Leg timers | 20 s for every leg, shrinking later | 30, 30, 25, 25, 25, 20, 20 (+10 s each, 175 s total); nothing else retuned | More time per category, so the bigger word lists have room to pay off. The unchanged calibration sim now gives about 33% summits (target 5%), so a retune is due |
+| Leg timers (7-leg build) | 20 s for every leg, shrinking later | 30, 30, 25, 25, 25, 20, 20 (+10 s each, 175 s total); nothing else retuned | More time per category, so the bigger word lists have room to pay off. The unchanged calibration sim now gives about 33% summits (target 5%), so a retune is due |
+| Leg count | 7 categories a day | 5: broad, mid, wild, mid, hard (30/25/25/20/20 s, ×1/1.25/1.25/1.5/1.5, 120 s total); mid lanes rotate two a day | Jack asked for fewer categories. Gains and the leg cap scale by 1.4 (7 ÷ 5) so the summit stays reachable: the simulation gives about the same distribution as the 7-leg build (34% summits) |
+| Rare-word bonus | — | On top of the 1.4 scale-up, Mountaineer 448 → 500 m and Sherpa 700 → 850 m (75/170/280/500/850); Sherpa ≈ 11× Crawler | Jack asked for a bigger reward for rare words |
+| Camp break | §9.3: the camera pans up between legs | The camera pulls out to the whole mountain (overview with the pin) for 4.5 s (was 3.5 s, a raised "peek"), the camp report docked low (phones) or right (wide screens) | Jack asked to see how far the climber has come every round, and for an extra second between rounds |
 | Frame rate | Not specified | 60 fps, capped: the art canvas is the visible canvas (CSS-scaled, sub-pixel CSS shift), cached world and range layers redrawn a strip per frame, flat-shaded terrain and ranges, a calmer trail with scenery across the face, rides that pan instead of zoom, a quiet HUD | The first pixel renderer shaded every pixel each frame: 8–23 fps with the CPU slowed 4–6×. Now 56–60 at 4× (mid-range phone) and 51–59 at 6× in headless Chrome without a GPU. Kevin asked for a constant 60 and smoother movement, keeping the cozy pixel look and the detailed climber |
 
 ---
@@ -610,7 +614,8 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 
 - Everything is client-side. A determined player can read answers from the source or edit `localStorage`. This is acceptable for playtesting, not for leaderboards.
 - Content changes reshuffle the cyclic deal (see gotcha 8).
-- The calibration simulation uses guessed player behavior. It assumes a constant answer rate, so it overstates what longer timers add; even so, after the +10 s timers it gives about 33% summits against the 5% target. Retune the leg cap, gains or multipliers before shipping the timers to `main`.
+- The calibration simulation uses guessed player behavior. It assumes a constant answer rate, so it overstates what longer timers add. The 7-leg build with +10 s timers gave about 33% summits; the 5-leg retune was matched to that on purpose (about 34%, "make the summit achievable"), so it is still well above the pillar's 5% target. Lower the leg cap or gains if the summit should be rare again.
+- The 5-leg change reshuffles the daily deal (gotcha 8): ship it just after local midnight so nobody's puzzle changes mid-day. A round saved by the 7-leg build still shows its 7 rows and squares (results use `round.catIds.length`).
 - Canvas colors ignore the light/dark page theme (by design: the sky is the theme).
 - `eid` is not stable across data edits (see gotcha 10).
 - Autocorrect can't tell two real answers one slip apart (waiter/writer, shirt/skirt, Monet/Manet); exact answers always win, and a typo between them usually comes back ambiguous. `npm test` prints these near pairs. It also shows duplicate-looking entries such as Goat cheese / Goats cheese, worth merging in a data pass.

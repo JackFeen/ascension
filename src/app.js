@@ -374,7 +374,7 @@
         tgt.alt = climbTarget - (H / 2 - y) / tgt.sy;
         return;
       }
-      if (view === 'follow' || view === 'peek') {
+      if (view === 'follow') {
         const range = clamp(H * 1.8, 1350, 2100);
         tgt.sy = H / range;
         const wp = clamp(0.3 * (W / H) / 0.462, 0.24, 0.6);
@@ -385,7 +385,7 @@
         let y = 0.72 * H;
         if (rect) { const lo = rect.y0 + 60, hi = rect.y1 - 26; y = hi < lo ? hi : clamp(y, lo, hi); }
         noteClimberY(y);
-        tgt.alt = climbTarget + (y - H / 2) / tgt.sy + (view === 'peek' ? 0.3 * range : 0);
+        tgt.alt = climbTarget + (y - H / 2) / tgt.sy;
       } else {
         const r = rect || { x0: 0, y0: 0, x1: W, y1: H };
         const rw = Math.max(80, r.x1 - r.x0), rh = Math.max(80, r.y1 - r.y0);
@@ -820,14 +820,14 @@
           resolve, on: o.on || null, fired: {}, prevView: view, prevRect: rect, banner: null,
         };
         climb = climbTarget = ride.from;
-        view = 'ride'; computeTarget();
+        view = 'ride'; cv.dataset.view = view; computeTarget();
       });
     }
     function endRide(done) {
       if (!ride) return;
       const R0 = ride; ride = null;
       climb = climbTarget = R0.to;
-      view = R0.prevView === 'ride' ? 'follow' : R0.prevView; rect = R0.prevRect; computeTarget();
+      view = R0.prevView === 'ride' ? 'follow' : R0.prevView; rect = R0.prevRect; cv.dataset.view = view; computeTarget();
       R0.resolve(done !== false);
     }
     function rideEvent(name) { if (ride && !ride.fired[name]) { ride.fired[name] = true; if (ride.on) try { ride.on(name, ride.P); } catch (e) { /* never break a frame */ } } }
@@ -1491,7 +1491,8 @@
     return {
       start() { resize(); window.addEventListener('resize', resize); requestAnimationFrame((t) => { last = t; frame(t); }); warmSprites(); },
       resize,
-      setView(v, r, opts) { view = v; rect = r || null; showPin = !!(opts && opts.pin); computeTarget(); if (opts && opts.snap) snap = true; },
+      // the view is mirrored on the element (#scene[data-view], read by the smoke test); written on view changes, never per frame
+      setView(v, r, opts) { view = v; rect = r || null; showPin = !!(opts && opts.pin); if (cv.dataset.view !== v) cv.dataset.view = v; computeTarget(); if (opts && opts.snap) snap = true; },
       setClimb(a, opts) { climbTarget = clamp(a, C.startAlt, C.summitAlt); if (opts && opts.snap) { climb = climbTarget; snap = true; } },
       setGhost(a) { ghost = a || null; },
       setReduced(v) { reduced = !!v; },
@@ -1621,7 +1622,7 @@
   // ===========================================================================
   const G = {
     screen: 'home', state: 'idle', mode: 'daily', today: '', puzzle: 1, cats: [], index: [], round: null,
-    legIdx: 0, aid: 0, lastSubmit: 0, peek: false, lastSec: -1, pauseUntil: 0,
+    legIdx: 0, aid: 0, lastSubmit: 0, camp: false, lastSec: -1, pauseUntil: 0,
     rideQ: [], rideActive: null, slotT: 0, slotTxt: '',   // alpaca rides (queued, playing) and the slot-machine altimeter
     dev: null,   // dev climb tool state (mode 'dev' only), see the dev mode section
   };
@@ -1638,8 +1639,10 @@
     legs: $('#legs'), live: $('#sr-live'),
   };
   const announce = (t) => { ui.live.textContent = ''; setTimeout(() => { ui.live.textContent = t; }, 30); };
-  // Dev climbs run legs forever; each leg uses one position (0–6) of the normal
+  // Dev climbs run legs forever; each leg uses one position (0 to NL−1) of the normal
   // pattern for its timer, multiplier and category pool. Daily legs: pos = index.
+  const NL = C.legs.length;   // legs in a daily climb
+  const legWord = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][NL] || String(NL);
   const legPos = (i) => (G.mode === 'dev' && G.round && G.round.legs[i] ? G.round.legs[i].pos : i);
   const legConf = (i) => (G.mode === 'practice' ? { secs: 20, mult: 1 } : C.legs[legPos(i)]);
   const curLeg = () => G.round && G.round.legs[G.legIdx];
@@ -1676,7 +1679,14 @@
       const top = Math.max(card.bottom, chips.top + chipsMax, visTop);
       const nm = ui.next.getBoundingClientRect();
       const bot = nm.height > 0 && nm.top > top && nm.top < visBot ? nm.top - 4 : visBot;
-      Scene.setView(G.peek ? 'peek' : 'follow', { x0: 0, y0: top, x1: W, y1: bot, hud: Math.max(hud.bottom, visTop) });
+      if (G.camp) {
+        // camp break: pull out to the whole mountain in the space the camp report leaves (above it on
+        // phones, beside it on wide screens), with the pin on where the climb has reached
+        const tc = $('.trans-card').getBoundingClientRect();
+        const y0 = Math.max(hud.bottom, visTop) + 10;
+        if (W >= 900 && tc.width) Scene.setView('overview', { x0: 24, y0, x1: tc.left - 24, y1: visBot - 24 }, { pin: true });
+        else Scene.setView('overview', { x0: 8, y0, x1: W - 8, y1: Math.max(y0 + 80, (tc.height ? tc.top : visBot) - 10) }, { pin: true });
+      } else Scene.setView('follow', { x0: 0, y0: top, x1: W, y1: bot, hud: Math.max(hud.bottom, visTop) });
     }
   }
   // The phone keyboard covers the bottom of the layout viewport (the visual viewport shrinks); how much is
@@ -1756,7 +1766,7 @@
     const st = liveStreak();
     $('#fact-streak').innerHTML = st + '<small> day' + (st === 1 ? '' : 's') + '</small>';
     $('#fact-best').innerHTML = best ? fmt(best) + '<small> m</small>' : '—';
-    $('#fact-today').innerHTML = done ? fmt(r.final) + '<small> m</small>' : '7 legs';
+    $('#fact-today').innerHTML = done ? fmt(r.final) + '<small> m</small>' : NL + ' legs';
     $('#btn-begin').textContent = done ? 'View Results' : 'Begin Climb';
     $('#next-climb').hidden = !done;
     Scene.setClimb(done ? r.final : C.startAlt, { snap: true });
@@ -1775,13 +1785,13 @@
     ui.category.textContent = 'Get ready';
     ui.category.classList.add('veiled');
     ui.legs.innerHTML = '';
-    const n = G.mode === 'practice' ? 1 : 7;
+    const n = G.mode === 'practice' ? 1 : NL;
     for (let i = 0; i < n; i++) { const li = document.createElement('li'); li.setAttribute('aria-label', 'Leg ' + (i + 1)); ui.legs.appendChild(li); }
     renderLegDots();
     ui.input.focus({ preventScroll: true });
   }
   function renderLegDots() {
-    const at = legPos(G.legIdx);   // dev climbs: the position in the 7-leg pattern
+    const at = legPos(G.legIdx);   // dev climbs: the position in the leg pattern
     [...ui.legs.children].forEach((li, i) => {
       li.classList.toggle('done', i < at || (i === at && G.state === 'settle'));
       li.classList.toggle('current', i === at && G.state !== 'settle');
@@ -1859,7 +1869,7 @@
     renderLegDots();
     setNight();
     Sound.play('go');
-    const who = G.mode === 'practice' ? 'Practice' : G.mode === 'dev' ? `Dev leg ${i + 1}` : `Leg ${i + 1} of 7`;
+    const who = G.mode === 'practice' ? 'Practice' : G.mode === 'dev' ? `Dev leg ${i + 1}` : `Leg ${i + 1} of ${NL}`;
     announce(`${who}: ${G.cats[i].text}. ${Math.round(secs)} seconds.`);
     devEmit('leg-start', i);
     requestAnimationFrame(layoutScene);   // the category's height can change the climber's strip
@@ -1867,13 +1877,13 @@
   function setLegHeader(i, secs, mult) {
     ui.category.textContent = G.cats[i].text;
     ui.category.classList.remove('veiled');
-    $('#leg-label').textContent = G.mode === 'practice' ? 'Practice climb' : G.mode === 'dev' ? `Dev leg ${i + 1} · pattern ${legPos(i) + 1} of 7` : `Leg ${i + 1} of 7`;
+    $('#leg-label').textContent = G.mode === 'practice' ? 'Practice climb' : G.mode === 'dev' ? `Dev leg ${i + 1} · pattern ${legPos(i) + 1} of ${NL}` : `Leg ${i + 1} of ${NL}`;
     $('#leg-mult').textContent = `${Math.round(secs)} s  ×${mult}`;
   }
   function setNight() {
     const alt = Scene.alt;
-    let night = (G.screen === 'play' && G.mode === 'daily' && (G.legIdx >= 5 || alt >= 8000)) || (G.screen === 'results' && G.mode === 'daily' && G.round && G.round.final >= 8000);
-    if (G.mode === 'dev' && G.dev) night = G.dev.night != null ? G.dev.night : (G.screen === 'play' && (legPos(G.legIdx) >= 5 || alt >= 8000));
+    let night = (G.screen === 'play' && G.mode === 'daily' && (G.legIdx >= NL - 2 || alt >= 8000)) || (G.screen === 'results' && G.mode === 'daily' && G.round && G.round.final >= 8000);
+    if (G.mode === 'dev' && G.dev) night = G.dev.night != null ? G.dev.night : (G.screen === 'play' && (legPos(G.legIdx) >= NL - 2 || alt >= 8000));
     ui.app.classList.toggle('night', !!night);
   }
 
@@ -2292,7 +2302,7 @@
     leg.ended = now();
     save();
     if (G.mode === 'practice') return finishPractice();
-    if (G.mode !== 'dev' && G.legIdx >= 6) return finishRound();
+    if (G.mode !== 'dev' && G.legIdx >= G.cats.length - 1) return finishRound();
     if (G.mode === 'dev' && G.dev.skipTransition) {   // dev "jump to leg": straight on
       G.dev.skipTransition = false;
       $('#transition').hidden = true;
@@ -2300,11 +2310,11 @@
       return layoutScene();
     }
     G.state = 'transition';
-    G.peek = true; layoutScene();
     showTransition({});
+    G.camp = true; layoutScene();   // after the card is shown, so the mountain is framed around it
     await sleep(C.transitionMs);
     if (G.round !== round || G.state !== 'transition') return;
-    G.peek = false;
+    G.camp = false;
     $('#transition').hidden = true;
     startLeg(G.legIdx + 1);
     layoutScene();
@@ -2325,12 +2335,12 @@
     $('#tr-next-row').hidden = !nx;
     $('#tr-next').hidden = !nx;
     if (nx) { $('#tr-next-dist').textContent = fmt(nx.alt - alt) + ' m to go'; $('#tr-next').textContent = nx.name; }
-    const showLeg = !o.checking && ((nxt < 7 && G.mode === 'daily') || G.mode === 'dev');
+    const showLeg = !o.checking && ((nxt < G.cats.length && G.mode === 'daily') || G.mode === 'dev');
     $('#tr-leg-row').hidden = !showLeg;
     if (showLeg) {
       const np = G.mode === 'dev' ? devNextPos() : nxt;
       const c = C.legs[np];
-      $('#tr-leg').textContent = G.mode === 'dev' ? `Dev leg ${nxt + 1} · pattern ${np + 1}` : nxt >= 5 ? `Leg ${nxt + 1}, summit push` : `Leg ${nxt + 1}`;
+      $('#tr-leg').textContent = G.mode === 'dev' ? `Dev leg ${nxt + 1} · pattern ${np + 1}` : nxt >= NL - 2 ? `Leg ${nxt + 1}, summit push` : `Leg ${nxt + 1}`;
       $('#tr-leg-info').textContent = `${Math.round(c.secs * (G.round.extra ? C.extraTimeFactor : 1))} s  ×${c.mult}`;
     }
     const acts = $('#tr-actions'); acts.hidden = true; acts.innerHTML = '';
@@ -2373,7 +2383,7 @@
   function legRarest(l) { let t = -1; if (l) l.answers.forEach((a) => { if (a.s === 'ok' && a.tier > t) t = a.tier; }); return t; }
   function shareText(r) {
     const m = E.milestoneFor(r.final);
-    const row = Array.from({ length: 7 }, (_, i) => { const t = legRarest(r.legs[i]); return t >= 0 ? C.tiers[t].emoji : C.noFindEmoji; }).join('');
+    const row = Array.from({ length: r.catIds.length }, (_, i) => { const t = legRarest(r.legs[i]); return t >= 0 ? C.tiers[t].emoji : C.noFindEmoji; }).join('');
     const url = shareUrl();
     const llamas = E.shareAlpacas(alpacaRides(r).n);   // one 🦙 per Sherpa ride: no letters, so never answers
     return `Daily Ascent #${r.puzzle} ⛰️\n${m.emoji} ${m.short} · ${fmt(r.final)} m\n${row}${llamas ? '\n' + llamas : ''}${url ? '\n' + url : ''}`;
@@ -2421,7 +2431,7 @@
     }
     const st = liveStreak();
     const dateLabel = new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    const legRows = r.legs.length ? Array.from({ length: 7 }, (_, i) => {
+    const legRows = r.legs.length ? Array.from({ length: cats.length }, (_, i) => {
       const l = r.legs[i];
       const eff = l ? E.legEffective(l.raw) : 0;
       const t = legRarest(l);
@@ -2494,7 +2504,7 @@
     const secs = C.legs.map((l) => l.secs), mults = C.legs.map((l) => l.mult);
     const pen = C.invalidPenaltySecs;
     $('#rules').innerHTML = [
-      'Every day, everyone gets the same seven categories. You get one scored climb.',
+      `Every day, everyone gets the same ${legWord} categories. You get one scored climb.`,
       'Each category is a timed leg. Type an answer and press Enter. Keep going until time runs out.',
       `Rarer valid answers climb higher. Each answer in a row adds a ${Math.round(C.chainStep * 100)}% bonus, up to ${Math.round(C.chainMax * 100)}%.`,
       `A wrong answer costs ${pen} second${pen === 1 ? '' : 's'} and resets that bonus. Repeats cost nothing.`,
@@ -2632,7 +2642,7 @@
   function devNextPos() {
     if (G.dev.nextPos != null) return G.dev.nextPos;
     const legs = G.round.legs, last = legs[legs.length - 1];
-    return last ? (last.pos + 1) % 7 : 0;
+    return last ? (last.pos + 1) % NL : 0;
   }
   function devPrepareLeg(i) {
     const d = G.dev;
@@ -2717,7 +2727,7 @@
     clearSpotlight();
     $('#transition').hidden = true;
     $('#countdown').hidden = true;
-    G.peek = false;
+    G.camp = false;
     r.legs.forEach((l) => {
       if (!l) return;
       l.answers.forEach((a) => { if (a.s === 'pending') a.s = 'unchecked'; });
@@ -2812,7 +2822,7 @@
     clearTimeout(G.dev.lapT1); clearTimeout(G.dev.lapT2);
     $('#transition').hidden = true;
     $('#countdown').hidden = true;
-    G.state = 'idle'; G.peek = false; G.round = null;
+    G.state = 'idle'; G.camp = false; G.round = null;
     DevStore.load();
     const r = DevStore.data.devRound;
     if (!r || !Array.isArray(r.legs)) { exitDev(); return 'The dev save could not be read back. Storage may be blocked here.'; }
@@ -3009,11 +3019,11 @@
     if (leg && !leg.ended && leg.deadline > now()) {
       G.state = 'leg';
       ui.category.textContent = G.cats[G.legIdx].text; ui.category.classList.remove('veiled');
-      $('#leg-label').textContent = `Leg ${G.legIdx + 1} of 7`;
+      $('#leg-label').textContent = `Leg ${G.legIdx + 1} of ${G.cats.length}`;
       $('#leg-mult').textContent = `${Math.round(leg.total / 1000)} s  ×${C.legs[G.legIdx].mult}`;
       leg.answers.filter((a) => a.s === 'ok').forEach((a) => ui.chips.prepend(chipEl(a)));
       renderLegDots(); setNight();
-    } else if (G.legIdx >= 6 && leg && leg.ended) finishRound();
+    } else if (G.legIdx >= G.cats.length - 1 && leg && leg.ended) finishRound();
     else if (leg && !leg.ended) { G.state = 'leg'; endLeg(); }
     else startLeg(leg ? G.legIdx + 1 : 0);
   }

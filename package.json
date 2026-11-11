@@ -2,7 +2,7 @@
   "name": "daily-ascent",
   "version": "0.1.0",
   "private": true,
-  "description": "A daily word game: seven timed categories, rare answers climb higher, your score is your altitude on Everest.",
+  "description": "A daily word game: five timed categories, rare answers climb higher, your score is your altitude on Everest.",
   "scripts": {
     "build": "node build.mjs",
     "test": "node test.mjs",

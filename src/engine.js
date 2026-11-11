@@ -13,25 +13,23 @@
     // Timers shorten with altitude; later legs score more (spec §3).
     legs: [
       { secs: 30, mult: 1.0 },
-      { secs: 30, mult: 1.0 },
-      { secs: 25, mult: 1.25 },
       { secs: 25, mult: 1.25 },
       { secs: 25, mult: 1.25 },
       { secs: 20, mult: 1.5 },
       { secs: 20, mult: 1.5 },
     ],
-    // Daily mix (spec §7.2): two broad openers, three mid (one per lane),
-    // one wildcard, one harder knowledge category to finish.
-    legKinds: ['broad', 'broad', 'mid', 'mid', 'wild', 'mid', 'hard'],
+    // Daily mix (spec §7.2): a broad opener, two mid (two of the three lanes,
+    // rotating), a wildcard breather between them, one harder category to finish.
+    legKinds: ['broad', 'mid', 'wild', 'mid', 'hard'],
     countdownSecs: 3,
-    transitionMs: 3500,
+    transitionMs: 4500,             // camp break: the camera pulls out to the whole mountain
     invalidPenaltySecs: 1,          // open question 3: invalid costs time, not altitude
     maxAcceptedPerLeg: 30,
     // Alpaca ride (§8.6): after a Sherpa spotlight, a herd carries the climber up
     // by the meters the answer earned. The clock is held, so it costs no time.
     ride: {
       minMs: 2600, maxMs: 3600,     // ride length after the spotlight, scaled by meters…
-      fullAtMeters: 1000,           // …reaching maxMs at this many meters
+      fullAtMeters: 1400,           // …reaching maxMs at this many meters
       herdMin: 4, herdMax: 6,       // alpacas in the herd
       goldenChance: 1 / 20,         // one gold alpaca (cosmetic only, no extra points)
       lateChance: 1 / 10,           // an alpaca sprints in after the herd has gone and slumps
@@ -64,21 +62,23 @@
     extraTimeFactor: 1.5,           // accessibility setting
     chainStep: 0.05,
     chainMax: 0.25,
-    legFullUpTo: 750,               // raw gain counted in full up to here (spec draft: 900)
+    // Five legs must cover Lukla → summit (5,989 m), so a leg is worth more than it was with seven.
+    legFullUpTo: 1050,              // raw gain counted in full up to here (7-leg build: 750)
     legOverRate: 0.35,              // then at 35% (spec draft: 50%)
-    legCap: 1000,                   // effective cap per leg (spec draft: 1,200)
+    legCap: 1400,                   // effective cap per leg (7-leg build: 1,000)
     // Five climber ranks (spec §6.1 names, plus Climber in the middle). `keys`
     // are the data-file tier keys folded into each rank: the answer bank keeps
     // its six-way c/f/u/r/e/l split, and Crawler takes both obvious tiers so
     // Mountaineer and Sherpa stay scarce. `pause` = ms the leg freezes to
     // spotlight the find (the leg timer is held, not spent). Gains were tuned
-    // by simulation toward the §4 targets (summit ≈ 5%).
+    // by simulation; the 5-leg build scales the 7-leg gains by 1.4 (7 ÷ 5) and
+    // gives Mountaineer and Sherpa a bigger rare-word bonus on top.
     tiers: [
-      { id: 'crawler',     keys: ['c', 'f'], name: 'Crawler',     theme: 'Trail dust',  min: 0.30, gain: 55,  emoji: '⬜', pause: 0 },
-      { id: 'hiker',       keys: ['u'],      name: 'Hiker',       theme: 'Pine',        min: 0.10, gain: 120, emoji: '🟩', pause: 0 },
-      { id: 'climber',     keys: ['r'],      name: 'Climber',     theme: 'Glacier',     min: 0.03, gain: 200, emoji: '🟦', pause: 0 },
-      { id: 'mountaineer', keys: ['e'],      name: 'Mountaineer', theme: 'Aurora',      min: 0.01, gain: 320, emoji: '🟪', pause: 1000 },
-      { id: 'sherpa',      keys: ['l'],      name: 'Sherpa',      theme: 'Summit gold', min: 0.00, gain: 500, emoji: '🟨', pause: 1400 },
+      { id: 'crawler',     keys: ['c', 'f'], name: 'Crawler',     theme: 'Trail dust',  min: 0.30, gain: 75,  emoji: '⬜', pause: 0 },
+      { id: 'hiker',       keys: ['u'],      name: 'Hiker',       theme: 'Pine',        min: 0.10, gain: 170, emoji: '🟩', pause: 0 },
+      { id: 'climber',     keys: ['r'],      name: 'Climber',     theme: 'Glacier',     min: 0.03, gain: 280, emoji: '🟦', pause: 0 },
+      { id: 'mountaineer', keys: ['e'],      name: 'Mountaineer', theme: 'Aurora',      min: 0.01, gain: 500, emoji: '🟪', pause: 1000 },
+      { id: 'sherpa',      keys: ['l'],      name: 'Sherpa',      theme: 'Summit gold', min: 0.00, gain: 850, emoji: '🟨', pause: 1400 },
     ],
     noFindEmoji: '⬛',
     judge: {
@@ -679,15 +679,25 @@
     return out;
   }
 
-  // Returns the seven category objects for a puzzle number, in leg order.
+  // Returns the day's category objects (one per CONFIG.legKinds entry), in leg order.
+  // Mid categories come from the lanes in rotation: with m mid legs and L lanes,
+  // day d fills slots (d−1)·m … (d−1)·m+m−1, slot s takes lane s mod L, and each
+  // lane's pool advances only on the days it is used (its "day" is floor(s ÷ L) + 1),
+  // so no lane skips categories. With m = L this is one per lane every day.
   function dailyCategories(data, dayNo) {
     const byId = new Map(data.categories.map((c) => [c.id, c]));
     const pool = (filter) => data.categories.filter(filter).map((c) => c.id).sort();
-    const broad = dealFromPool('broad', pool((c) => c.kind === 'broad'), dayNo, 2);
-    const wild = dealFromPool('wild', pool((c) => c.kind === 'wild'), dayNo, 1);
-    const hard = dealFromPool('hard', pool((c) => c.kind === 'hard'), dayNo, 1);
+    const count = (kind) => CONFIG.legKinds.filter((k) => k === kind).length;
+    const broad = dealFromPool('broad', pool((c) => c.kind === 'broad'), dayNo, count('broad'));
+    const wild = dealFromPool('wild', pool((c) => c.kind === 'wild'), dayNo, count('wild'));
+    const hard = dealFromPool('hard', pool((c) => c.kind === 'hard'), dayNo, count('hard'));
     const lanes = [...new Set(data.categories.filter((c) => c.kind === 'mid').map((c) => c.lane))].sort();
-    let mids = lanes.map((lane) => dealFromPool('mid-' + lane, pool((c) => c.kind === 'mid' && c.lane === lane), dayNo, 1)[0]);
+    const m = count('mid');
+    let mids = [];
+    for (let j = 0; j < m; j++) {
+      const slot = (dayNo - 1) * m + j, lane = lanes[slot % lanes.length];
+      mids.push(dealFromPool('mid-' + lane, pool((c) => c.kind === 'mid' && c.lane === lane), Math.floor(slot / lanes.length) + 1, 1)[0]);
+    }
     mids = shuffled(mids, hashStr('mid-order:' + dayNo));
     const queues = { broad: broad.slice(), mid: mids.slice(), wild: wild.slice(), hard: hard.slice() };
     return CONFIG.legKinds.map((kind) => byId.get(queues[kind].shift()));

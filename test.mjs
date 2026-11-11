@@ -135,18 +135,21 @@ ok(iau === 88, 'IAU constellations ' + iau);
 ok(idx.usstates.entries.length === 50, 'states ' + idx.usstates.entries.length);
 ok(idx.africa.entries.filter((e) => e.canon !== 'Western Sahara').length === 54, 'africa ' + idx.africa.entries.length);
 
-// ---- leg timers (+10 s each); multipliers, extra time, countdown and penalty unchanged
-ok(JSON.stringify(E.CONFIG.legs.map((l) => l.secs)) === '[30,30,25,25,25,20,20]', 'leg timers are 30/30/25/25/25/20/20');
-ok(JSON.stringify(E.CONFIG.legs.map((l) => l.mult)) === '[1,1,1.25,1.25,1.25,1.5,1.5]', 'leg multipliers unchanged');
-ok(E.CONFIG.extraTimeFactor === 1.5 && E.CONFIG.countdownSecs === 3 && E.CONFIG.transitionMs === 3500 && E.CONFIG.invalidPenaltySecs === 1, 'extra time, countdown, transition and penalty unchanged');
-ok(E.CONFIG.legs.reduce((s, l) => s + l.secs, 0) === 175, 'total answering time is 175 s');
+// ---- five legs: timers, multipliers, kinds; extra time, countdown and penalty unchanged; camp break 4.5 s
+ok(JSON.stringify(E.CONFIG.legs.map((l) => l.secs)) === '[30,25,25,20,20]', 'leg timers are 30/25/25/20/20');
+ok(JSON.stringify(E.CONFIG.legs.map((l) => l.mult)) === '[1,1.25,1.25,1.5,1.5]', 'leg multipliers 1/1.25/1.25/1.5/1.5');
+ok(E.CONFIG.legKinds.join() === 'broad,mid,wild,mid,hard' && E.CONFIG.legKinds.length === E.CONFIG.legs.length, 'leg kinds: broad, mid, wild, mid, hard');
+ok(E.CONFIG.extraTimeFactor === 1.5 && E.CONFIG.countdownSecs === 3 && E.CONFIG.transitionMs === 4500 && E.CONFIG.invalidPenaltySecs === 1, 'extra time, countdown and penalty unchanged; camp break 4.5 s');
+ok(E.CONFIG.legs.reduce((s, l) => s + l.secs, 0) === 120, 'total answering time is 120 s');
 
 // ---- scoring
-ok(E.answerGain(0, 0, 0) === 55, 'crawler gain leg1');
-ok(E.answerGain(4, 10, 6) === Math.round(500 * 1.25 * 1.5), 'sherpa chained leg7');
+ok(E.answerGain(0, 0, 0) === 75, 'crawler gain leg1');
+ok(E.answerGain(4, 10, 4) === Math.round(850 * 1.25 * 1.5), 'sherpa chained leg5');
+ok(JSON.stringify(E.CONFIG.tiers.map((t) => t.gain)) === '[75,170,280,500,850]', 'rank gains 75/170/280/500/850');
 ok(E.CONFIG.tiers.map((t) => t.name).join() === 'Crawler,Hiker,Climber,Mountaineer,Sherpa', 'rank names');
-ok(E.legEffective(750) === 750 && E.legEffective(950) === 820 && E.legEffective(5000) === 1000, 'leg cap');
-ok(E.finalAltitude([5000, 5000, 5000, 5000, 5000, 5000, 5000]) === 8849, 'summit cap');
+ok(E.legEffective(1050) === 1050 && E.legEffective(1250) === 1120 && E.legEffective(9000) === 1400, 'leg cap');
+ok(E.CONFIG.legCap * E.CONFIG.legs.length > E.CONFIG.summitAlt - E.CONFIG.startAlt, 'the summit is reachable within the leg caps');
+ok(E.finalAltitude([9000, 9000, 9000, 9000, 9000]) === 8849, 'summit cap');
 ok(E.milestoneFor(5400).id === 'basecamp' && E.milestoneFor(8849).id === 'summit' && E.milestoneFor(3000).id === 'lukla', 'milestones');
 ok(E.airPercent(8849) >= 30 && E.airPercent(8849) <= 34, 'air at summit ' + E.airPercent(8849));
 
@@ -159,15 +162,18 @@ ok(E.interpretVerdict(null).kind === 'error', 'bad verdict');
 
 // ---- daily deal: 120 days
 const seen = new Map();
+const laneUse = {};
 let prev = [];
 for (let d = 1; d <= 120; d++) {
   const cats = E.dailyCategories(DATA, d);
-  ok(cats.length === 7 && cats.every(Boolean), 'day ' + d + ' has 7');
+  const NL = E.CONFIG.legs.length;
+  ok(cats.length === NL && cats.every(Boolean), 'day ' + d + ' has ' + NL);
   const ids = cats.map((c) => c.id);
-  ok(new Set(ids).size === 7, 'day ' + d + ' unique: ' + ids.join(','));
+  ok(new Set(ids).size === NL, 'day ' + d + ' unique: ' + ids.join(','));
   cats.forEach((c, i) => ok(c.kind === E.CONFIG.legKinds[i], `day ${d} leg ${i + 1} kind ${c.kind}`));
   const lanes = cats.filter((c) => c.kind === 'mid').map((c) => c.lane);
-  ok(new Set(lanes).size === 3, 'day ' + d + ' lanes ' + lanes);
+  ok(lanes.length === 2 && new Set(lanes).size === 2, 'day ' + d + ' two different lanes ' + lanes);
+  ['geo', 'nature', 'culture'].forEach((ln) => { laneUse[ln] = (laneUse[ln] || 0) + (lanes.includes(ln) ? 1 : 0); });
   const repeat = ids.filter((x) => prev.includes(x));
   ok(repeat.length === 0, `day ${d} repeats yesterday: ${repeat}`);
   prev = ids;
@@ -175,14 +181,15 @@ for (let d = 1; d <= 120; d++) {
   if (d <= 3) console.log('day', d, ids.join(', '));
 }
 ok(seen.size === DATA.categories.length, 'all categories dealt: ' + seen.size);
+ok(Object.values(laneUse).every((n) => n === 80), 'mid lanes rotate evenly (two of three a day): ' + JSON.stringify(laneUse));
 
-// ---- deal unchanged by the word-list expansion: puzzles 1-365 must match the
-// pre-expansion deal (the deal depends on category ids, kinds and lanes, never on answers)
+// ---- the deal for puzzles 1-365 is pinned: answer edits must never change it (it depends on
+// category ids, kinds and lanes, and on CONFIG.legKinds). Re-pinned on purpose for the 5-leg climb.
 {
   const deal = [];
   for (let d = 1; d <= 365; d++) deal.push(E.dailyCategories(DATA, d).map((c) => c.id).join(','));
   const hash = crypto.createHash('sha256').update(JSON.stringify(deal)).digest('hex');
-  ok(hash === '672df2266a0dc0913a8b2d6c0a7db5638be88287015772535eb69f5e1bb46b5e', 'deal for puzzles 1-365 unchanged (sha256 ' + hash.slice(0, 12) + ')');
+  ok(hash === '0fe7faf891898fd0216335b3bc1277f7348dd41b4657ca3d0e68a2ad53b34f9d', 'deal for puzzles 1-365 unchanged (sha256 ' + hash.slice(0, 12) + ')');
 }
 
 // ---- autocorrect (§6.3): real misspellings that must be corrected to a listed answer
@@ -411,10 +418,10 @@ for (const [cat, list] of Object.entries(MUST_REJECT)) for (const input of list)
   ok(E.ridePlan({ fromAlt: 8500, toAlt: 8849, seed: 'top' }).crossesSummit && !E.ridePlan({ fromAlt: 8000, toAlt: 8500, seed: 'top' }).crossesSummit, 'crossesSummit when the ride reaches the summit');
   const forced = E.ridePlan({ fromAlt: 3000, meters: 400, seed: 'f', force: { style: 'paraglide', golden: true, late: true, spit: true, band: 'deathzone' } });
   ok(forced.style === 'paraglide' && forced.golden && forced.late && forced.spit && forced.band === 'deathzone', 'force overrides any field');
-  const durs = [0, 50, 400, 1000, 5000].map((m) => E.ridePlan({ fromAlt: 4000, meters: m, seed: 'd' }).durationMs);
+  const durs = [0, 50, 400, R.fullAtMeters, 5000].map((m) => E.ridePlan({ fromAlt: 4000, meters: m, seed: 'd' }).durationMs);
   ok(durs.every((d) => d >= R.minMs && d <= R.maxMs) && durs[0] === R.minMs && durs[3] === R.maxMs && durs[2] > durs[1], 'ride length 2.6–3.6 s, scaled by meters');
   R.speed = 4;
-  ok(E.ridePlan({ fromAlt: 4000, meters: 1000, seed: 'd' }).durationMs === Math.round(R.maxMs / 4), 'CONFIG.ride.speed shortens the ride');
+  ok(E.ridePlan({ fromAlt: 4000, meters: R.fullAtMeters, seed: 'd' }).durationMs === Math.round(R.maxMs / 4), 'CONFIG.ride.speed shortens the ride');
   R.speed = 1;
   const red = E.ridePlan({ fromAlt: 4000, meters: 600, seed: 'r', reduced: true });
   ok(red.reduced === true && red.durationMs === 0, 'reduced motion: no ride');
@@ -551,14 +558,14 @@ console.log('blended          | ' + bands(all));
     ok(t.summary.counts.reduce((a, b) => a + b, 0) === n, `${c.id}: rank counts add up to the total`);
     ok(t.rows.every((r, i) => r.id === i), `${c.id}: rows are in entry order`);
   }
-  const natural = { broad: 0, mid: 2, wild: 4, hard: 6, practice: 0 };
+  const natural = { broad: 0, mid: 1, wild: 2, hard: 4, practice: 0 };
   for (const c of CATS) ok(D.answerTable(E, c).summary.pos === natural[c.kind], `${c.id}: natural leg for ${c.kind}`);
   const broad = CATS.find((c) => c.kind === 'broad'), hard = CATS.find((c) => c.kind === 'hard');
   const crawler = D.answerTable(E, broad).rows.find((r) => r.tier === 0);
-  ok(crawler && crawler.atPos === 55 && crawler.base === 55 && crawler.rank === 'Crawler', 'broad Crawler answer scores 55 at leg 1, no chain');
+  ok(crawler && crawler.atPos === 75 && crawler.base === 75 && crawler.rank === 'Crawler', 'broad Crawler answer scores 75 at leg 1, no chain');
   const sherpa = D.answerTable(E, hard).rows.find((r) => r.tier === 4);
-  ok(sherpa && sherpa.atPos === Math.round(500 * 1.5) && sherpa.rank === 'Sherpa', 'hard Sherpa answer scores round(500 × 1.5) at leg 7');
-  ok(sherpa.atPosMax === E.answerGain(4, Math.ceil(C.chainMax / C.chainStep), 6) && sherpa.atPosMax === Math.round(500 * (1 + C.chainMax) * 1.5), 'atPosMax is the gain at the chainMax bonus');
+  ok(sherpa && sherpa.atPos === Math.round(850 * 1.5) && sherpa.rank === 'Sherpa', 'hard Sherpa answer scores round(850 × 1.5) at leg 5');
+  ok(sherpa.atPosMax === E.answerGain(4, Math.ceil(C.chainMax / C.chainStep), 4) && sherpa.atPosMax === Math.round(850 * (1 + C.chainMax) * 1.5), 'atPosMax is the gain at the chainMax bonus');
   for (let pos = 0; pos < C.legs.length; pos++) {
     const r = D.answerTable(E, broad, { pos }).rows.find((x) => x.tier === 2);
     ok(r.atPos === Math.round(C.tiers[2].gain * C.legs[pos].mult), `opts.pos ${pos} applies multiplier ${C.legs[pos].mult}`);

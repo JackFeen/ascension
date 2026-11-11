@@ -1,6 +1,6 @@
 <title>Daily Ascent</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="A daily word game: seven categories, seven timed legs, one climb up Everest. Rare answers climb higher.">
+<meta name="description" content="A daily word game: five categories, five timed legs, one climb up Everest. Rare answers climb higher.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap">
@@ -64,7 +64,7 @@
   --ease-spring: cubic-bezier(.3, 1.5, .5, 1);
   padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
 }
-/* Dark theme and the summit push (legs 6–7, the Death Zone, night results): night panels. */
+/* Dark theme and the summit push (the last two legs, the Death Zone, night results): night panels. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #15142e; --panel: #2b2747; --panel-solid: #1f1c3a; --panel-edge: #0d0b1c; --panel-hi: #474170; --panel-lo: #1b1833;
@@ -158,7 +158,7 @@ button { font: inherit; color: inherit; }
 .play { gap: 10px; }
 .play-inner { width: 100%; max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; min-height: 0; transition: opacity .3s ease, transform .3s var(--ease-out); }
 .hud { display: flex; align-items: stretch; justify-content: space-between; gap: 10px; }
-/* the trail: seven peaks, climbed ones filled */
+/* the trail: one peak per leg, climbed ones filled */
 .legs { list-style: none; margin: 0; padding: 0 14px; display: flex; gap: 9px; align-items: center; border-radius: var(--r-sm); background: var(--plate); border: 0; box-shadow: none;
   position: relative; }
 .legs::before { content: ""; position: absolute; left: 14px; right: 14px; bottom: 13px; height: 1.5px; background: rgba(255, 255, 255, 0.25); }
@@ -536,6 +536,15 @@ body { font: 400 16px/1.45 var(--f-body); -webkit-font-smoothing: auto; }
 .count { font: 700 min(30vw, 144px)/1 var(--f-display); color: var(--cream); background: var(--wood); border: 4px solid var(--px-ink); padding: 0.12em 0.3em 0.1em; clip-path: var(--notch);
   text-shadow: 6px 6px 0 var(--px-ink); box-shadow: inset 0 6px 0 var(--wood-hi), inset 0 -8px 0 var(--wood-lo); }
 .trans-card { border-radius: 0; }
+/* camp break: the camera pulls out to the whole mountain, so the camp report sits low (above the phone
+   keyboard) and leaves the sky for the overview; wide screens dock it on the right, like the results sheet */
+#transition { place-items: end center; padding-top: 96px; padding-bottom: calc(max(16px, env(safe-area-inset-bottom, 0px)) + var(--kb, 0px)); }
+@media (min-width: 900px) { #transition { place-items: center end; padding-right: max(40px, env(safe-area-inset-right, 0px)); } }
+.kb-open .trans-card { padding: 12px 16px 10px; gap: 2px; }
+.kb-open .trans-gain { font-size: 32px; }
+.kb-open .trans-gain small { font-size: 18px; }
+.kb-open .trans-row { padding-top: 6px; margin-top: 2px; }
+.kb-open .trans-next { font-size: 18px; margin-bottom: 2px; }
 .trans-gain { font: 700 48px/1 var(--f-display); letter-spacing: 0; }
 .trans-gain small { font-size: 24px; }
 .trans-row { border-top: 2px dashed var(--line); font: 500 15px var(--f-body); }
@@ -769,7 +778,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
       <dl class="home-facts">
         <div class="fact"><dt>Streak</dt><dd id="fact-streak">0</dd></div>
         <div class="fact"><dt>Best</dt><dd id="fact-best">—</dd></div>
-        <div class="fact"><dt>Today</dt><dd id="fact-today">7 legs</dd></div>
+        <div class="fact"><dt>Today</dt><dd id="fact-today">5 legs</dd></div>
       </dl>
       <div class="home-actions">
         <button class="btn btn-primary" id="btn-begin">Begin Climb</button>

@@ -507,7 +507,7 @@
     return `<div class="dev-sec">
       <p class="dev-note" id="dev-move-now">${esc(moveLabel())}</p>
       <h3>Jump to leg</h3>
-      <p class="dev-note">Ends the current leg and starts that position of the 7-leg pattern straight away (before a leg starts, it sets the next one).</p>
+      <p class="dev-note">Ends the current leg and starts that position of the leg pattern straight away (before a leg starts, it sets the next one).</p>
       <div class="dev-row">${C.legs.map((l, i) => btn('jump-leg', `${i + 1} · ${C.legKinds[i]} · ${l.secs} s ×${l.mult}`, { v: i })).join('')}</div>
       <h3>Altitude</h3>
       <div class="dev-row"><label for="dev-alt" class="sr-only">Altitude</label>

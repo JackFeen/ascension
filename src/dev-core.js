@@ -55,7 +55,7 @@
   // ---------------------------------------------------------------------------
   // Answer bank (Answers tab). One row per entry of E.buildIndex(cat), in entry
   // order, with its rank and what it scores. Everything comes from CONFIG.
-  //   opts.pos   pattern leg 0–6 whose multiplier applies (default: the
+  //   opts.pos   pattern leg (0 to legs − 1) whose multiplier applies (default: the
   //              category's natural leg, the first leg of its kind; practice 0)
   //   opts.chain chain length before the answer (default 0)
   // ---------------------------------------------------------------------------
