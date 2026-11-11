@@ -19,7 +19,7 @@ Moving to your own domain later: add a `CNAME` file in GitHub Pages settings. To
 | `src/engine.js` | Config, normalization, matching (exact → alias → autocorrect for typos and sound-alikes → qualified variants), scoring, daily deal, judge prompt. No DOM. |
 | `src/data-*.js` | The answer bank: 49 categories plus a practice one, about 26,400 answers, scored across five climber ranks (Crawler, Hiker, Climber, Mountaineer, Sherpa). |
 | `src/pixel.js` | The pixel sprite kit: dithering, outlines, lit blobs, text signs, and the sprite maps for the layered climber, the alpacas and the scenery. |
-| `src/app.js` | The pixel-art mountain (drawn on a low-res canvas, then scaled up crisply), sound, answer checking, game flow, results, stats, and the Sherpa alpaca ride (after a Sherpa answer's spotlight, a herd carries the climber up the meters earned). |
+| `src/app.js` | The pixel-art mountain (a low-res canvas scaled up crisply, built to hold a steady 60 fps), sound, answer checking, game flow, results, stats, and the Sherpa alpaca ride (after a Sherpa answer's spotlight, a herd carries the climber up the meters earned). |
 | `src/shell.html` | Markup and styles: the pixel UI (parchment panels, wood signs, HUD plates, Silkscreen and Pixelify Sans). |
 | `build.mjs` | `node build.mjs` writes `index.html` (the playable page, committed for GitHub Pages) and `dist/game.html` (Claude artifact body, git-ignored). |
 | `src/dev-*.js`, `src/dev.js` | Dev mode: the published lock (salt + hash), lap math and password check, and the tools UI. |

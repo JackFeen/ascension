@@ -1166,7 +1166,13 @@
   function screenshot() {
     const cv = $('#scene');
     let url = '';
-    try { url = cv.toDataURL('image/png'); } catch (e) { notice('Couldn’t capture the canvas.'); return; }
+    // the scene canvas holds one pixel per art pixel; scale it up crisply to its on-screen size
+    try {
+      const k = Math.max(1, Math.round(cv.getBoundingClientRect().width * (window.devicePixelRatio || 1) / cv.width));
+      const big = document.createElement('canvas'); big.width = cv.width * k; big.height = cv.height * k;
+      const g = big.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(cv, 0, 0, big.width, big.height);
+      url = big.toDataURL('image/png');
+    } catch (e) { notice('Couldn’t capture the canvas.'); return; }
     const d = new Date();
     const name = `daily-ascent-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.png`;
     let framed = true;

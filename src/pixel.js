@@ -367,6 +367,7 @@
     const opt = Object.assign({ color: '#ffffff', outline: null, size: 8, bold: false }, o);
     const key = [str, opt.color, opt.outline, opt.size, opt.bold].join('|');
     if (textCache.has(key)) return textCache.get(key);
+    if (textCache.size > 400) textCache.clear();   // bounded: a changing label never grows the cache forever
     // without Silkscreen (fonts blocked or still loading) a fallback face is drawn a touch larger and
     // thresholded more gently, so thin strokes survive
     let fontOk = true;
@@ -397,6 +398,7 @@
     const opt = Object.assign({ accent: false, night: false }, o);
     const key = [title, sub, opt.accent, opt.night].join('|');
     if (signCache.has(key)) return signCache.get(key);
+    if (signCache.size > 200) signCache.clear();
     const t = text(title, { color: opt.accent ? '#281e16' : '#fff3d6', bold: false });
     const s2 = sub ? text(sub, { color: opt.accent ? '#5b2a10' : '#ffe2b0' }) : null;
     const w = t.w + (s2 ? s2.w + 4 : 0) + 8, h = Math.max(t.h, s2 ? s2.h : 0) + 7;
@@ -602,8 +604,142 @@
     });
   }
 
+  // --- scenery spread across the mountain face (small, cached once) -------------------
+  const SZ = (size, l, m, sm) => (size === 'L' ? l : size === 'M' ? m : sm);
+  /** Herder's stone hut: dry-stone walls, a flat slate roof, a dark door. */
+  function stoneHut(size, seed) {
+    const sd = seed % 3;
+    return memo('shut:' + size + ':' + sd, () => {
+      const w = SZ(size, 14, 10, 6) + (size === 'S' ? 0 : sd), wh = SZ(size, 6, 4, 2), rh = SZ(size, 3, 2, 1);
+      const b = buf(w + 4, wh + rh + 4), gy = b.h - 2, x0 = 2, rnd = rng(sd * 41 + w);
+      const ST = ramp('#6e6a66', '#8e8882', '#aaa49c', '#c6c0b4');
+      for (let y = gy - wh + 1; y <= gy; y++) for (let x = x0; x < x0 + w; x++) {
+        const course = size !== 'S' && (gy - y) % 3 === 2;
+        put(b, x, y, course ? ST[0] : rampPick(ST, 0.78 - (x - x0) / w * 0.45 + (rnd() - 0.5) * 0.25, x, y));
+      }
+      if (size !== 'S') { const dw = size === 'L' ? 2 : 1, dh = size === 'L' ? 4 : 3; rect(b, x0 + w - 3 - dw, gy - dh + 1, dw, dh, rgb('#3a2c24')); }
+      const SL = ramp('#46444e', '#5e5c66', '#7a7882');
+      for (let j = 0; j < rh; j++) {
+        const y = gy - wh - j, inset = j === rh - 1 && rh > 1 ? 1 : 0;
+        for (let x = x0 - 1 + inset; x <= x0 + w - inset; x++) put(b, x, y, j === rh - 1 ? SL[2] : SL[1]);
+      }
+      if (size === 'L') { put(b, x0 + 3, gy - wh - rh, ST[1]); put(b, x0 + w - 4, gy - wh - rh, ST[1]); }
+      return sprite(b, Math.floor(b.w / 2), gy);
+    });
+  }
+  /** A whitewashed chorten (stupa): stepped base, round dome, a gold spire. */
+  function chorten(size) {
+    return memo('chorten:' + size, () => {
+      const bw = SZ(size, 10, 7, 4), bh = SZ(size, 3, 2, 1), dw = SZ(size, 6, 4, 2), dh = SZ(size, 4, 3, 2), sh = SZ(size, 6, 4, 2);
+      const W = bw + 4, Ht = bh + 1 + dh + sh + 3, b = buf(W, Ht), gy = Ht - 2, cx = W / 2;
+      const WL = ramp('#c8c0b0', '#e4ded2', '#faf6ee');
+      const row = (y, hw, red) => { for (let x = Math.round(cx - hw); x < Math.round(cx + hw); x++) put(b, x, y, red ? rgb('#9a3a2a') : rampPick(WL, 0.9 - (x - (cx - hw)) / (2 * hw) * 0.6, x, y)); };
+      for (let j = 0; j < bh; j++) row(gy - j, bw / 2, false);
+      row(gy - bh, bw / 2 - 1, size !== 'S');
+      for (let k = 0; k < dh; k++) { const t = (k + 0.5) / dh; row(gy - bh - 1 - k, Math.max(1, (dw / 2) * Math.sqrt(1 - t * t * 0.7)), false); }
+      const top = gy - bh - 1 - dh, sw = size === 'L' ? 2 : 1;
+      for (let k = 0; k < sh; k++) for (let i = 0; i < sw; i++) put(b, Math.floor(cx) - (sw > 1 ? 1 : 0) + i, top - k, k % 2 ? rgb('#b07a1c') : rgb('#e2b23a'));
+      return sprite(b, Math.floor(cx), gy);
+    });
+  }
+  /** A cairn: stones stacked by passing trekkers. */
+  function cairn(size) {
+    return memo('cairn:' + size, () => {
+      const rs = SZ(size, [2.3, 1.8, 1.3], [1.7, 1.2], [1.2]);
+      const b = buf(9, 12), cx = 4.5; let y = 10;
+      for (const r of rs) { blob(b, cx, y - r * 0.6, r, P.stone, 0.62); y -= r * 1.25; }
+      return sprite(b, 4, 10);
+    });
+  }
+  /** A rock outcrop: two jagged peaks with lit left faces; tone 1–2 adds a snow cap (glacier, summit). */
+  function outcrop(size, seed, tone) {
+    return memo('out:' + size + ':' + seed + ':' + tone, () => {
+      const R = tone === 0 ? ramp('#4c3c44', '#6a5458', '#8c7470', '#ae948a') : ramp('#3c3844', '#55515e', '#726e7a', '#94909c');
+      const SN = ramp('#c4d0e8', '#f4f8ff');
+      const w = SZ(size, 15 + seed * 2, 9 + seed, 5 + (seed % 2)), hmax = SZ(size, 7 + (seed % 3) * 2, 4 + (seed % 2), 3);
+      const rnd = rng(seed * 131 + tone * 7 + w);
+      const b = buf(w + 2, hmax + 3), gy = hmax + 1;
+      const pk = [[0.32 + rnd() * 0.2, hmax], [0.68 + rnd() * 0.18, hmax * (0.45 + rnd() * 0.3)]];
+      const hs = [];
+      for (let x = 0; x < w; x++) {
+        const t = (x + 0.5) / w; let h = 0;
+        for (const [c, ph] of pk) h = Math.max(h, ph * (1 - Math.abs(t - c) / 0.42));
+        hs.push(Math.max(1, Math.round(h + (rnd() - 0.5) * 1.1)));
+      }
+      let lit = true;
+      for (let x = 0; x < w; x++) {
+        const prev = x ? hs[x - 1] : 0;
+        if (hs[x] > prev) lit = true; else if (hs[x] < prev) lit = false;
+        const top = gy - hs[x] + 1;
+        for (let y = top; y <= gy; y++) {
+          let c = y === top ? R[3] : y === gy ? R[0] : lit ? R[2] : R[1];
+          if (tone > 0 && y <= top + (tone === 2 ? 1 : 0)) c = lit ? SN[1] : SN[0];
+          put(b, x + 1, y, c);
+        }
+      }
+      return sprite(b, Math.floor((w + 2) / 2), gy);
+    });
+  }
+  /** A crevasse: a straight dark crack in the ice, a bright snow lip above, one small step along it. */
+  function crevasse(size, seed) {
+    return memo('crev:' + size + ':' + seed, () => {
+      const w = SZ(size, 16 + seed * 4, 10 + seed * 2, 5 + seed), th = SZ(size, 2, 1, 1);
+      const b = buf(w + 2, th + 4), cy = 1, step = Math.floor(w * (0.35 + seed * 0.15));
+      for (let x = 0; x < w; x++) {
+        const t = (x + 0.5) / w, edge = t < 0.12 || t > 0.88;
+        const n = edge ? 1 : th, yo = x >= step ? 1 : 0;
+        put(b, x + 1, cy + yo, rgb('#fcfeff'));
+        for (let j = 0; j < n; j++) put(b, x + 1, cy + 1 + j + yo, j === 0 ? rgb('#22305e') : rgb('#3c54a0'));
+      }
+      return sprite(b, Math.floor((w + 2) / 2), th + 2, false);
+    });
+  }
+  /** A prayer-flag pole: a tall stick with five flags down its side. */
+  function flagPole(size, seed) {
+    const sd = seed % 2;
+    return memo('fpole:' + size + ':' + sd, () => {
+      const h = SZ(size, 16, 11, 7), fw = SZ(size, 3, 2, 1), fh = SZ(size, 2, 1, 1), gap = size === 'L' ? 1 : 0;
+      const b = buf(fw + 4, h + 3), gy = h + 1;
+      for (let y = gy - h + 1; y <= gy; y++) put(b, 1, y, rgb('#6a4a30'));
+      put(b, 1, gy - h, rgb('#e2b23a'));
+      for (let i = 0; i < 5; i++) { const y0 = gy - h + 2 + i * (fh + gap); if (y0 + fh > gy - 2) break; rect(b, 2, y0, fw, fh, P.flags[(i + sd) % 5]); }
+      return sprite(b, 1, gy);
+    });
+  }
+  /** A mani wall: a low wall of carved stones, rounded at the ends. */
+  function maniWall(size) {
+    return memo('mani:' + size, () => {
+      const w = SZ(size, 20, 13, 7), h = SZ(size, 4, 3, 2);
+      const b = buf(w + 2, h + 2), gy = h;
+      for (let y = gy - h + 1; y <= gy; y++) for (let x = 1; x <= w; x++) {
+        if ((x === 1 || x === w) && y === gy - h + 1) continue;
+        let c = y === gy - h + 1 ? P.stone[3] : rampPick(P.stone, 0.62 - (x / w) * 0.3, x, y);
+        if (size !== 'S' && y === gy - 1 && x % 3 === 1) c = rgb('#f4f0e6');
+        put(b, x, y, c);
+      }
+      return sprite(b, Math.floor((w + 2) / 2), gy);
+    });
+  }
+  /** A small patch of meadow flowers. */
+  function flowers(seed) {
+    return memo('flw:' + seed, () => {
+      const b = buf(9, 4), rnd = rng(seed * 17 + 3), cols = [rgb('#fffcf0'), rgb('#ffdc5a'), rgb('#faaac8'), rgb('#c8b4ff')];
+      for (let i = 0; i < 6; i++) { const x = 1 + Math.floor(rnd() * 7), y = Math.floor(rnd() * 2); put(b, x, y + 1, rgb('#3e6e30')); put(b, x, y, cols[(seed + (i % 2) * 2) % 4]); }
+      return sprite(b, 4, 3, false);
+    });
+  }
+  /** The crescent moon, cut out once (the sky shows through). */
+  function moon() {
+    return memo('moon', () => {
+      const d = disc(6, '#f0f2ff', '#c8cce4', null), c = canvas(d.w, d.h), g = c.getContext('2d');
+      g.drawImage(d.cv, 0, 0);
+      for (let yy = -7; yy <= 7; yy++) for (let xx = -7; xx <= 7; xx++) if ((xx - 3) * (xx - 3) + (yy + 2) * (yy + 2) <= 30) g.clearRect(d.ax + xx, d.ay + yy, 1, 1);
+      return { cv: c, w: d.w, h: d.h, ax: d.ax, ay: d.ay };
+    });
+  }
+
   window.DA_PIXEL = {
-    field, pond,
+    field, pond, stoneHut, chorten, cairn, outcrop, crevasse, flagPole, maniWall, flowers, moon,
     dither, rampPick, hash2, rng, rgb, mix, ramp, clamp, canvas, buf, put, selout, toCanvas, sprite, fromMap, blob, rect, line, P,
     CLIMBER_PAL, HEAD, BODIES, CHEER_ARMS, DEFAULT_HAT, COSMETICS, buildClimber, hatSprites, outfitKey,
     ALPACA, ALPACA_RUN, COATS, GOLD_COAT, buildAlpaca, overlay,

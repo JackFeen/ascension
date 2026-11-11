@@ -34,7 +34,8 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
   await page.screenshot({ path: path.join(SHOTS, 'newlook-home.png') });
   // The scene is pixel art: drawn on a low-res art canvas (1 art pixel = 2 or 3 CSS px), then scaled up.
   const art = await f.evaluate(() => { const c = document.querySelector('#scene'); return { w: Number(c.dataset.artW), h: Number(c.dataset.artH), px: Number(c.dataset.artPx), vw: innerWidth }; });
-  if (![2, 3].includes(art.px) || Math.abs(art.w - art.vw / art.px) > 1.5) fail(`art canvas ${art.w}×${art.h} at ${art.px} px doesn't match a ${art.vw} px viewport`);
+  // the art canvas is the visible canvas, with one spare art pixel on each side for the sub-pixel shift
+  if (![2, 3].includes(art.px) || Math.abs(art.w - (art.vw / art.px + 2)) > 1.5) fail(`art canvas ${art.w}×${art.h} at ${art.px} px doesn't match a ${art.vw} px viewport`);
   else console.log(`art canvas: ${art.w}×${art.h} art pixels at ${art.px} CSS px each`);
   // Speed the climb up: short legs, fast transitions.
   await f.evaluate(() => { const C = DA_ENGINE.CONFIG; C.legs.forEach((l) => (l.secs = 6)); C.transitionMs = 700; C.countdownSecs = 1; C.ride.speed = 3; });

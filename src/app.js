@@ -171,21 +171,31 @@
 
   // ===========================================================================
   // Scene — the mountain as cozy pixel art (CLAUDE.md §8.4)
-  // Everything is drawn into a low-res "art canvas" (1 art pixel = PX CSS px), then
-  // copied to #scene at an integer scale with smoothing off, so every pixel stays crisp.
+  // #scene is a low-res "art canvas" (1 art pixel = PX CSS px) that CSS scales up crisply.
+  // Built for 60 fps: cached layers redrawn a strip at a time, a sub-pixel CSS shift for
+  // smooth motion, and draws capped at 60 a second.
   // ===========================================================================
   const Scene = (() => {
     const K = window.DA_PIXEL;
     const cv = $('#scene');
-    const ctx = cv.getContext('2d');
-    const art = document.createElement('canvas'), actx = art.getContext('2d');
+    // the visible canvas is the art canvas; CSS scales it up (image-rendering: pixelated), so there is no
+    // full-screen upscale copy each frame. A whole-device-pixel CSS shift adds sub-pixel smoothness.
+    const art = cv, mainCtx = cv.getContext('2d');
+    let actx = mainCtx;
     const skyCv = document.createElement('canvas'), skyCtx = skyCv.getContext('2d');
-    const rangeCv = document.createElement('canvas'), rangeCtx = rangeCv.getContext('2d');
-    const terrCv = document.createElement('canvas'), terrCtx = terrCv.getContext('2d');
     let W = 0, H = 0, DPR = 1;                  // viewport, CSS px
-    let PX = 2, UP = 2, AW = 0, AH = 0, OX = 0, OY = 0;   // art pixel size, integer upscale, art size, centring (device px)
-    let rangeImg = null, range32 = null, terrImg = null, terr32 = null, skyKey = '';
-    let tops = null, rtops = null, rowAlt = null, rU = null; // per-column terrain tops, range tops, per-row altitude, range u
+    let PX = 2, UP = 2, AW = 0, AH = 0, LX = 0, LY = 0;   // art pixel size, integer upscale, art size, canvas origin (device px)
+    const bdCv = document.createElement('canvas'), bdG = bdCv.getContext('2d');
+    let bdKey = '';
+    let skyPix = null, skyAt0 = 0, wLight = null, dLight = null;
+    let skyKey = '', shX = 0, shY = 0, shKey = '';         // sub-pixel shift of the canvas (device px)
+    let tops = null, rtops = null; // per-column terrain tops, range tops
+    // cached layers (world: terrain, scenery, dashed route; and the three ranges), each with a front copy
+    // that is drawn and a back copy that is redrawn a strip per frame, then swapped in
+    const WMX = 48, WMY = 120, RMX = 40, RMY = 120;
+    const mkBuf = () => { const u = document.createElement('canvas'), t = document.createElement('canvas'); return { u, ug: u.getContext('2d'), t, tg: t.getContext('2d'), wr: new Int16Array(64), tops: new Int16Array(64), valid: false, key: '' }; };
+    let wFront = mkBuf(), wBack = mkBuf(), wJob = null;
+    const RF = [0, 1, 2].map(() => ({ front: mkBuf(), back: mkBuf(), job: null }));
     const cam = { p: 0.5, alt: 5800, sx: 400, sy: 0.1 };
     const tgt = { p: 0.5, alt: 5800, sx: 400, sy: 0.1 };
     let view = 'overview', rect = null, snap = true;
@@ -239,14 +249,18 @@
     function mapCamera() {
       const k = DPR / UP;
       sxA = cam.sx * k; syA = cam.sy * k;
-      oxA = Math.round(((W / 2 - cam.p * cam.sx) * DPR - OX) / UP);
-      oyA = Math.round(((H / 2 + cam.alt * cam.sy) * DPR - OY) / UP);
+      const fx = ((W / 2 - cam.p * cam.sx) * DPR - LX) / UP, fy = ((H / 2 + cam.alt * cam.sy) * DPR - LY) / UP;
+      oxA = Math.floor(fx); oyA = Math.floor(fy);
+      shX = Math.round((fx - oxA) * UP); shY = Math.round((fy - oyA) * UP);
+      if (shX >= UP) { oxA++; shX = 0; }
+      if (shY >= UP) { oyA++; shY = 0; }
     }
     const X = (p) => oxA + p * sxA;
     const Y = (a) => oyA - a * syA;
     const pAt = (x) => (x - oxA) / sxA;
     const altAt = (y) => (oyA - y) / syA;
     const cssToArt = (v) => v * DPR / UP;
+    const cssXToArt = (v) => (v * DPR - LX - shX) / UP, cssYToArt = (v) => (v * DPR - LY - shY) / UP;
 
     // --- colour --------------------------------------------------------------
     const hex = K.rgb, mixc = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
@@ -277,26 +291,46 @@
       ice: K.ramp('#7896c8', '#a0bee4', '#cce0f4', '#ecf4fc', '#fcfeff'),
       snow: K.ramp('#94a4cc', '#bccae6', '#e2eaf8', '#fafcff'),
     };
-    const FLOWERS = K.ramp('#fffcf0', '#ffdc5a', '#faaac8', '#c8b4ff');
 
     // --- seeded decorations ---------------------------------------------------
     const R = E.rng(2026);
-    const TREES = [];
-    for (let i = 0; i < 170; i++) { const p = 0.0 + R() * 0.31; TREES.push({ p, d: Math.pow(R(), 1.6) * 46, seed: i % 7 }); }
-    TREES.sort((a, b) => a.d - b.d);
-    const HOUSES = [];
-    for (let i = 0; i < 7; i++) HOUSES.push({ p: 0.172 + R() * 0.064, d: 16 + R() * 34, seed: i });
-    HOUSES.push({ p: 0.214, d: 12, seed: 9, big: true });
+    // fewer trees and houses right by the trail...
+    const TRAIL_TREES = [];
+    for (let i = 0; i < 7; i++) TRAIL_TREES.push({ p: 0.01 + i * 0.045 + R() * 0.02, d: 8 + R() * 14, seed: i % 7 });
+    TRAIL_TREES.sort((a, b) => a.d - b.d);
+    const HOUSES = [{ p: 0.19, d: 40, seed: 2 }, { p: 0.232, d: 34, seed: 5 }, { p: 0.214, d: 12, seed: 9, big: true }];
     HOUSES.sort((a, b) => a.d - b.d);
+    // ...and more scenery spread across the face of the mountain (seeded by world position)
+    const SCAPE = [];
+    {
+      const RS = E.rng(4417);
+      // groves in the lower valleys
+      for (let g = 0; g < 10; g++) {
+        const cp = -0.06 + RS() * 0.4, cd = 110 + Math.pow(RS(), 0.85) * 380, n = 2 + Math.floor(RS() * 3);
+        for (let i = 0; i < n; i++) SCAPE.push({ p: cp + (RS() - 0.5) * 0.026, d: cd + (RS() - 0.5) * 46, kind: 'grove', seed: Math.floor(RS() * 7) });
+      }
+      // farmsteads: a house, a field, a couple of trees
+      for (let f = 0; f < 5; f++) {
+        const cp = -0.03 + RS() * 0.33, cd = 130 + RS() * 300;
+        SCAPE.push({ p: cp, d: cd, kind: 'farm', seed: f });
+        SCAPE.push({ p: cp + 0.012, d: cd + 14, kind: 'plot', seed: f });
+        SCAPE.push({ p: cp - 0.008, d: cd + 4, kind: 'grove', seed: f % 7 });
+        SCAPE.push({ p: cp + 0.022, d: cd - 6, kind: 'grove', seed: (f + 3) % 7 });
+      }
+      // grazing alpacas on the meadows
+      for (let a = 0; a < 3; a++) SCAPE.push({ p: 0.02 + RS() * 0.3, d: 140 + RS() * 260, kind: 'alpaca', seed: a });
+      // singles everywhere, picked by the altitude band they land in
+      for (let i = 0; i < 260; i++) SCAPE.push({ p: -0.08 + RS() * 1.1, d: 80 + Math.pow(RS(), 0.8) * 420, kind: 'auto', seed: Math.floor(RS() * 1000) });
+      SCAPE.sort((a, b) => a.p - b.p);
+    }
+    const scapeFrom = (p) => { let lo = 0, hi = SCAPE.length; while (lo < hi) { const m = (lo + hi) >> 1; if (SCAPE[m].p < p) lo = m + 1; else hi = m; } return lo; };
     const TENT = ['#f2b81f', '#ef7a1a', '#f2b81f', '#d94f2a', '#3d6fc0', '#f2b81f'];
     function tents(p0, p1, n, seed) { const r = E.rng(seed), out = []; for (let i = 0; i < n; i++) out.push({ p: p0 + r() * (p1 - p0), d: r() * 10, c: TENT[(i + seed) % TENT.length] }); return out.sort((a, b) => a.d - b.d); }
-    const CAMPS = [tents(0.534, 0.561, 18, 11), tents(0.62, 0.63, 5, 12), tents(0.661, 0.673, 7, 13), tents(0.731, 0.739, 3, 14), tents(0.79, 0.8, 6, 15)];
+    const CAMPS = [tents(0.538, 0.556, 6, 11), tents(0.62, 0.63, 3, 12), tents(0.662, 0.672, 4, 13), tents(0.731, 0.739, 2, 14), tents(0.79, 0.8, 3, 15)];
     const SERACS = [];
-    for (let i = 0; i < 26; i++) SERACS.push({ p: 0.562 + R() * 0.046, d: R() * 14, w: 5 + R() * 9, h: 6 + R() * 10, shade: i % 3 });
+    for (let i = 0; i < 9; i++) SERACS.push({ p: 0.562 + R() * 0.046, d: R() * 14, w: 5 + R() * 9, h: 6 + R() * 10, shade: i % 3 });
     SERACS.sort((a, b) => a.d - b.d);
-    const BOULDERS = [];
-    for (let i = 0; i < 40; i++) BOULDERS.push({ p: 0.32 + R() * 0.2, d: 2 + R() * 40, r: 1.6 + R() * 2.2, seed: i % 5 });
-    BOULDERS.sort((a, b) => a.d - b.d);
+    for (let i = 0; i < 160; i++) R();   // (draws once used by trailside boulders: keeps the stars and clouds where they were)
     const STARS = [];
     for (let i = 0; i < 170; i++) STARS.push({ x: R(), y: Math.pow(R(), 1.3) * 0.75, big: R() < 0.08, ph: R() * 6.28, sp: 0.6 + R() * 2 });
     const CLOUDS = [];
@@ -321,9 +355,11 @@
     // --- view framing (CSS px, as before) ------------------------------------------
     function computeTarget() {
       if (view === 'ride') {
-        const range = clamp(H * 1.15, 800, 1300);
+        // same zoom as the climb (pixel sprites never scale, so zooming only stretched the terrain,
+        // and every zoom frame is a full redraw); the camera pans to frame the herd
+        const range = clamp(H * 1.8, 1350, 2100);
         tgt.sy = H / range;
-        const wp = clamp(0.3 * (W / H) / 0.462, 0.24, 0.6) * 0.45;
+        const wp = clamp(0.3 * (W / H) / 0.462, 0.24, 0.6);
         tgt.sx = W / wp;
         const vv = window.visualViewport;
         const vh = vv && vv.height > 100 ? Math.min(H, vv.height) : H;
@@ -356,15 +392,16 @@
       W = window.innerWidth; H = window.innerHeight;
       PX = Math.min(W, H) >= 900 ? 3 : 2;
       UP = Math.max(1, Math.round(PX * DPR));
-      cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
-      AW = Math.ceil(cv.width / UP); AH = Math.ceil(cv.height / UP);
-      OX = Math.floor((cv.width - AW * UP) / 2); OY = Math.floor((cv.height - AH * UP) / 2);
-      for (const c of [art, skyCv, rangeCv, terrCv]) { c.width = AW; c.height = AH; }
-      rangeImg = rangeCtx.createImageData(AW, AH); range32 = new Uint32Array(rangeImg.data.buffer);
-      terrImg = terrCtx.createImageData(AW, AH); terr32 = new Uint32Array(terrImg.data.buffer);
-      tops = new Int32Array(AW + 80); rtops = [new Float32Array(AW + 80), new Float32Array(AW + 80), new Float32Array(AW + 80)]; rU = new Float32Array(AW + 80);
-      rowAlt = new Float32Array(AH);
-      skyKey = '';
+      const dw = Math.round(W * DPR), dh = Math.round(H * DPR);
+      // one spare art pixel on every side, so the sub-pixel shift never shows an edge
+      AW = Math.ceil(dw / UP) + 2; AH = Math.ceil(dh / UP) + 2;
+      LX = Math.floor((dw - AW * UP) / 2); LY = Math.floor((dh - AH * UP) / 2);
+      for (const c of [art, skyCv]) { c.width = AW; c.height = AH; }
+      Object.assign(cv.style, { position: 'fixed', left: LX / DPR + 'px', top: LY / DPR + 'px', right: 'auto', bottom: 'auto', width: AW * UP / DPR + 'px', height: AH * UP / DPR + 'px', imageRendering: 'pixelated', transformOrigin: '0 0', willChange: 'transform' });
+      shKey = '';
+      const n = AW + 2 * WMX + 2 * M + 8;
+      tops = new Int32Array(n); rtops = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
+      skyKey = ''; wFront.valid = false; wJob = null; for (const R of RF) { R.front.valid = false; R.job = null; }
       // mirrored on the element (read-only) so tests can check the art canvas without reaching inside the Scene
       cv.dataset.artW = AW; cv.dataset.artH = AH; cv.dataset.artPx = PX;
       computeTarget();
@@ -373,20 +410,21 @@
     // --- drawing helpers (all coordinates in art pixels) -------------------------------
     const tintCache = new WeakMap();
     // draws a sprite at its anchor; tinted sprites follow the time of day (multiply by AMB)
+    function tintOf(s) {
+      if (!s || !s.cv || !(AMB[0] < 0.995 || AMB[1] < 0.995 || AMB[2] < 0.995)) return s && s.cv;
+      let t = tintCache.get(s);
+      if (!t || t.key !== ambKey) {
+        const c = t ? t.cv : K.canvas(s.w, s.h), g = c.getContext('2d');
+        g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, s.w, s.h); g.drawImage(s.cv, 0, 0);
+        g.globalCompositeOperation = 'multiply'; g.fillStyle = css([AMB[0] * 255, AMB[1] * 255, AMB[2] * 255]); g.fillRect(0, 0, s.w, s.h);
+        g.globalCompositeOperation = 'destination-in'; g.drawImage(s.cv, 0, 0);
+        t = { cv: c, key: ambKey }; tintCache.set(s, t);
+      }
+      return t.cv;
+    }
     function draw(s, x, y, tinted, alpha) {
       if (!s) return;
-      let img = s.cv;
-      if (tinted && (AMB[0] < 0.995 || AMB[1] < 0.995 || AMB[2] < 0.995)) {
-        let t = tintCache.get(s);
-        if (!t || t.key !== ambKey) {
-          const c = t ? t.cv : K.canvas(s.w, s.h), g = c.getContext('2d');
-          g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, s.w, s.h); g.drawImage(s.cv, 0, 0);
-          g.globalCompositeOperation = 'multiply'; g.fillStyle = css([AMB[0] * 255, AMB[1] * 255, AMB[2] * 255]); g.fillRect(0, 0, s.w, s.h);
-          g.globalCompositeOperation = 'destination-in'; g.drawImage(s.cv, 0, 0);
-          t = { cv: c, key: ambKey }; tintCache.set(s, t);
-        }
-        img = t.cv;
-      }
+      const img = tinted ? tintOf(s) : s.cv;
       if (alpha != null) actx.globalAlpha = alpha;
       actx.drawImage(img, Math.round(x - s.ax), Math.round(y - s.ay));
       if (alpha != null) actx.globalAlpha = 1;
@@ -405,13 +443,66 @@
     function flags(x1, y1, x2, y2, step) {
       const n = Math.max(2, Math.round(Math.abs(x2 - x1)));
       const sag = Math.max(2, n * 0.12), st = step || 3;
+      actx.fillStyle = 'rgba(70,60,56,0.9)';
+      const pts = [];
       for (let i = 0; i <= n; i++) {
-        const t = i / n, x = lerp(x1, x2, t), y = lerp(y1, y2, t) + Math.sin(t * Math.PI) * sag;
-        px(x, y, 'rgba(70,60,56,0.9)');
-        if (i > 1 && i < n - 1 && i % st === 0) {
+        const t = i / n, x = Math.round(lerp(x1, x2, t)), y = Math.round(lerp(y1, y2, t) + Math.sin(t * Math.PI) * sag);
+        actx.fillRect(x, y, 1, 1);
+        if (i > 1 && i < n - 1 && i % st === 0) pts.push(x, y, i);
+      }
+      for (let c = 0; c < 5; c++) {
+        actx.fillStyle = FLAG[c];
+        for (let q = 0; q < pts.length; q += 3) {
+          const i = pts[q + 2]; if (((i / st) % 5 | 0) !== c) continue;
           const fl = reduced ? 0 : Math.round(Math.sin(time * 6 + i) * 0.6);
-          px(x, y + 1, FLAG[(i / st) % 5 | 0], 2, 2 + fl);
+          actx.fillRect(pts[q], pts[q + 1] + 1, 2, 2 + fl);
         }
+      }
+    }
+
+
+    // scenery across the face: each item lands at (p, depth d) and takes the band of the
+    // altitude it is drawn at; drawn top to bottom so nearer things overlap farther ones
+    const scapeList = [];
+    function drawScape(cls) {
+      scapeList.length = 0;
+      const ds = clamp(cam.sy / 0.55, 0.3, 1.35);
+      const pEnd = pAt(AW + 34);
+      for (let si = scapeFrom(pAt(-34)); si < SCAPE.length; si++) {
+        const it = SCAPE[si];
+        if (it.p > pEnd) break;
+        // the far-away overview keeps the bigger pieces only (small ones would just be specks)
+        if (cls === 'S' && it.kind === 'auto' && (it.seed & 1)) continue;
+        const x = X(it.p);
+        if (x < -30 || x > AW + 30) continue;
+        if (it.g === undefined) it.g = ground(it.p);
+        const y = Y(it.g) + cssToArt(it.d * ds);
+        if (y < -10 || y > AH + 30) continue;
+        scapeList.push(it, x, y);
+      }
+      const order = [];
+      for (let i = 0; i < scapeList.length; i += 3) order.push(i);
+      order.sort((a, b) => scapeList[a + 2] - scapeList[b + 2]);
+      const S = cls === 'S', L = cls === 'L';
+      for (const i of order) {
+        const it = scapeList[i], x = scapeList[i + 1], y = scapeList[i + 2];
+        const a = altAt(y), sd = it.seed;
+        let s = null;
+        if (it.kind === 'grove') { if (a < 3920) s = a < 3450 ? K.tree(cls, sd) : K.pine(cls, sd); }
+        else if (it.kind === 'farm') { if (a < 3700) s = K.teahouse(L ? 'L' : 'S', 20 + sd); else if (a < 4600) s = K.stoneHut(cls, sd); }
+        else if (it.kind === 'plot') { if (a < 3700 && !S) s = K.field(L ? 14 : 8, 2); }
+        else if (it.kind === 'alpaca') { if (a < 4300 && L) s = K.buildAlpaca(sd % K.COATS.length, 'stand', { seed: 20 + sd }); }
+        else {
+          const r = sd % 100;
+          if (S && r >= 30 && r < 60) s = null;
+          else if (a < 3450) s = r < 12 ? K.tree(cls, sd % 7) : r < 30 ? K.bush(sd % 2) : r < 50 ? K.flowers(sd % 4) : r < 60 ? K.stone(L ? 2.2 : 1.4, sd % 5) : r < 63 ? K.cairn(cls) : null;
+          else if (a < 3920) s = r < 26 ? K.pine(cls, sd % 7) : r < 40 ? K.bush(sd % 2) : r < 48 ? K.flowers(sd % 4) : r < 58 ? K.stone(L ? 2.2 : 1.4, sd % 5) : r < 62 ? K.cairn(cls) : r < 64 ? K.stoneHut(cls, sd) : null;
+          else if (a < 4300) s = r < 20 ? K.bush(sd % 2) : r < 36 ? K.stone(L ? 2.4 : 1.4, sd % 5) : r < 42 ? K.cairn(cls) : r < 45 ? K.stoneHut(cls, sd) : r < 48 ? K.chorten(cls) : r < 51 ? K.flagPole(cls, sd) : null;
+          else if (a < 5300) s = r < 26 ? K.stone(L ? 2.6 : 1.5, sd % 5) : r < 40 ? K.outcrop(cls, sd % 4, 0) : r < 45 ? K.cairn(cls) : r < 48 ? K.maniWall(cls) : r < 50 ? K.chorten(cls) : r < 52 ? K.flagPole(cls, sd) : null;
+          else if (a < 8050) s = r < 14 ? K.crevasse(cls, sd % 3) : r < 26 ? K.outcrop(cls, sd % 4, 1) : null;
+          else s = r < 18 ? K.outcrop(cls, sd % 4, 2) : r < 24 ? K.crevasse(cls, sd % 3) : null;
+        }
+        if (s) draw(s, x, y, true);
       }
     }
 
@@ -419,15 +510,19 @@
     function renderSky(sky, timeAlt) {
       const key = AW + 'x' + AH + ':' + Math.round((timeAlt - C.startAlt) / ((C.summitAlt - C.startAlt) / 64));
       if (key === skyKey) return;
+      // while moving, the sky steps at most every quarter second (each step redraws the whole sky)
+      if (skyKey && skyKey.split(':')[0] === key.split(':')[0] && !still && time - skyAt0 < 0.25) return;
+      skyAt0 = time;
       skyKey = key;
       const img = skyCtx.createImageData(AW, AH), d32 = new Uint32Array(img.data.buffer);
+      skyPix = d32;
       const s1 = mixc(sky.top, sky.bot, 0.78), s2 = mixc(sky.bot, [255, 248, 236], 0.18);
-      const LV = 14;
+      const LV = 6;
       const colAt = (t) => (t < 0.62 ? mixc(sky.top, s1, t / 0.62) : mixc(s1, s2, (t - 0.62) / 0.38));
       const pal = []; for (let l = 0; l <= LV; l++) { const c = colAt(l / LV); pal.push((255 << 24) | ((c[2] | 0) << 16) | ((c[1] | 0) << 8) | (c[0] | 0)); }
       for (let y = 0; y < AH; y++) {
         const f = (y / Math.max(1, AH - 1)) * LV, base = f | 0, fr = f - base;
-        for (let x = 0; x < AW; x++) d32[y * AW + x] = pal[Math.min(LV, base + (fr > K.dither(x, y) ? 1 : 0))];
+        for (let x = 0; x < AW; x++) d32[y * AW + x] = pal[Math.min(LV, base)];
       }
       // a soft aurora band near the summit at night
       if (sky.star > 0.5) {
@@ -448,134 +543,226 @@
     }
 
     // --- ranges and terrain (per pixel, into two buffers) ------------------------------
-    const M = 40; // column margin for trace-back lookups
+    const M = 76, SL = 34; // column margin for trace-back lookups; lead-in so facet runs match across strips
     const pack = (c) => (255 << 24) | ((c[2] | 0) << 16) | ((c[1] | 0) << 8) | (c[0] | 0);
     const amb = (c) => [c[0] * AMB[0], c[1] * AMB[1], c[2] * AMB[2]];
-    function renderRanges() {
-      range32.fill(0);
-      const L = [
-        { fn: farAlt, fx: 0.22, fy: 0.17, base: [150, 160, 182], haze: 0.55, snow: 6000 },
-        { fn: midAlt, fx: 0.45, fy: 0.3, base: [104, 112, 126], haze: 0.32, snow: 5300 },
-        { fn: nearAlt, fx: 0.7, fy: 0.62, base: [70, 112, 66], haze: 0.12, snow: 99999, forest: true },
-      ];
-      const k = DPR / UP;
-      L.forEach((r, ri) => {
-        const T = rtops[ri];
-        const par = cam.sx * r.fx, hs = Math.max(par, 20000 * cam.sy * r.fy);
-        for (let i = 0; i < AW + 2 * M; i++) {
-          const xc = ((i - M + 0.5) * UP + OX) / DPR;
-          const u = (cam.p * par + xc - W / 2) / hs;
-          T[i] = ((H / 2 - (r.fn(u) - cam.alt) * cam.sy * r.fy) * DPR - OY) / UP;
-          if (r.forest) { rU[i] = u; T[i] -= Math.abs(Math.sin(u * 2600)) * 2.5; }   // a crown-bumpy tree line
-        }
-        if (T[(AW >> 1) + M] > AH + 20 && T[M] > AH + 20) return;   // entirely below the screen
-        const shadowC = [38, 50, 104];
-        const base4 = r.forest ? [[38, 74, 50], [52, 98, 56], [76, 128, 64], [112, 160, 78]] : [mixc(r.base, shadowC, 0.5), mixc(r.base, shadowC, 0.22), r.base, mixc(r.base, [255, 255, 255], 0.25)];
-        const rock = base4.map((c) => amb(mixc(c, HAZE, r.haze * 0.85)));
-        const snow = [[150, 168, 206], [186, 202, 232], [222, 232, 246], [246, 250, 255]].map((c) => amb(mixc(c, HAZE, r.haze * 0.5)));
-        const hz = amb(HAZE), rockP = rock.map(pack), snowP = snow.map(pack), edgeP = pack(mixc(rock[0], hz, 0.2));
-        const rockH = rock.map((c) => pack(mixc(c, hz, 0.55))), snowH = snow.map((c) => pack(mixc(c, hz, 0.55)));
-        const altRow = (y) => cam.alt + (H / 2 - (y * UP + OY) / DPR) / (cam.sy * r.fy);
-        for (let x = 0; x < AW; x++) {
-          const top = Math.ceil(T[x + M]);
-          const yEnd = Math.min(AH, tops[x + M] + 1);
-          for (let y = Math.max(0, top); y < yEnd; y++) {
-            const dpt = y - T[x + M];
-            let xr = x + M - Math.round(0.35 * dpt); xr = Math.max(3, Math.min(AW + 2 * M - 4, xr));
-            xr = x + M - Math.round(0.35 * (y - T[xr])); xr = Math.max(3, Math.min(AW + 2 * M - 4, xr));
-            const sl = T[xr - 3] - T[xr + 3];
-            let v = sl > 0.4 ? 0.82 : sl < -0.4 ? 0.3 : 0.56;
-            v -= dpt / 400;
-            const a = altRow(y + 0.5), wx = x - oxA;
-            const snowy = a > r.snow + Math.sin(wx * 0.7) * 25 + Math.sin(wx * 0.23) * 60 + (K.dither(x, y) - 0.5) * 80;
-            // aerial perspective: toward the foot of each range, pixels swap to a hazed copy of their colour
-            const hazy = !r.forest && a < 5200 && Math.min(1, (5200 - a) / 1300) > K.dither(x + 2, y + 1);
-            const P = snowy ? (hazy ? snowH : snowP) : (hazy ? rockH : rockP);
-            const f = clamp(v, 0, 0.9999) * (P.length - 1); let ci = f | 0; if (ci < P.length - 1 && f - ci > K.dither(x, y)) ci++;
-            let c = y - top < 1 ? edgeP : P[ci];
-            if (r.forest && y - top >= 1) {   // canopy clumps: a lit top on each round crown, darker gaps between
-              const tx = Math.round(rU[x + M] * 2600 / Math.PI * 2), ty = Math.round(dpt);
-              const cl = K.hash2(tx >> 2, ty >> 2, 11), inner = ((ty & 3) === 0) ? 0.25 : ((tx & 3) === 0 ? -0.2 : 0);
-              const vv = 0.6 + (cl - 0.5) * 0.7 + inner - dpt / 200;
-              const f2 = clamp(vv, 0, 0.9999) * (P.length - 1); let c2 = f2 | 0; if (c2 < P.length - 1 && f2 - c2 > K.dither(x, y)) c2++;
-              c = P[c2];
+    // ranges are flat-shaded column runs: a lit or shaded face, a snow cap, a hazed foot
+    const cssOf = (c) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+    // facets as broad runs: a lit/shaded flag per column, with runs shorter than `min` folded into their neighbours
+    const LIT = new Uint8Array(4096);
+    function settleRuns(n, min) {
+      let i = 0;
+      while (i < n) {
+        let j = i; while (j + 1 < n && LIT[j + 1] === LIT[i]) j++;
+        if (j - i + 1 < min && i > 0) for (let k = i; k <= j; k++) LIT[k] = LIT[i - 1];
+        i = j + 1;
+      }
+    }
+    const RANGES = [
+      { fn: farAlt, fx: 0.22, fy: 0.17, base: [150, 160, 182], haze: 0.55, snow: 6000 },
+      { fn: midAlt, fx: 0.45, fy: 0.3, base: [104, 112, 126], haze: 0.32, snow: 5300 },
+      { fn: nearAlt, fx: 0.7, fy: 0.62, base: [70, 112, 66], haze: 0.12, snow: 99999, forest: true },
+    ];
+    // column geometry for range ri over w columns (canvas column i = screen art column i - mx, row j = j - my):
+    // the ridge top, the snow line and the haze line per column, a lit flag, and the six colours
+    const RG = [0, 1, 2].map(() => ({ top: new Int32Array(4096), s1: new Int32Array(4096), h1: new Int32Array(4096), lit: new Uint8Array(4096), col: null }));
+    function rangeCols(ri, w, mx, my) {
+      const r = RANGES[ri], T = rtops[ri], G0 = RG[ri];
+      const par = cam.sx * r.fx, hs = Math.max(par, 20000 * cam.sy * r.fy);
+      const sy0 = ((H / 2 + cam.alt * cam.sy * r.fy) * DPR - LY - shY) / UP + my, kY = cam.sy * r.fy * DPR / UP;
+      for (let i = 0; i < w + 2 * M; i++) {
+        const xc = ((i - M - mx + 0.5) * UP + LX + shX) / DPR;
+        const u = (cam.p * par + xc - W / 2) / hs;
+        T[i] = sy0 - r.fn(u) * kY;
+        if (r.forest) T[i] -= Math.abs(Math.sin(u * 2600)) * 2.5;
+      }
+      const ySnow = sy0 - r.snow * kY, yHaze = r.forest ? 1e9 : sy0 - 4700 * kY;
+      for (let x = -SL; x < w + SL; x++) LIT[x + SL] = r.forest ? 1 : (T[x + M - 4] - T[x + M + 4] > 0.4 ? 1 : 0);
+      settleRuns(w + 2 * SL, 5);
+      const ux = par * DPR / UP;   // world-anchored wobble: columns counted from the range's own origin
+      for (let x = 0; x < w; x++) {
+        const top = Math.ceil(T[x + M]), wx = x - mx + cam.p * ux;
+        const wob = Math.round(Math.sin(wx * 0.7) * 1.5 + Math.sin(wx * 0.23) * 3);
+        G0.top[x] = top; G0.s1[x] = Math.max(top, Math.round(ySnow) + wob); G0.h1[x] = Math.max(top, Math.round(Math.min(1e8, yHaze))); G0.lit[x] = LIT[x + SL];
+      }
+      const shadowC = [38, 50, 104];
+      const lit = amb(mixc(r.forest ? [76, 128, 64] : r.base, HAZE, r.haze * 0.85));
+      const sh = amb(mixc(r.forest ? [52, 98, 56] : mixc(r.base, shadowC, 0.3), HAZE, r.haze * 0.85));
+      const sLit = amb(mixc([238, 244, 252], HAZE, r.haze * 0.5)), sSh = amb(mixc([186, 202, 232], HAZE, r.haze * 0.5));
+      const hz = amb(mixc(mixc(r.base, HAZE, 0.6), HAZE, r.forest ? 0 : 0.3));
+      G0.col = [mixc(sh, [20, 20, 40], 0.25), sLit, sSh, lit, sh, r.forest ? sh : hz];   // edge, snow lit/shade, body lit/shade, haze
+      return G0;
+    }
+    // draws columns x0..x0+sw of range ri into buffer B (each column filled to the bottom)
+    function renderRangeStrip(ri, B, J, x0, sw) {
+      const g = B.ug;
+      g.clearRect(x0, 0, sw, J.h);
+      const G0 = rangeCols(ri, sw, J.mx - x0, J.my), fills = G0.col.map(cssOf);
+      const runs = [[], [], [], [], [], []], h = J.h;
+      for (let j = 0; j < sw; j++) {
+        const x = x0 + j, top = G0.top[j];
+        B.tops[x] = clamp(top, -30000, 30000);
+        if (top >= h) continue;
+        const isLit = G0.lit[j] === 1;
+        const s1 = Math.min(h, G0.s1[j]), h1 = Math.min(h, G0.h1[j]);
+        runs[0].push(x, top, 1);
+        if (s1 > top + 1) runs[isLit ? 1 : 2].push(x, top + 1, s1 - top - 1);
+        const r0 = Math.max(top + 1, s1);
+        if (h1 > r0) runs[isLit ? 3 : 4].push(x, r0, h1 - r0);
+        const z0 = Math.max(r0, h1);
+        if (h > z0) runs[5].push(x, z0, h - z0);
+      }
+      for (let k = 0; k < 6; k++) { const a = runs[k]; if (!a.length) continue; g.fillStyle = fills[k]; for (let q = 0; q < a.length; q += 3) g.fillRect(a[q], a[q + 1], 1, a[q + 2]); }
+    }
+    // while zooming: all three ranges in one pass, each clipped by the one in front and by the ground,
+    // written straight into pixel memory (no overdraw), then one copy
+    let flatImg = null, flat32 = null;
+    const skyTop = new Int32Array(4096);
+    function renderRangesFlat() {
+      if (!flatImg || flatImg.width !== AW || flatImg.height !== AH) { flatImg = new ImageData(AW, AH); flat32 = new Uint32Array(flatImg.data.buffer); }
+      if (skyPix && skyPix.length === flat32.length) flat32.set(skyPix); else flat32.fill(0);
+      terrainTops();
+      const Gs = [0, 1, 2].map((ri) => rangeCols(ri, AW, 0, 0));
+      const P6 = Gs.map((g) => g.col.map(pack));
+      for (let x = 0; x < AW; x++) {
+        let limit = Math.min(AH, tops[x + M] + 1);
+        for (let ri = 2; ri >= 0; ri--) {
+          const g = Gs[ri], pk = P6[ri], top = Math.max(0, g.top[x]);
+          if (top < limit) {
+            const lit = g.lit[x] === 1, s1 = g.s1[x], h1 = g.h1[x];
+            for (let y = top, i = top * AW + x; y < limit; y++, i += AW) {
+              flat32[i] = y === g.top[x] ? pk[0] : y < s1 ? (lit ? pk[1] : pk[2]) : y < h1 ? (lit ? pk[3] : pk[4]) : pk[5];
             }
-            range32[y * AW + x] = c;
+            limit = top;
           }
         }
-      });
-      rangeCtx.putImageData(rangeImg, 0, 0);
+        skyTop[x] = Math.max(0, limit);
+      }
+      actx.putImageData(flatImg, 0, 0);
+    }
+    // each range layer is cached and slid by its parallax while the zoom holds still
+    let still = true, stillFrames = 0, lastCamKey = '';
+    // caches get more room ahead: the camera moves up and right as you climb
+    const BIAS = 0.6;
+    let stripBudget = 1;
+    const rangeKey = () => cam.sx + ':' + cam.sy + ':' + AW + 'x' + AH;
+    const rangeColKey = () => ambKey + '|' + HAZE.join(',');
+    function rangeOffset(ri, B) {
+      const r = RANGES[ri], k = DPR / UP;
+      return [-(cam.p - B.p0) * cam.sx * r.fx * k + (B.sh0x - shX) / UP, (cam.alt - B.a0) * cam.sy * r.fy * k + (B.sh0y - shY) / UP];
+    }
+    const covers = (B, dx, dy) => { const l = Math.round(dx) - B.mx, t = Math.round(dy) - B.my; return l <= 0 && t <= 0 && l + B.u.width >= AW && t + B.u.height >= AH; };
+    function rangeFrontOk(ri) {
+      const B = RF[ri].front;
+      if (!B.valid || B.key !== rangeKey()) return false;
+      const [dx, dy] = rangeOffset(ri, B);
+      return covers(B, dx, dy);
+    }
+    // a range job freezes the camera and colours it was started with, so its strips line up
+    function startRangeJob(ri) {
+      const R = RF[ri], w = AW + 2 * RMX, h = AH + 2 * RMY;
+      const B = R.back;
+      if (B.u.width !== w || B.u.height !== h) { B.u.width = w; B.u.height = h; }
+      if (B.tops.length < w) B.tops = new Int16Array(w + 64);
+      // more room ahead: climbing slides the ranges left and down
+      R.job = { key: rangeKey(), ck: rangeColKey(), p: cam.p, alt: cam.alt, shX, shY, AMB, ambKey, HAZE, w, h, mx: RMX - Math.round(RMX * 0.5), my: RMY + Math.round(RMY * 0.5), i: 0, n: 6 };
+    }
+    function stepRangeJob(ri) {
+      const R = RF[ri], J = R.job, B = R.back;
+      const x0 = Math.floor(J.i * J.w / J.n), x1 = Math.floor((J.i + 1) * J.w / J.n);
+      const sv = [cam.p, cam.alt, shX, shY, AMB, ambKey, HAZE];
+      cam.p = J.p; cam.alt = J.alt; shX = J.shX; shY = J.shY; AMB = J.AMB; ambKey = J.ambKey; HAZE = J.HAZE;
+      try { renderRangeStrip(ri, B, J, x0, x1 - x0); } finally { [cam.p, cam.alt, shX, shY, AMB, ambKey, HAZE] = sv; }
+      if (++J.i >= J.n) {
+        Object.assign(B, { valid: true, key: J.key, ck: J.ck, p0: J.p, a0: J.alt, sh0x: J.shX, sh0y: J.shY, mx: J.mx, my: J.my });
+        R.back = R.front; R.front = B; R.job = null;
+      }
+    }
+    // schedules range work; returns true when all three fronts can draw this frame
+    function rangesPlan(settled) {
+      if (!settled) { for (const R of RF) R.job = null; return false; }
+      const key = rangeKey(), ck = rangeColKey();
+      for (let ri = 0; ri < 3; ri++) {
+        const R = RF[ri];
+        if (R.job && R.job.key !== key) R.job = null;
+        if (R.job) continue;
+        const B = R.front;
+        let need = !B.valid || B.key !== key || !rangeFrontOk(ri) || (still && B.ck !== ck);
+        if (!need) { const [dx, dy] = rangeOffset(ri, B); need = dx < -24 || dx > 12 || dy > 60 || dy < -30; }
+        if (need) startRangeJob(ri);
+      }
+      return RF.every((R, ri) => rangeFrontOk(ri));
+    }
+    function stepRangeJobs() {
+      // the layer that can no longer draw goes first
+      for (let pass = 0; pass < 2 && stripBudget > 0; pass++) for (let ri = 0; ri < 3 && stripBudget > 0; ri++) {
+        const R = RF[ri]; if (!R.job) continue;
+        if (pass === 0 && rangeFrontOk(ri)) continue;
+        stripBudget--; stepRangeJob(ri);
+      }
+    }
+    let FT = null, wDX = null, wDY = 0, WRtarget = null, WRoff = 0; const RTOP = new Float32Array(3 * 512);
+    // draws the three range fronts, each copied only over the rows where it can be seen
+    function drawRangeFronts(noGround) {
+      const n = Math.ceil(AW / 2) + 1;
+      if (!FT || FT.length < n) FT = new Float32Array(n + 8);
+      for (let i = 0; i < n; i++) FT[i] = noGround ? AH : Y(ground(pAt(Math.min(AW - 1, i * 2) + 0.5))) - 2;
+      const off = RF.map((R, ri) => { const [dx, dy] = rangeOffset(ri, R.front); return [Math.round(dx) - R.front.mx, Math.round(dy) - R.front.my]; });
+      const rows = [];
+      for (let ri = 2; ri >= 0; ri--) {
+        const B = RF[ri].front, [ox, oy] = off[ri];
+        let top = 1e9, bot = -1e9;
+        for (let i = 0; i < n; i++) {
+          const x = Math.min(AW - 1, i * 2), t = B.tops[x - ox] + oy;
+          if (t < top) top = t;
+          if (FT[i] > bot) bot = FT[i];
+          RTOP[ri * 512 + i] = t;
+        }
+        rows[ri] = [Math.max(0, Math.floor(top)), Math.min(AH, Math.ceil(bot) + 2)];
+        for (let i = 0; i < n; i++) FT[i] = Math.min(FT[i], RTOP[ri * 512 + i]);
+      }
+      for (let ri = 0; ri < 3; ri++) {
+        const B = RF[ri].front, [ox, oy] = off[ri], [y0, y1] = rows[ri], h = y1 - y0;
+        if (h > 0) actx.drawImage(B.u, -ox, y0 - oy, AW, h, 0, y0, AW, h);
+      }
     }
     function terrainTops() {
       for (let i = 0; i < AW + 2 * M; i++) tops[i] = Math.round(Y(ground(pAt(i - M + 0.5))));
-      for (let y = 0; y < AH; y++) rowAlt[y] = altAt(y + 0.5);
     }
+    // terrain is flat colour bands per column: a lit or shaded face, a darker body,
+    // a 1 px highlight on top. No per-pixel texture.
+    const BANDS = [[3900, 'grass'], [4300, 'scrub'], [5300, 'rock'], [8050, 'ice'], [1e9, 'snow']];
+    let bandKey = '', BC = null;
     function renderTerrain() {
-      terr32.fill(0);
-      const ramps = {}; for (const kname in RAMP) ramps[kname] = RAMP[kname].map((c) => pack(amb(c)));
-      const flowerP = FLOWERS.map((c) => pack(amb(c))), gold = pack(amb([255, 200, 60]));
-      const crev = pack(amb([70, 100, 160])), lip = pack(amb([214, 232, 250])), white = pack(amb([255, 255, 255])), outcrop = pack(amb([88, 80, 96]));
-      const ochre = amb([201, 170, 104]);
-      const pick = (P, v, x, y) => { const f = clamp(v, 0, 0.9999) * (P.length - 1); let i = f | 0; if (i < P.length - 1 && f - i > K.dither(x, y)) i++; return P[i]; };
-      const xb0 = X(0.73), xb1 = X(0.94);
+      if (bandKey !== ambKey) {
+        bandKey = ambKey; BC = {};
+        for (const k in RAMP) { const R = RAMP[k], n = R.length; BC[k] = { hi: cssOf(amb(R[n - 1])), lit: cssOf(amb(R[n - 2])), sh: cssOf(amb(R[Math.max(0, n - 3)])), deep: cssOf(amb(R[0])) }; }
+      }
+      const yb = BANDS.map(([a]) => Y(a));
+      for (let x = -SL; x < AW + SL; x++) {
+        const sl = (tops[x + M - 6] - tops[x + M + 6]) - (tops[x + M - 30] - tops[x + M + 30]) / 5;
+        LIT[x + SL] = sl > -2 ? 1 : 0;
+      }
+      settleRuns(AW + 2 * SL, 8);
+      const runs = new Map();
+      const add = (st, x, y, h) => { let r = runs.get(st); if (!r) runs.set(st, (r = [])); r.push(x, y, h); };
       for (let x = 0; x < AW; x++) {
-        const ty = tops[x + M];
-        const wx = x - oxA, wob = Math.sin(wx * 0.31) * 18 + Math.sin(wx * 0.11 + 1) * 26;
-        for (let y = Math.max(0, ty); y < AH; y++) {
-          const d = y - ty, wy = oyA - y, a = rowAlt[y] + wob;
-          // band, with a dithered seam between bands
-          const dz = (K.dither(x, y) - 0.5) * 90;
-          const band = a + dz < 3900 ? 'grass' : a + dz < 4300 ? 'scrub' : a + dz < 5300 ? 'rock' : a + dz < 8050 ? 'ice' : 'snow';
-          // facets: trace back up the slope to the ridge; rising stretches face the light
-          let xr = x + M - Math.round(0.35 * d); xr = Math.max(4, Math.min(AW + 2 * M - 5, xr));
-          xr = x + M - Math.round(0.35 * (y - tops[xr])); xr = Math.max(4, Math.min(AW + 2 * M - 5, xr));
-          // compare the local slope with the broad one, so facets show on a steady climb too
-          const sl = (tops[xr - 4] - tops[xr + 4]) - (tops[Math.max(0, xr - 24)] - tops[Math.min(AW + 2 * M - 1, xr + 24)]) / 6;
-          let v = 0.62 + (sl > 1.5 ? 0.16 : sl < -1.5 ? -0.2 : 0) - Math.min(0.3, d / 110);
-          if (d === 0) v += 0.4;
-          let c = 0;
-          if (band === 'grass' || band === 'scrub') {
-            if (K.hash2(wx, wy, 1) < 0.035) v -= 0.3;
-            else if (K.hash2(wx, wy - 1, 1) < 0.035) v += 0.3;
-            if (band === 'grass' && d > 3) {
-              const fc = K.hash2(wx, wy, 2) < 0.004;
-              if (fc) c = gold;
-              else {
-                let pc = null;
-                if (K.hash2(wx - 1, wy, 2) < 0.004) pc = wx - 1 + wy * 7;
-                else if (K.hash2(wx + 1, wy, 2) < 0.004) pc = wx + 1 + wy * 7;
-                else if (K.hash2(wx, wy - 1, 2) < 0.004) pc = wx + (wy - 1) * 7;
-                if (pc !== null) c = flowerP[((pc % 4) + 4) % 4];
-              }
-            }
-          } else if (band === 'rock') {
-            if (K.hash2(wx >> 2, wy, 3) < 0.05) v -= 0.25;
-            else if (K.hash2(wx, wy, 4) < 0.04) v += 0.25;
-          } else if (band === 'ice' && d > 4) {
-            const cr = (q) => { const run = ((wx + q) / 9) | 0; return K.hash2(run, q, 5) < 0.0035 && K.hash2(run, q, 8) > 0.2; };
-            if (cr(wy)) c = crev; else if (cr(wy + 1)) c = lip;
-            else if (K.hash2(wx, wy, 6) < 0.004) c = white;
-          } else if (band === 'snow' && d > 3) {
-            const oc = K.hash2(wx >> 3, wy >> 3, 7);
-            if (oc < 0.035 && K.hash2(wx >> 1, wy >> 1, 9) < 0.7 - Math.abs(((wx & 7) - 3.5) / 7) - Math.abs(((wy & 7) - 3.5) / 6)) c = outcrop;
-            else if (K.hash2(wx, wy, 6) < 0.006) c = white;
-          }
-          if (!c) {
-            c = pick(ramps[band], v, x, y);
-            // the Yellow Band across the Lhotse face
-            if (x > xb0 && x < xb1) {
-              const sl2 = (x - xb0) / Math.max(1, xb1 - xb0);
-              const lo = 7540 - sl2 * 60, hi = 7780 - sl2 * 60, aa = rowAlt[y];
-              if (aa > lo && aa < hi) {
-                const e = Math.min(aa - lo, hi - aa) / 60;
-                if (Math.min(1, e) * 0.5 > K.dither(x, y) * 0.9) { const o = c; c = pack(mixc([o & 255, (o >> 8) & 255, (o >> 16) & 255], ochre, 0.45)); }
-              }
-            }
-          }
-          terr32[y * AW + x] = c;
+        const top = tops[x + M], ty = Math.max(0, top);
+        if (ty >= AH) continue;
+        const lit = LIT[x + SL] === 1;
+        const wob = Math.round(Math.sin((x - oxA) * 0.31) * 3 + Math.sin((x - oxA) * 0.11 + 1) * 4);
+        let y = ty;
+        for (let bi = BANDS.length - 1; bi >= 0 && y < AH; bi--) {
+          const lower = bi > 0 ? Math.round(yb[bi - 1]) + wob : AH;
+          if (lower <= y) continue;
+          const c = BC[BANDS[bi][1]], end = Math.min(AH, lower);
+          const deepAt = top + 34;
+          if (y === top) { add(c.hi, x, y, 1); y++; if (y >= end) continue; }
+          if (y < deepAt) { const e = Math.min(end, deepAt); add(lit ? c.lit : c.sh, x, y, e - y); y = e; }
+          if (y < end) { add(c.sh === c.deep ? c.deep : (lit ? c.sh : c.deep), x, y, end - y); y = end; }
         }
       }
-      terrCtx.putImageData(terrImg, 0, 0);
+      for (const [st, r] of runs) { actx.fillStyle = st; for (let q = 0; q < r.length; q += 3) actx.fillRect(r[q], r[q + 1], 1, r[q + 2]); }
     }
 
     // --- alpaca ride (§8.6) ---------------------------------------------------------
@@ -590,7 +777,14 @@
     let splat = null;         // { x, y, t } art-space spit, outlives the ride a little
     const easeIO = (k) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
     const seg = (u, a, b) => clamp((u - a) / (b - a), 0, 1);
-    const groundY = (x) => Math.round(Y(ground(pAt(x))));
+    const GY_OFF = 2048, gyMemo = new Float32Array(4096), gyStamp = new Int32Array(4096);
+    let gyFrame = 1;
+    function groundY(x) {
+      const i = (x | 0) + GY_OFF;
+      if (x !== (x | 0) || i < 0 || i >= 4096) return Math.round(Y(ground(pAt(x))));
+      if (gyStamp[i] !== gyFrame) { gyStamp[i] = gyFrame; gyMemo[i] = Math.round(Y(ground(pAt(x)))); }
+      return gyMemo[i];
+    }
     function puff(x, y, band) {
       for (const p of puffs) {
         if (p.on) continue;
@@ -678,13 +872,19 @@
         const hx = Math.round(hp.x + 7), px2 = clamp(hx, x + 2, x + w - 3);
         pline(hx, hp.y - 20, px2, y + h, '#966c42'); pline(hx + 1, hp.y - 20, px2 + 1, y + h, '#5b3a22');
       }
-      for (let i = 0; i < w; i++) {
-        const sg = Math.round(Math.sin(i / w * Math.PI) * 1.5);
-        px(x + i, y + sg, '#281e16'); px(x + i, y + sg + 1, '#fff7e0'); px(x + i, y + sg + 2, '#f4e7c8', 1, h - 4);
-        px(x + i, y + sg + h - 2, '#d8c08f'); px(x + i, y + sg + h - 1, '#281e16');
+      if (!ride.strip || ride.strip.w !== w) {
+        const c = K.canvas(w + 2, h + 3), g = c.getContext('2d');
+        const P1 = (xx, yy, col, hh) => { g.fillStyle = col; g.fillRect(xx, yy, 1, hh || 1); };
+        for (let i = 0; i < w; i++) {
+          const sg = Math.round(Math.sin(i / w * Math.PI) * 1.5);
+          P1(i + 1, sg, '#281e16'); P1(i + 1, sg + 1, '#fff7e0'); P1(i + 1, sg + 2, '#f4e7c8', h - 4);
+          P1(i + 1, sg + h - 2, '#d8c08f'); P1(i + 1, sg + h - 1, '#281e16');
+        }
+        P1(0, 1, '#281e16', h - 2); P1(w + 1, 1, '#281e16', h - 2);
+        g.drawImage(t.cv, Math.round(1 + (w - t.w) / 2), 4);
+        ride.strip = { cv: c, w };
       }
-      px(x - 1, y + 1, '#281e16', 1, h - 2); px(x + w, y + 1, '#281e16', 1, h - 2);
-      actx.drawImage(t.cv, Math.round(x + (w - t.w) / 2), y + 1 + 3);
+      actx.drawImage(ride.strip.cv, x - 1, y);
       const sg = K.sign('ALPACA EXPRESS', null);   // the express sign rides on top of the banner
       actx.drawImage(sg.cv, Math.round(clamp(x + (w - sg.w) / 2, 2, AW - sg.w - 2)), y - sg.h + 1);
     }
@@ -841,105 +1041,43 @@
     }
 
     // --- the frame ------------------------------------------------------------------
-    function render(dt) {
-      mapCamera();
-      const timeAlt = clamp(skyOverride != null ? skyOverride : climb, C.startAlt, C.summitAlt);
-      const sky = skyAt(timeAlt);
-      AMB = sky.amb; HAZE = sky.bot;
-      ambKey = AMB.map((v) => Math.round(v * 24)).join(',');
-      AMB = ambKey.split(',').map((v) => Number(v) / 24);
-      renderSky(sky, timeAlt);
-      actx.globalCompositeOperation = 'source-over'; actx.globalAlpha = 1;
-      actx.drawImage(skyCv, 0, 0);
-
-      if (sky.star > 0.02) {
-        for (const s of STARS) {
-          const tw = reduced ? 1 : 0.6 + 0.4 * Math.sin(time * s.sp + s.ph);
-          const x = Math.floor(s.x * AW), y = Math.floor(s.y * AH), al = sky.star * tw;
-          px(x, y, `rgba(255,252,236,${al})`);
-          if (s.big && tw > 0.85) { const a2 = al * 0.5; px(x - 1, y, `rgba(255,252,236,${a2})`); px(x + 1, y, `rgba(255,252,236,${a2})`); px(x, y - 1, `rgba(255,252,236,${a2})`); px(x, y + 1, `rgba(255,252,236,${a2})`); }
-        }
-      }
-      // sun and moon
-      const t = clamp((timeAlt - C.startAlt) / (C.summitAlt - C.startAlt), 0, 1);
-      const sunA = clamp((0.93 - t) / 0.1, 0, 1);
-      if (sunA > 0) {
-        const sx = AW * (0.14 + 0.76 * t), sy = AH * (0.5 - 0.4 * Math.sin(Math.PI * Math.min(t, 0.98)));
-        const scol = t < 0.25 ? mixc(hex('#ffc9a0'), hex('#fff4d6'), t / 0.25) : t < 0.7 ? hex('#fff4d6') : mixc(hex('#ffd08a'), hex('#ff7a59'), (t - 0.7) / 0.3);
-        const q = (c) => '#' + c.map((v) => Math.min(255, Math.round(v / 16) * 16).toString(16).padStart(2, '0')).join('');
-        const glow = mixc(scol, sky.bot, 0.5);
-        draw(K.disc(7, q(scol), q(mixc(scol, [255, 160, 120], 0.25)), q(glow)), sx, sy, false, sunA);
-      }
-      const moonA = clamp((t - 0.82) / 0.12, 0, 1);
-      if (moonA > 0) {
-        const mx = Math.round(AW * 0.22), my = Math.round(AH * 0.17);
-        draw(K.disc(6, '#f0f2ff', '#c8cce4', null), mx, my, false, 0.95 * moonA);
-        actx.globalAlpha = moonA; actx.fillStyle = css(sky.top);
-        for (let yy = -7; yy <= 7; yy++) for (let xx = -7; xx <= 7; xx++) if ((xx - 3) * (xx - 3) + (yy + 2) * (yy + 2) <= 30 && xx * xx + yy * yy <= 42) actx.fillRect(mx + xx, my + yy, 1, 1);
-        actx.globalAlpha = 1;
-      }
-
-      terrainTops();
-      renderRanges();
-      actx.drawImage(rangeCv, 0, 0);
-
-      // cloud sea
+    // the static world: terrain, scenery, landmarks and the dashed route (drawn into the world cache)
+    function staticWorld() {
       const cls = sizeClass();
-      if (cam.sy > 0.2) {
-        for (const c of CLOUDS) {
-          const x = cssToArt(W / 2 + (c.u - cam.p) * cam.sx * 0.75 + (reduced ? 0 : (time * 4) % 60));
-          const y = cssToArt(H / 2 - (c.a - cam.alt) * cam.sy * 0.72);
-          if (x < -60 || x > AW + 60 || y < -30 || y > AH + 30) continue;
-          draw(K.cloud(cls === 'L' && c.w > 120 ? 'L' : cls === 'S' ? 'S' : 'M', c.seed), x, y, true, 0.92);
-        }
-      }
-
+      terrainTops();
       renderTerrain();
-      actx.drawImage(terrCv, 0, 0);
-
-      // decorations
       const gy = (p) => Y(ground(p));
-      for (const tr of TREES) {
+      // scenery across the face of the mountain, nearest (lowest on screen) last
+      drawScape(cls);
+      // a few trees right by the trail
+      for (const tr of TRAIL_TREES) {
         if (!visible(tr.p)) continue;
         const a = ground(tr.p); if (a > 3920) continue;
         draw(a < 3450 ? K.tree(cls, tr.seed) : K.pine(cls, tr.seed), X(tr.p), gy(tr.p) + depth(tr.d), true);
       }
-      if (cls !== 'S') for (const b of BOULDERS) { if (visible(b.p) && ground(b.p) > 4250) draw(K.stone(cls === 'L' ? b.r : 1.4, b.seed), X(b.p), gy(b.p) + depth(b.d), true); }
       // Lukla: the uphill airstrip and a little plane
       if (visible(0.074, 60)) {
         for (let x = Math.round(X(0.062)); x <= Math.round(X(0.086)); x++) {
           const y = Math.round(gy(pAt(x))) + 1;
-          px(x, y, css(mixc([88, 92, 99], [0, 0, 0], 0)), 1, cls === 'S' ? 1 : 2);
-          if (cls !== 'S' && x % 4 < 2) px(x, y, 'rgba(255,255,255,0.85)');
+          px(x, y, 'rgb(88,92,99)', 1, cls === 'S' ? 1 : 2);
+          if (cls !== 'S' && ((x - oxA) % 4 + 4) % 4 < 2) px(x, y, 'rgba(255,255,255,0.85)');
         }
         if (cls !== 'S') draw(K.plane(), X(0.08), gy(0.08) - 1, true);
         draw(K.teahouse('S', 3), X(0.058), gy(0.058) + 1, true);
       }
-      // Namche Bazaar: teahouses, a field, a pond, flags, a grazing alpaca
+      // Namche Bazaar: a few teahouses, the field, the pond, a grazing alpaca
       if (visible(0.205, 80)) {
         if (cls !== 'S') {
-          draw(K.pond(cls === 'L' ? 9 : 5, cls === 'L' ? 3 : 2), X(0.176), gy(0.176) + depth(52), true);
-          draw(K.field(cls === 'L' ? 22 : 12, cls === 'L' ? 3 : 2), X(0.222), gy(0.222) + depth(60), true);
+          draw(K.pond(cls === 'L' ? 9 : 5, cls === 'L' ? 3 : 2), X(0.172), gy(0.172) + depth(78), true);
+          draw(K.field(cls === 'L' ? 22 : 12, cls === 'L' ? 3 : 2), X(0.224), gy(0.224) + depth(86), true);
         }
-        let big = null;
         for (const hs of HOUSES) {
           const sz = hs.big ? (cls === 'L' ? 'XL' : cls === 'M' ? 'L' : 'S') : (cls === 'L' ? 'L' : 'S');
-          const s = K.teahouse(sz, hs.seed), x = X(hs.p), y = gy(hs.p) + depth(hs.d);
-          draw(s, x, y, true);
-          if (hs.big) big = { s, x, y };
+          draw(K.teahouse(sz, hs.seed), X(hs.p), gy(hs.p) + depth(hs.d), true);
         }
-        if (big && cls !== 'S') {
-          const rx = big.x + big.s.ridge[0], ry = big.y + big.s.ridge[1];
-          const fx = X(0.232), fy = gy(0.232) + depth(12);
-          flags(rx, ry, fx, fy - 12, 3);
-          pline(Math.round(fx), Math.round(fy) - 12, Math.round(fx), Math.round(fy), '#966c42');
-          if (!reduced) for (let i = 0; i < 4; i++) { const k = ((time * 0.35 + i / 4) % 1); draw(K.smokePuff(1 + k * 2.4), big.x - 4 + k * 6, big.y + big.s.ridge[1] - 3 - k * 16, true, 1 - k); }
-          if (cls === 'L') draw(K.buildAlpaca(1, 'stand', { seed: 9 }), X(0.238), gy(0.238) + depth(40), true);
-        }
+        if (cls === 'L') draw(K.buildAlpaca(1, 'stand', { seed: 9 }), X(0.244), gy(0.244) + depth(64), true);
+        if (cls !== 'S') { const fx = Math.round(X(0.232)), fy = Math.round(gy(0.232) + depth(12)); pline(fx, fy - 12, fx, fy, '#966c42'); }
       }
-      // stepping stones along the trail, between the villages
-      if (cls === 'L') for (let p = 0.08; p < 0.3; p += 0.0065) if (visible(p) && (p < 0.168 || p > 0.24) && Math.abs(p - 0.3) > 0.012) draw(K.stone(1.6, Math.round(p * 1000) % 5), X(p), gy(p) + 5, true);
-      // Tengboche monastery
       if (visible(0.3, 60)) draw(K.monastery(cls === 'S' ? 'S' : 'L'), X(0.3), gy(0.3) + 1, true);
       // the Khumbu Icefall: seracs and a ladder over a crevasse
       if (visible(0.585, 80)) {
@@ -954,12 +1092,202 @@
           for (let i = 0; i <= 6; i++) { const tt = i / 6, x = Math.round(lerp(lx1, lx2, tt)), y = Math.round(lerp(ly1, ly2, tt)); pline(x, y, x, y - 3, '#8e96a4'); }
         }
       }
-      // route wands from Base Camp up the glacier
-      if (cls !== 'S') for (let p = 0.565; p < 0.8; p += 0.012) if (visible(p)) draw(K.wand(), X(p) + 2, gy(p) + 2, true);
-      // camps
+      if (cls !== 'S') for (let p = 0.565; p < 0.8; p += 0.03) if (visible(p)) draw(K.wand(), X(p) + 2, gy(p) + 2, true);
       for (const camp of CAMPS) {
         if (!visible(camp[0].p, 60)) continue;
         for (const tn of camp) draw(K.tent(tn.c, cls), X(tn.p), gy(tn.p) + depth(tn.d), true);
+      }
+      // the route ahead: dashed, world-anchored
+      const x0 = Math.max(Math.round(X(P0)), 0), x1 = Math.min(Math.round(X(PS)), AW - 1);
+      const dash = [], under = [];
+      for (let x = x0; x <= x1; x++) if (((x - oxA) % 5 + 5) % 5 < 3) { const y = Math.round(gy(pAt(x))) - 2; dash.push(x, y); }
+      actx.fillStyle = '#ff702e'; for (let q = 0; q < dash.length; q += 2) actx.fillRect(dash[q], dash[q + 1], 1, 1);
+      actx.fillStyle = 'rgba(110,40,14,0.6)'; for (let q = 0; q < dash.length; q += 2) actx.fillRect(dash[q], dash[q + 1] + 1, 1, 1);
+      if (WRtarget) for (let x = 0; x < AW; x++) WRtarget[WRoff + x] = clamp(Math.round(gy(pAt(x))) - 2, -30000, 30000);
+    }
+    // world cache: rebuilt when the zoom, light, size class or screen changes, or when the camera
+    // slides past the margin; while zooming it is drawn without a margin every frame
+    const isLit = (A) => A[0] < 0.995 || A[1] < 0.995 || A[2] < 0.995;
+    const worldKey = () => cam.sx + ':' + cam.sy + ':' + sizeClass() + ':' + AW + 'x' + AH;
+    const worldCovers = (B) => B.valid && Math.abs(oxA - B.ox) <= B.mx && Math.abs(oyA - B.oy) <= B.my;
+    // a world job: render (strips of terrain + scenery, untinted) and/or tint (strips of one multiply pass)
+    function startWorldJob(render) {
+      const mx = WMX, my = WMY, bx = Math.round(BIAS * mx), by = Math.round(BIAS * my);
+      const F = wFront;
+      const J = render
+        ? { render: true, key: worldKey(), ox: oxA - bx, oy: oyA + by, mx, my, w: AW + 2 * mx, h: AH + 2 * my }
+        : { render: false, key: F.key, ox: F.ox, oy: F.oy, mx: F.mx, my: F.my, w: F.u.width, h: F.u.height };
+      J.AMB = wLight.AMB; J.amb = wLight.ambKey; J.lit = isLit(J.AMB); J.i = 0; J.n = render ? 8 : 3;
+      const B = wBack;
+      if (render) { if (B.u.width !== J.w || B.u.height !== J.h) { B.u.width = J.w; B.u.height = J.h; } if (B.wr.length < J.w) B.wr = new Int16Array(J.w + 64); }
+      if (J.lit && (B.t.width !== J.w || B.t.height !== J.h)) { B.t.width = J.w; B.t.height = J.h; }
+      wJob = J;
+    }
+    function stepWorldJob() {
+      const J = wJob, B = wBack, src = J.render ? B.u : wFront.u;
+      const x0 = Math.floor(J.i * J.w / J.n), x1 = Math.floor((J.i + 1) * J.w / J.n), sw = x1 - x0;
+      if (J.render) {
+        const g = B.ug;
+        g.save(); g.beginPath(); g.rect(x0, 0, sw, J.h); g.clip(); g.clearRect(x0, 0, sw, J.h); g.translate(x0, 0);
+        const sv = [AW, AH, oxA, oyA, actx, AMB, ambKey];
+        AW = sw; AH = J.h; oxA = J.ox + J.mx - x0; oyA = J.oy + J.my; actx = g; AMB = [1, 1, 1]; ambKey = '24,24,24'; WRtarget = B.wr; WRoff = x0;
+        try { staticWorld(); } finally { [AW, AH, oxA, oyA, actx, AMB, ambKey] = sv; WRtarget = null; g.restore(); }
+      }
+      if (J.lit) {   // the light: one multiply over the strip, alpha kept
+        const g = B.tg;
+        g.save(); g.beginPath(); g.rect(x0, 0, sw, J.h); g.clip();
+        g.globalCompositeOperation = 'copy'; g.drawImage(src, 0, 0);
+        g.globalCompositeOperation = 'multiply'; g.fillStyle = css([J.AMB[0] * 255, J.AMB[1] * 255, J.AMB[2] * 255]); g.fillRect(x0, 0, sw, J.h);
+        g.globalCompositeOperation = 'destination-in'; g.drawImage(src, 0, 0);
+        g.restore();
+      }
+      if (++J.i >= J.n) {
+        if (J.render) {
+          Object.assign(B, { valid: true, key: J.key, ox: J.ox, oy: J.oy, mx: J.mx, my: J.my, amb: J.amb, lit: J.lit });
+          wBack = wFront; wFront = B;
+        } else {   // tint only: swap the tinted copies
+          const t = wFront.t, tg = wFront.tg; wFront.t = B.t; wFront.tg = B.tg; B.t = t; B.tg = tg;
+          wFront.amb = J.amb; wFront.lit = J.lit;
+        }
+        wJob = null;
+      }
+    }
+    function directWorld() {
+      const sA = AMB, sK = ambKey;
+      AMB = dLight.AMB; ambKey = dLight.ambKey;
+      try { staticWorld(); } finally { AMB = sA; ambKey = sK; }
+    }
+    function drawWorld(settled) {
+      const sA = AMB, sK = ambKey;
+      AMB = wLight.AMB; ambKey = wLight.ambKey;
+      try { drawWorld0(settled); } finally { AMB = sA; ambKey = sK; }
+    }
+    function drawWorld0(settled) {
+      // while zooming, caches would be thrown away next frame: draw straight onto the screen
+      if (!settled) { wJob = null; wDX = null; directWorld(); return; }
+      const key = worldKey(), F = wFront;
+      if (wJob && wJob.render && wJob.key !== key) wJob = null;
+      if (wJob && !wJob.render && (F.key !== key || !F.valid)) wJob = null;
+      const ok = F.valid && F.key === key && worldCovers(F);
+      if (!wJob) {
+        const recentre = ok && (Math.abs(oxA - F.ox - BIAS * F.mx) > F.mx * 0.4 || Math.abs(oyA - F.oy + BIAS * F.my) > F.my * 0.4);
+        if (!ok || recentre) startWorldJob(true);
+        else if ((isLit(AMB) || F.lit) && F.amb !== ambKey) startWorldJob(false);
+      }
+      // the front that can't draw gets the strip first
+      while (wJob && stripBudget > 0 && (!ok || stripBudget > 1 || !RF.some((R) => R.job))) { stripBudget--; stepWorldJob(); if (!still || stripBudget < 2) break; }
+      const G = wFront;
+      if (!(G.valid && G.key === key && worldCovers(G))) { wDX = null; directWorld(); return; }
+      const dx = oxA - G.ox, dy = oyA - G.oy;
+      let gTop = AH;
+      for (let x = 0; x < AW; x += 4) { const y = Y(ground(pAt(x + 0.5))); if (y < gTop) gTop = y; }
+      { const y = Y(ground(pAt(AW - 0.5))); if (y < gTop) gTop = y; }
+      const y0 = clamp(Math.floor(gTop) - 52, 0, AH), hh = AH - y0;
+      const src = G.lit ? G.t : G.u;
+      if (hh > 0) actx.drawImage(src, -(dx - G.mx), y0 - (dy - G.my), AW, hh, 0, y0, AW, hh);
+      wDX = dx - G.mx; wDY = dy - G.my;
+    }
+
+    const STAR_A = [0.2, 0.35, 0.5, 0.65, 0.8, 0.95];
+    function render(dt) {
+      mapCamera();
+      gyFrame++;
+      const camKey = oxA + ',' + oyA + ',' + cam.sx + ',' + cam.sy + ',' + Math.round(climb);
+      stillFrames = camKey === lastCamKey ? stillFrames + 1 : 0; lastCamKey = camKey;
+      // still: nothing has moved for a few frames, the camera has arrived, and no ride is running
+      still = stillFrames >= 3 && !ride && cam.p === tgt.p && cam.alt === tgt.alt && cam.sx === tgt.sx && cam.sy === tgt.sy;
+      const settled = cam.sx === tgt.sx && cam.sy === tgt.sy;
+      const timeAlt = clamp(skyOverride != null ? skyOverride : climb, C.startAlt, C.summitAlt);
+      const sky = skyAt(timeAlt);
+      AMB = sky.amb; HAZE = sky.bot;
+      ambKey = AMB.map((v) => Math.round(v * 24)).join(',');
+      AMB = ambKey.split(',').map((v) => Number(v) / 24);
+      // the cached world re-tints in strips at any time; the direct-draw fallback (which tints sprite by
+      // sprite) keeps its light until the scene is still
+      wLight = { AMB, ambKey };
+      if (still || !dLight) dLight = wLight;
+      // haze follows the same 64 sky steps as the cached sky, so range caches don't rebuild every frame
+      const hq = Math.round((timeAlt - C.startAlt) / ((C.summitAlt - C.startAlt) / 64)) * ((C.summitAlt - C.startAlt) / 64) + C.startAlt;
+      HAZE = skyAt(hq).bot.map((v) => Math.round(v));
+      renderSky(sky, timeAlt);
+      actx.globalCompositeOperation = 'source-over'; actx.globalAlpha = 1;
+      const celestial = () => {
+
+      if (sky.star > 0.02) {
+        // stars in a few brightness buckets, so the fill style changes only a handful of times
+        const buckets = [[], [], [], [], [], []];
+        for (const s of STARS) {
+          const tw = reduced ? 1 : 0.6 + 0.4 * Math.sin(Math.floor(time * 8) / 8 * s.sp + s.ph);
+          const al = sky.star * tw, bi = clamp(Math.round(al * 6) - 1, 0, 5);
+          if (al < 0.1) continue;
+          const x = Math.floor(s.x * AW), y = Math.floor(s.y * AH);
+          buckets[bi].push(x, y);
+          if (s.big && tw > 0.85) { const b2 = clamp(bi - 3, 0, 5); buckets[b2].push(x - 1, y, x + 1, y, x, y - 1, x, y + 1); }
+        }
+        for (let bi = 0; bi < 6; bi++) { const a = buckets[bi]; if (!a.length) continue; actx.fillStyle = `rgba(255,252,236,${STAR_A[bi]})`; for (let q = 0; q < a.length; q += 2) actx.fillRect(a[q], a[q + 1], 1, 1); }
+      }
+      const t = clamp((timeAlt - C.startAlt) / (C.summitAlt - C.startAlt), 0, 1);
+      const sunA = clamp((0.93 - t) / 0.1, 0, 1);
+      if (sunA > 0) {
+        const sx = AW * (0.14 + 0.76 * t), sy = AH * (0.5 - 0.4 * Math.sin(Math.PI * Math.min(t, 0.98)));
+        const scol = t < 0.25 ? mixc(hex('#ffc9a0'), hex('#fff4d6'), t / 0.25) : t < 0.7 ? hex('#fff4d6') : mixc(hex('#ffd08a'), hex('#ff7a59'), (t - 0.7) / 0.3);
+        const q = (c) => '#' + c.map((v) => Math.min(255, Math.round(v / 16) * 16).toString(16).padStart(2, '0')).join('');
+        const glow = mixc(scol, sky.bot, 0.5);
+        draw(K.disc(7, q(scol), q(mixc(scol, [255, 160, 120], 0.25)), q(glow)), sx, sy, false, Math.round(sunA * 10) / 10);
+      }
+      const moonA = clamp((t - 0.82) / 0.12, 0, 1);
+      if (moonA > 0) {
+        const mx = Math.round(AW * 0.22), my = Math.round(AH * 0.17);
+        draw(K.moon(), mx, my, false, Math.round(0.95 * moonA * 10) / 10);
+      }
+
+      };
+      // the caches serve the frame when they can; while moving they are never rebuilt (a dropped frame
+      // only shows in motion), so a frame they can't cover is drawn directly instead
+      stripBudget = still ? 4 : 1;
+      const rangesOk = rangesPlan(settled);
+      if (rangesOk) {
+        const offs = RF.map((R, ri) => { const [dx, dy] = rangeOffset(ri, R.front); return (Math.round(dx) - R.front.mx) + ',' + (Math.round(dy) - R.front.my) + ',' + R.front.key + R.front.ck; });
+        const bk = skyKey + '|' + offs.join('|') + '|' + (sky.star > 0.02 && !reduced ? Math.floor(time * 8) : 0) + '|' + Math.round(timeAlt / 15) + '|' + AW + 'x' + AH;
+        if (bk !== bdKey) {
+          if (bdCv.width !== AW || bdCv.height !== AH) { bdCv.width = AW; bdCv.height = AH; }
+          const sv = actx; actx = bdG;
+          try { actx.drawImage(skyCv, 0, 0); celestial(); drawRangeFronts(true); } finally { actx = sv; }
+          bdKey = bk;
+        }
+        actx.drawImage(bdCv, 0, 0);
+      } else bdKey = '';
+      if (!rangesOk) {
+        // zooming or out of cache: sky and ranges go down in one pixel write; stars, sun and moon are clipped to the open sky
+        renderRangesFlat();
+        actx.save(); actx.beginPath(); actx.moveTo(0, 0);
+        for (let x = 0; x < AW; x++) { actx.lineTo(x, skyTop[x]); actx.lineTo(x + 1, skyTop[x]); }
+        actx.lineTo(AW, 0); actx.closePath(); actx.clip();
+        celestial(); actx.restore();
+      }
+
+      const cls = sizeClass();
+      if (cam.sy > 0.2) {
+        for (const c of CLOUDS) {
+          const x = cssXToArt(W / 2 + (c.u - cam.p) * cam.sx * 0.75 + (reduced ? 0 : (time * 4) % 60));
+          const y = cssYToArt(H / 2 - (c.a - cam.alt) * cam.sy * 0.72);
+          if (x < -60 || x > AW + 60 || y < -30 || y > AH + 30) continue;
+          draw(K.cloud(cls === 'L' && c.w > 120 ? 'L' : cls === 'S' ? 'S' : 'M', c.seed), x, y, true, 0.92);
+        }
+      }
+
+      drawWorld(settled);
+      if (settled) stepRangeJobs();
+
+      const gy = (p) => Y(ground(p));
+      // animated bits of the villages: prayer flags and chimney smoke
+      if (visible(0.205, 80) && cls !== 'S') {
+        const big = HOUSES.find((h) => h.big), sz = cls === 'L' ? 'XL' : 'L', s = K.teahouse(sz, big.seed);
+        const bx = X(big.p), by = gy(big.p) + depth(big.d);
+        const rx = bx + s.ridge[0], ry = by + s.ridge[1];
+        const fx = X(0.232), fy = gy(0.232) + depth(12);
+        flags(rx, ry, fx, fy - 12, 3);
+        if (!reduced) for (let i = 0; i < 4; i++) { const k = ((time * 0.35 + i / 4) % 1); draw(K.smokePuff(Math.round(1 + k * 2.4)), bx - 4 + k * 6, ry - 3 - k * 16, true, Math.round((1 - k) * 8) / 8); }
       }
       if (visible(0.548, 60) && cls !== 'S') flags(X(0.538), gy(0.538) - 8, X(0.558), gy(0.558) - 9, 3);
       if (visible(PS, 60)) {
@@ -968,14 +1296,17 @@
         flags(sx, sy - 2, sx - r, sy + r * 0.8, 3);
         flags(sx, sy - 2, sx + r * 0.9, sy + r * 0.9, 3);
       }
-
-      // route: dashed ahead of the climber, solid orange behind
+      // the route behind the climber: solid orange
       const pc = pFor(climb);
-      const x0 = Math.max(Math.round(X(P0)), 0), x1 = Math.min(Math.round(X(PS)), AW - 1), xc = Math.round(X(pc));
-      for (let x = x0; x <= x1; x++) {
-        const y = Math.round(gy(pAt(x))) - 2;
-        if (x <= xc) { px(x, y - 1, '#ff702e', 1, 2); px(x, y + 1, 'rgba(110,40,14,0.7)'); }
-        else if (((x - oxA) % 5 + 5) % 5 < 3) { px(x, y, '#ff702e'); px(x, y + 1, 'rgba(110,40,14,0.6)'); }
+      {
+        const x0 = Math.max(Math.round(X(P0)), 0), xc = Math.min(Math.round(X(pc)), AW - 1);
+        if (xc >= x0) {
+          const ys = [];
+          if (wDX !== null) for (let x = x0; x <= xc; x++) ys.push(wFront.wr[x - wDX] + wDY);
+          else for (let x = x0; x <= xc; x++) ys.push(Math.round(gy(pAt(x))) - 2);
+          actx.fillStyle = '#ff702e'; for (let x = x0; x <= xc; x++) actx.fillRect(x, ys[x - x0] - 1, 1, 2);
+          actx.fillStyle = 'rgba(110,40,14,0.7)'; for (let x = x0; x <= xc; x++) actx.fillRect(x, ys[x - x0] + 1, 1, 1);
+        }
       }
 
       // altitude scale while climbing
@@ -984,19 +1315,18 @@
         const aTop = altAt(0), aBot = altAt(AH);
         for (let a = Math.ceil(aBot / 100) * 100; a <= aTop; a += 100) {
           const y = Math.round(Y(a)), major = a % 500 === 0;
-          px(0, y, major ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.5)', major ? 5 : 3, 1);
-          if (major) { const s = K.text(fmt(a), { color: '#ffffff', outline: '#281e16' }); actx.drawImage(s.cv, 7, y - Math.floor(s.h / 2)); }
+          px(1, y, major ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.5)', major ? 5 : 3, 1);
+          if (major) { const s = K.text(fmt(a), { color: '#ffffff', outline: '#281e16' }); actx.drawImage(s.cv, 8, y - Math.floor(s.h / 2)); }
         }
       }
-      // the Death Zone line
       const dzy = Math.round(Y(8000));
-      if (dzy > -4 && dzy < AH + 4) for (let x = 0; x < AW; x++) if (((x - oxA) % 6 + 6) % 6 < 3) px(x, dzy, 'rgba(255,110,90,0.75)');
-      // milestone plates: wood signs with crisp Silkscreen
+      if (dzy > -4 && dzy < AH + 4) { actx.fillStyle = 'rgba(255,110,90,0.75)'; for (let x = 0; x < AW; x++) if (((x - oxA) % 6 + 6) % 6 < 3) actx.fillRect(x, dzy, 1, 1); }
       const wide = W >= 700;
-      for (const m of C.milestones) {
-        const p = pFor(m.alt), x = Math.round(X(p)), y = Math.round(gy(p));
+      // landmark signs step aside during an alpaca ride, so the herd and its banner have the stage
+      if (!ride) for (const m of C.milestones) {
+        const p = m._p != null ? m._p : (m._p = pFor(m.alt)), x = Math.round(X(p)), y = Math.round(gy(p));
         if (x < -80 || x > AW + 80 || y < -30 || y > AH + 30) continue;
-        if (m.id === 'deathzone') { const s = K.sign('8,000 m', 'Death Zone'); actx.drawImage(s.cv, AW - s.w - 4, dzy - s.h - 3); continue; }
+        if (m.id === 'deathzone') { const s = K.sign('8,000 m', 'Death Zone'); actx.drawImage(s.cv, AW - s.w - 5, dzy - s.h - 3); continue; }
         if (overview) {
           const s = K.sign(m.short, wide ? fmt(m.alt) + ' m' : null);
           const left = !['lukla', 'camp1'].includes(m.id);
@@ -1009,18 +1339,16 @@
           actx.drawImage(s.cv, Math.round(clamp(x - 2 - s.w, 2, AW - s.w - 2)), y - 15 - s.h);
         }
       }
-      // ghost of personal best
       if (ghost && ghost > C.startAlt + 20) {
         const gp = pFor(ghost), gx = Math.round(X(gp)), gyy = Math.round(gy(gp));
         draw(climberSprite('stand', { ghost: true }), gx, gyy, false, 0.35);
         const s = K.sign('Your best', fmt(ghost) + ' m');
         actx.globalAlpha = 0.9; actx.drawImage(s.cv, Math.round(clamp(gx + 8, 2, AW - s.w - 2)), gyy - 22); actx.globalAlpha = 1;
       }
-      // the climber
       const cx = Math.round(X(pc)), cy = Math.round(gy(pc));
       if (overview) {
         const pr = reduced ? 0 : (time * 1.2) % 1;
-        draw(K.ring(Math.round(4 + pr * 8), '#ff702e'), cx, cy - 6, false, 0.85 * (1 - pr));
+        draw(K.ring(Math.round(4 + pr * 8), '#ff702e'), cx, cy - 6, false, Math.round(0.85 * (1 - pr) * 10) / 10);
       }
       if (ride) drawRide(dt, cx, cy);
       else {
@@ -1029,47 +1357,58 @@
         if (climb >= C.summitAlt - 1) draw(K.overlay('flag'), cx - 7, cy);
         draw(climberSprite(climb >= C.summitAlt - 1 && !reduced && Math.floor(time * 2) % 2 ? 'cheer' : pose), cx, cy);
       }
-      if (overview && view === 'overview' && showPin) { const s = K.sign(fmt(climb) + ' m', null, { accent: true }); actx.drawImage(s.cv, Math.round(clamp(cx - s.w / 2, 2, AW - s.w - 2)), cy - 30 - s.h); }
+      // the pin shows where the climb lands (one sign, not one per animated metre)
+      if (overview && view === 'overview' && showPin) { const s = K.sign(fmt(Math.round(climbTarget)) + ' m', null, { accent: true }); actx.drawImage(s.cv, Math.round(clamp(cx - s.w / 2, 2, AW - s.w - 2)), cy - 30 - s.h); }
 
-      // bursts on rare finds
-      const BC = ['#c8cdd4', '#5cc580', '#63aaf5', '#b58cf3', '#ffc846'];
+      const BCOL = ['#c8cdd4', '#5cc580', '#63aaf5', '#b58cf3', '#ffc846'];
       for (let i = bursts.length - 1; i >= 0; i--) {
         const b = bursts[i]; b.t += dt;
         const k = b.t / b.dur; if (k >= 1) { bursts.splice(i, 1); continue; } if (k < 0) continue;
-        draw(K.ring(Math.round(4 + k * b.r), BC[b.tier]), cx, cy - 12, false, (1 - k) * 0.95);
-        for (const sp of b.sparks) { const d = k * sp.v; actx.globalAlpha = 1 - k; px(cx + Math.cos(sp.a) * d - 1, cy - 12 + Math.sin(sp.a) * d - 1, BC[b.tier], 2, 2); }
+        draw(K.ring(Math.round(4 + k * b.r), BCOL[b.tier]), cx, cy - 12, false, (1 - k) * 0.95);
+        actx.globalAlpha = 1 - k; actx.fillStyle = BCOL[b.tier];
+        for (const sp of b.sparks) { const d = k * sp.v; actx.fillRect(Math.round(cx + Math.cos(sp.a) * d - 1), Math.round(cy - 12 + Math.sin(sp.a) * d - 1), 2, 2); }
         actx.globalAlpha = 1;
       }
-      // weather: snow and high wind
       if (!reduced) {
         const snowAmt = timeAlt > 5300 && timeAlt < 8300 ? 50 : 0;
         while (flakes.length < snowAmt) flakes.push({ x: Math.random() * AW, y: Math.random() * AH, v: 7 + Math.random() * 15, big: Math.random() < 0.3 });
         if (flakes.length > snowAmt) flakes.length = snowAmt;
-        for (const f of flakes) { f.y += f.v * dt; f.x += (9 + f.v * 0.3) * dt; if (f.y > AH) { f.y = -2; f.x = Math.random() * AW; } if (f.x > AW) f.x = 0; px(f.x, f.y, 'rgba(255,255,255,0.85)', f.big ? 2 : 1, f.big ? 2 : 1); }
+        if (flakes.length) { actx.fillStyle = 'rgba(255,255,255,0.85)'; for (const f of flakes) { f.y += f.v * dt; f.x += (9 + f.v * 0.3) * dt; if (f.y > AH) { f.y = -2; f.x = Math.random() * AW; } if (f.x > AW) f.x = 0; actx.fillRect(Math.round(f.x), Math.round(f.y), f.big ? 2 : 1, f.big ? 2 : 1); } }
         const windAmt = timeAlt > 7000 ? Math.round(6 + (timeAlt - 7000) / 70) : 0;
         while (streaks.length < windAmt) streaks.push({ x: Math.random() * AW, y: Math.random() * AH * 0.9, l: 15 + Math.random() * 45, v: 150 + Math.random() * 200 });
         if (streaks.length > windAmt) streaks.length = windAmt;
-        for (const w of streaks) { w.x += w.v * dt; if (w.x - w.l > AW) { w.x = -5; w.y = Math.random() * AH * 0.9; } px(w.x - w.l, w.y, 'rgba(255,255,255,0.28)', w.l, 1); }
+        if (streaks.length) { actx.fillStyle = 'rgba(255,255,255,0.28)'; for (const w of streaks) { w.x += w.v * dt; if (w.x - w.l > AW) { w.x = -5; w.y = Math.random() * AH * 0.9; } actx.fillRect(Math.round(w.x - w.l), Math.round(w.y), Math.round(w.l), 1); } }
       }
-      // prayer-flag confetti for Sherpa finds and summits
-      for (let i = confetti.length - 1; i >= 0; i--) {
-        const c = confetti[i]; c.life -= dt;
-        if (c.life <= 0) { confetti.splice(i, 1); continue; }
-        c.vy += 30 * dt; c.x += (c.vx + Math.sin(time * 3 + c.ph) * 15) * dt; c.y += c.vy * dt; c.rot += c.vr * dt;
-        actx.globalAlpha = Math.min(1, c.life);
-        const flip = Math.floor(c.rot) % 2 === 0;
-        px(c.x, c.y, c.col, flip ? 3 : 2, flip ? 2 : 3);
+      // prayer-flag confetti, drawn in batches of one colour and fade step
+      if (confetti.length) {
+        const B = {};
+        for (let i = confetti.length - 1; i >= 0; i--) {
+          const c = confetti[i]; c.life -= dt;
+          if (c.life <= 0) { confetti.splice(i, 1); continue; }
+          c.vy += 30 * dt; c.x += (c.vx + Math.sin(time * 3 + c.ph) * 15) * dt; c.y += c.vy * dt; c.rot += c.vr * dt;
+          const k = c.col + '|' + Math.ceil(Math.min(1, c.life) * 4);
+          (B[k] || (B[k] = [])).push(c);
+        }
+        for (const k in B) {
+          const [col, a] = k.split('|'); actx.fillStyle = col; actx.globalAlpha = Number(a) / 4;
+          for (const c of B[k]) { const flip = Math.floor(c.rot) % 2 === 0; actx.fillRect(Math.round(c.x), Math.round(c.y), flip ? 3 : 2, flip ? 2 : 3); }
+        }
+        actx.globalAlpha = 1;
       }
-      actx.globalAlpha = 1;
       drawSplat(dt);
 
-      // copy to the screen at an integer scale
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(art, 0, 0, AW, AH, OX, OY, AW * UP, AH * UP);
+      // sub-pixel smoothness: shift the whole canvas by whole device pixels
+      const k2 = shX + ',' + shY;
+      if (k2 !== shKey) { shKey = k2; cv.style.transform = `translate(${shX / DPR}px,${shY / DPR}px)`; }
     }
 
     let showPin = false;
+    // capped at 60 fps: on 90/120 Hz screens extra animation frames are skipped (the next draw is due
+    // 1/60 s after the last one was due, with a little slack so a 60 Hz screen never skips)
+    let nextDue = 0;
     function frame(ts) {
+      if (ts < nextDue - 2) { requestAnimationFrame(frame); return; }
+      nextDue = Math.max(nextDue + 1000 / 60, ts);
       const dt = Math.min(0.05, Math.max(0, (ts - last) / 1000));
       last = ts; time += dt;
       if (ride) stepRide(dt);
@@ -1082,10 +1421,51 @@
       const k = reduced || snap ? 1 : 1 - Math.exp(-dt * (view === 'ride' ? 5 : view === 'follow' ? 4.5 : 2.4));
       cam.p = lerp(cam.p, tgt.p, k); cam.alt = lerp(cam.alt, tgt.alt, k);
       cam.sx = lerp(cam.sx, tgt.sx, k); cam.sy = lerp(cam.sy, tgt.sy, k);
+      // the zoom snaps home once it is within 0.4%, so the cached layers stop rebuilding
+      if (Math.abs(cam.sx - tgt.sx) <= tgt.sx * 0.004) cam.sx = tgt.sx;
+      // the slide ends once it is within a third of a CSS pixel, so the scene really comes to rest
+      if (Math.abs(cam.p - tgt.p) * cam.sx < 0.33 && Math.abs(cam.alt - tgt.alt) * cam.sy < 0.33) { cam.p = tgt.p; cam.alt = tgt.alt; }
+      if (Math.abs(cam.sy - tgt.sy) <= tgt.sy * 0.004) cam.sy = tgt.sy;
       snap = false;
       if (AW > 0 && AH > 0) render(dt);
       if (onFrame) onFrame(climb, dt);
       requestAnimationFrame(frame);
+    }
+
+    // build every scenery sprite size ahead of time in small idle slices, so the first zoom into a new
+    // size class doesn't stall a frame building them
+    function warmSprites() {
+      const jobs = [];
+      for (const z of ['L', 'M', 'S']) {
+        for (let i = 0; i < 7; i++) jobs.push(() => K.tree(z, i), () => K.pine(z, i));
+        for (let i = 0; i < 3; i++) jobs.push(() => K.stoneHut(z, i), () => K.crevasse(z, i));
+        for (let i = 0; i < 4; i++) for (let t = 0; t < 3; t++) jobs.push(() => K.outcrop(z, i, t));
+        for (let i = 0; i < 2; i++) jobs.push(() => K.flagPole(z, i));
+        jobs.push(() => K.chorten(z), () => K.cairn(z), () => K.maniWall(z), () => K.monastery(z === 'S' ? 'S' : 'L'));
+        for (const c of TENT) jobs.push(() => K.tent(c, z));
+        for (let i = 0; i < 5; i++) jobs.push(() => K.cloud(z, i));
+      }
+      for (const z of ['XL', 'L', 'S']) for (const h of HOUSES) jobs.push(() => K.teahouse(z, h.seed));
+      for (let i = 0; i < 8; i++) jobs.push(() => K.teahouse('L', 20 + i), () => K.teahouse('S', 20 + i));
+      for (let i = 0; i < 5; i++) jobs.push(() => K.stone(2.2, i), () => K.stone(2.4, i), () => K.stone(2.6, i), () => K.stone(1.4, i), () => K.stone(1.5, i));
+      for (let i = 0; i < 4; i++) jobs.push(() => K.flowers(i));
+      jobs.push(() => K.bush(0), () => K.bush(1), () => K.field(14, 2), () => K.field(8, 2), () => K.field(22, 3), () => K.field(12, 2), () => K.pond(9, 3), () => K.pond(5, 2), () => K.plane(), () => K.moon());
+      for (let i = 0; i < 5; i++) jobs.push(() => K.buildAlpaca(i % K.COATS.length, 'stand', { seed: 20 + i }));
+      // the alpaca ride's sprites, so the first ride doesn't build them mid-gallop
+      for (let c = 0; c < K.COATS.length; c++) for (const f of ['stand', 'run', 'sled']) for (let sd = 0; sd < 8; sd++) jobs.push(() => K.buildAlpaca(c, f, { seed: sd }));
+      for (const f of ['stand', 'run', 'sled']) for (let sd = 0; sd < 8; sd++) jobs.push(() => K.buildAlpaca('gold', f, { seed: sd }));
+      jobs.push(() => K.buildAlpaca(1, 'stand', { sad: true }), () => K.buildAlpaca(1, 'run', {}), () => K.buildAlpaca(1, 'stand', {}));
+      for (const o of ['mask', 'lamp', 'beam', 'map', 'sparkle', 'dizzy', 'flag', 'canopy', 'splat']) jobs.push(() => K.overlay(o));
+      for (const pose of ['stand', 'walk', 'cheer', 'sit']) jobs.push(() => climberSprite(pose), () => climberSprite(pose, { hatless: true }));
+      jobs.push(() => climberSprite('stand', { ghost: true }), () => K.hatSprites(null), () => K.sign('ALPACA EXPRESS', null), () => K.text('?', { color: '#ffffff', outline: '#281e16', bold: true }));
+      for (const c of Object.values({ grass: '#b09670', trail: '#96928c', glacier: '#fafcff', deathzone: '#ecf0fa' })) for (let r = 1; r <= 4; r++) jobs.push(() => K.puff(r, c));
+      const step = (dl) => {
+        const t0 = performance.now();
+        while (jobs.length && (dl ? dl.timeRemaining() > 2 : performance.now() - t0 < 3)) { try { tintOf(jobs.shift()()); } catch (e) { /* skip */ } }
+        if (jobs.length) schedule();
+      };
+      const schedule = () => (window.requestIdleCallback ? requestIdleCallback(step, { timeout: 300 }) : setTimeout(step, 16));
+      schedule();
     }
 
     // web fonts arrive after the first frames: rebuild the cached text sprites then
@@ -1097,7 +1477,7 @@
     } catch (e) { /* no font loading API */ }
 
     return {
-      start() { resize(); window.addEventListener('resize', resize); requestAnimationFrame((t) => { last = t; frame(t); }); },
+      start() { resize(); window.addEventListener('resize', resize); requestAnimationFrame((t) => { last = t; frame(t); }); warmSprites(); },
       resize,
       setView(v, r, opts) { view = v; rect = r || null; showPin = !!(opts && opts.pin); computeTarget(); if (opts && opts.snap) snap = true; },
       setClimb(a, opts) { climbTarget = clamp(a, C.startAlt, C.summitAlt); if (opts && opts.snap) { climb = climbTarget; snap = true; } },
@@ -1233,6 +1613,12 @@
     rideQ: [], rideActive: null, slotT: 0, slotTxt: '',   // alpaca rides (queued, playing) and the slot-machine altimeter
     dev: null,   // dev climb tool state (mode 'dev' only), see the dev mode section
   };
+  // camp report and gain-pop states as classes (see the stylesheet: cheaper than :has())
+  try {
+    const tr = $('#transition'), play = $('#play'), form = $('#answer-form');
+    new MutationObserver(() => play.classList.toggle('camp-report', !tr.hidden)).observe(tr, { attributes: true, attributeFilter: ['hidden'] });
+    new MutationObserver(() => form.classList.toggle('popping', !!form.querySelector('.gain-pop'))).observe(form, { childList: true });
+  } catch (e) { /* no observers: the states just don't restyle */ }
   const ui = {
     home: $('#home'), play: $('#play'), results: $('#results'), app: $('#app'),
     input: $('#answer'), chips: $('#chips'), feedback: $('#feedback'), category: $('#category'),
@@ -1448,33 +1834,54 @@
   }
 
   // ---------------------------------------------------------------- per frame
+  // the HUD writes to the page only when something it shows has changed: rewriting the same
+  // HTML every frame forced a style recalc and layout 60 times a second
+  const hudLast = {};
+  const hudSet = (k, el, v, html) => { if (hudLast[k] === v) return; hudLast[k] = v; if (html) el.innerHTML = v; else el.textContent = v; };
+  // the altimeter rolls every frame while climbing: change one text node, not the element's HTML
+  function setAlt(str, slot) {
+    const key = (slot ? 's' : 'n') + str;
+    if (hudLast.alt === key) return;
+    const wasNum = hudLast.alt && hudLast.alt[0] === 'n';
+    hudLast.alt = key;
+    if (!slot && wasNum && ui.alt.firstChild && ui.alt.firstChild.nodeType === 3) { ui.alt.firstChild.nodeValue = str; return; }
+    ui.alt.innerHTML = slot ? `<span class="slot">${str}</span><small>m</small>` : `${str}<small>m</small>`;
+  }
   Scene.onFrame((alt) => {
     devTick();
     if (G.screen === 'play') {
+      // while the numbers roll, the text updates at most 20 times a second; when they stop, at once
+      const tNow = performance.now(), rolling = alt !== hudLast.prevAlt;
+      hudLast.prevAlt = alt;
+      const textDue = !rolling || tNow - (hudLast.tText || 0) >= 50;
+      if (textDue) hudLast.tText = tNow;
       const rs = Scene.rideState();
       if (rs && rs.phase === 'gallop' && !isReduced()) {
         // slot machine: the digits spin while the herd gallops, then land on the drop-off
         const t = performance.now();
         if (t - G.slotT > 55) { G.slotT = t; G.slotTxt = fmt(Math.round(rs.to)).replace(/\d/g, () => String(Math.floor(Math.random() * 10))); }
-        ui.alt.innerHTML = `<span class="slot">${G.slotTxt}</span><small>m</small>`;
-      } else ui.alt.innerHTML = fmt(alt) + '<small>m</small>';
-      ui.air.textContent = 'Air ' + E.airPercent(alt) + '%';
-      const nx = E.nextMilestone(alt + 0.5);
-      ui.next.innerHTML = nx ? `Next: <b>${esc(nx.short)}</b> in ${fmt(nx.alt - alt)} m` : '<b>On the summit</b>';
+        setAlt(G.slotTxt, true);
+      } else if (textDue) setAlt(fmt(alt), false);
+      if (textDue) {
+        hudSet('air', ui.air, 'Air ' + E.airPercent(alt) + '%');
+        const nx = E.nextMilestone(alt + 0.5);
+        hudSet('next', ui.next, nx ? `Next: <b>${esc(nx.short)}</b> in ${fmt(Math.ceil((nx.alt - alt) / 10) * 10)} m` : '<b>On the summit</b>', true);
+      }
       if (G.state === 'leg') {
         const leg = curLeg();
         const paused = devPaused();
         const rem = Math.max(0, leg.deadline - Math.max(paused ? G.dev.pausedAt : now(), G.pauseUntil));
         const k = Math.min(1, rem / leg.total);
-        ui.fill.style.setProperty('--k', k.toFixed(4));
-        ui.fill.style.transform = `scaleX(${k.toFixed(4)})`;
+        // one step per ~0.6 device px of bar: no visible difference, far fewer style writes
+        hudSet('k', { set textContent(v) { ui.fill.style.setProperty('--k', v); ui.fill.style.transform = `scaleX(${v})`; } }, (Math.round(k * 800) / 800).toFixed(4));
         const inf = G.mode === 'dev' && G.dev.infinite;
         const sec = inf ? '∞' : Math.ceil(rem / 1000);
         if (sec !== G.lastSec) { ui.secs.textContent = sec; if (!inf && sec <= 3 && sec > 0 && G.lastSec !== -1) Sound.play('tick'); G.lastSec = sec; }
-        ui.timer.classList.toggle('urgent', !inf && rem <= 3000);
+        const urgent = !inf && rem <= 3000;
+        if (hudLast.urgent !== urgent) { hudLast.urgent = urgent; ui.timer.classList.toggle('urgent', urgent); }
         if (rem <= 0 && !paused) endLeg();
       }
-    }
+    } else if (hudLast.alt !== undefined) { for (const k in hudLast) delete hudLast[k]; }
   });
   setInterval(() => { devTick(); if (G.state === 'leg' && !devPaused()) { const leg = curLeg(); if (leg && now() >= leg.deadline) endLeg(); } }, 200);
   setInterval(() => {
