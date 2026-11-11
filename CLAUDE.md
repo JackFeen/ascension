@@ -373,7 +373,7 @@ Key `daily-ascent:v1`, loaded and normalized by `Store.load()`:
   streak: { current, best, last /* 'YYYY-MM-DD' */, tokens /* rest days 0..1 */ },
   rounds: { 'YYYY-MM-DD': Round, ... }
 }
-Round = { v: 2, date, puzzle, catIds: [7 ids], startedAt, extra, legs: [Leg],
+Round = { v: 2, date, puzzle, catIds: [one id per leg], startedAt, extra, legs: [Leg],
           completed, final, finishedAt, forfeited? }
 Leg   = { catId, start, deadline, total /* ms */, raw, chain, invalid, judged,
           answers: [Answer], eff, ended }
@@ -504,7 +504,7 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
   - rank colors: `--t0` … `--t4` as text colours (day: #4b5260, #2e6a2b, #1f5f96, #6a35b0, #8a5e00, all 4.5:1 or better on parchment; night: the bright set), `--tf0` … `--tf4` fills
   - fonts and radius: `--f-display` and `--f-stencil` (Silkscreen), `--f-body` (Pixelify Sans), `--r` / `--r-sm` (0)
 
-  The base component rules come first; the **pixel layer** block after them restyles every component (panels, buttons, HUD, chips, spotlight, results, dialogs, switches) in one place, and the dev panel follows the tokens at the end of the stylesheet. **`.night`** on `#app` swaps the panel tokens to night values (legs 6–7, any altitude ≥ 8,000 m, and results that finish ≥ 8,000 m).
+  The base component rules come first; the **pixel layer** block after them restyles every component (panels, buttons, HUD, chips, spotlight, results, dialogs, switches) in one place, and the dev panel follows the tokens at the end of the stylesheet. **`.night`** on `#app` swaps the panel tokens to night values (the last two legs, any altitude ≥ 8,000 m, and results that finish ≥ 8,000 m).
 - **Pixel UI rules:** square corners notched with `--notch` on panels only (a clip-path would cut a button's focus ring, so buttons stay square with no clip); Silkscreen at multiples of 8 px where possible (16, 24, 32, 40); focus rings are a 3 px orange outline with a 2 px offset.
 - **Layout:**
   - `#scene` is a fixed full-viewport canvas behind `#app`. Each screen is an absolutely positioned flex column with safe-area gutters (`max(16px, env(safe-area-inset-*))`).
@@ -598,7 +598,7 @@ Everything is synthesized with WebAudio (no files) and sound is **off by default
 
 ## 13. Roadmap (suggested order)
 
-1. **Content.** Grow every pool toward the spec's 60-day buffer: about 120 broad, 180 mid, 60 wild and 60 hard categories. Then move from cyclic dealing to a **fixed calendar** (`date → [7 ids]`) so content edits never reshuffle live puzzles. Generate lists with an LLM, run `npm test`, and have a human skim them.
+1. **Content.** Grow every pool toward the spec's 60-day buffer: about 120 broad, 180 mid, 60 wild and 60 hard categories. Then move from cyclic dealing to a **fixed calendar** (`date → [5 ids]`) so content edits never reshuffle live puzzles. Generate lists with an LLM, run `npm test`, and have a human skim them.
 2. **Backend (v1).** Supabase or Cloudflare Workers + D1, following the spec §11.2 tables (categories, answers, aliases, rounds, submissions, players, judge_cache).
    - Server-issued leg start and end times; the server scores submissions; the client never receives the answer list.
    - A server-side LLM judge with a shared verdict cache and a daily spend alarm. This turns answer checking on for the public site.
@@ -649,7 +649,7 @@ An infinite version of the game plus tools for testing changes. It ships in ever
 
 ### The infinite climb (laps)
 
-- Legs never end. Leg *N* uses pattern position `pos` (stored on the leg) for its timer, multiplier and pool: positions run 0→6 and wrap, unless the Jump tool overrides the next one. Categories are dealt from the normal pools in shuffled cycles with no immediate repeats (`devPickCat`). The per-leg cap and chain rules are unchanged; `answerGain()` receives `pos`.
+- Legs never end. Leg *N* uses pattern position `pos` (stored on the leg) for its timer, multiplier and pool: positions run 0→4 (`legs.length` − 1) and wrap, unless the Jump tool overrides the next one. Categories are dealt from the normal pools in shuffled cycles with no immediate repeats (`devPickCat`). The per-leg cap and chain rules are unchanged; `answerGain()` receives `pos`.
 - `devTotal()` = `round.offset` + Σ `legEffective(raw)`, uncapped. (`dev-core.js` also holds `answerTable(E, cat, opts)`, the pure score table behind the Answers tab.) `DA_DEV_CORE.lapState(total, startAlt, summitAlt)` gives `lap = 1 + floor(total / 5,989)` and `alt = 2,860 + (total mod 5,989)`.
 - Passing the summit (`devLapUp`): holds the clock 2.2 s, climbs to the top, plants the flag, confetti and the Sherpa chime, shows the "Summit · Lap N" banner, announces it, then drops the climber to Lukla and climbs to the new altitude.
 - The dev HUD (`#dev-hud`) shows lap, total climbed, leg number and pattern position, raw and effective meters this leg, chain, and distance to the leg cap. "End climb" (`finishDev`) shows a summary on the results sheet: laps, total, legs played, best find per rank. Nothing goes to the real stats.
@@ -659,8 +659,8 @@ An infinite version of the game plus tools for testing changes. It ships in ever
 | Tab | Tools |
 | --- | --- |
 | Time | Pause/resume (Alt+P), freeze timer (sticky), infinite time this leg, speed 0.5×/1×/2×/4×, end leg now, ±5 s |
-| Move | Jump to pattern leg 1–7, altitude slider, teleport to any milestone, set lap, scrub the sky's time of day (`Scene.setSkyOverride`), night panels auto/on/off |
-| Content | Queue the next leg's category (searchable, all 49 + practice), autoplay bot (rank or mix, 1–6/s, a wrong answer every N, a typo every N: drops a doubled letter or swaps in a keyboard neighbour so autocorrect gets exercised), live cheat sheet for the current leg (also lists the category's qualifiers, the variants found and "N/3 used this leg"; the bot types plain answers only), preview any date or puzzle number's 7 categories |
+| Move | Jump to pattern leg 1–5, altitude slider, teleport to any milestone, set lap, scrub the sky's time of day (`Scene.setSkyOverride`), night panels auto/on/off |
+| Content | Queue the next leg's category (searchable, all 49 + practice), autoplay bot (rank or mix, 1–6/s, a wrong answer every N, a typo every N: drops a doubled letter or swaps in a keyboard neighbour so autocorrect gets exercised), live cheat sheet for the current leg (also lists the category's qualifiers, the variants found and "N/3 used this leg"; the bot types plain answers only), preview any date or puzzle number's 5 categories |
 | Answers | The full answer bank for any category (all 49 + practice, grouped by kind and lane), from `DA_DEV_CORE.answerTable()`: each answer's rank (icon, colour, name), aliases, base gain, score at a chosen pattern leg (default the category's natural leg) and at the full chain bonus, and a ✓ for answers found in the current leg. Search (through `normalize()`), rank filter chips, leg and sort (rarest first, most common, A–Z, list order) selects, and Copy as CSV (falls back to a dialog with the text selected). The header shows counts per rank with bars, each rank's commonness band ("Sherpa: under 1% of players"), the multiplier and the qualifiers. Rows render 200 at a time |
 | Effects | Each rank's full find feedback (no score change; spotlight uses `noHold`), every `Sound.play` kind (plays even with sound off via `Sound.force`), summit flag, confetti, wrong-answer shake (`rejectFx`), and **Alpaca ride**: style (random or each), band (current altitude or each), meters 0–1,500, golden, late and spit toggles (unticked = off) and a reduced-motion preview; plays through `playRide` without changing the score or holding the clock. The four ride sounds join the sound buttons, and rides are logged ("alpaca ride: conga · glacier · golden · +625 m"). **Climber outfit (draft)**: one select per slot (hat, eyes, neck, over-layer, suit) with Default or None plus the draft items from `DA_PIXEL.COSMETICS`, and Reset; calls `Scene.setOutfit()` through the `setOutfit` hook, is never saved (dev save or real save), resets on lock or reload, and is logged ("outfit: yak-wool bobble hat + summit shades") |
 | Debugger | Live analysis of the answer box or a test box against any category: raw, `normalize()`, `candidateKeys()`, affix-stripped forms, the category's qualifiers, the qualifier step (stripped qualifier and base form, or why it didn't apply), match (`via` or "corrected (fix)", ambiguous competitors, none), a Correction section (the input's phonetic key; the top 3 candidates with form, cost, fix kind, allowance, key, and in or out with the reason; the margin check; the verdict), entry, dedupe key (`eid|qualifier`), would-gain (zero for a duplicate or past the variant cap). A timestamped submission log with Copy; qualified hits are labelled "qualified (q)", corrected hits read "corrected (sound): fuschia → Fuchsia", and variant-limit hits get their own line |
