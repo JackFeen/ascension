@@ -764,6 +764,42 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
 .kb-open .play-card { gap: 8px; padding-top: 10px; padding-bottom: 10px; }
 .kb-open .chips { max-height: 44px; }
 .kb-open .next-mark { display: none; }
+
+/* ---------------------------------------------------------------- phones (under 900 px wide)
+   The mountain is the hero, so every card is as short as it can be and the scene gets the rest:
+   a compact home card, a slim leg card and answer tags, a short camp report, and a results sheet
+   that starts low (the final mountain first) and scrolls up over it. */
+@media (max-width: 899px) {
+  /* home */
+  .home-card { padding: 16px 16px calc(14px + env(safe-area-inset-bottom, 0px)); gap: 10px; }
+  .home-title { font-size: 24px; }
+  .home-sub { font-size: 15px; line-height: 1.4; }
+  .home-facts .fact { padding: 4px 8px; }
+  .fact dd { margin-top: 2px; }
+  .home-actions { gap: 2px; }
+  .home-actions .btn-primary { margin-bottom: 4px; }
+  .judge-row { padding-top: 10px; }
+  /* leg */
+  .play-card { gap: 8px; padding: 10px 12px 12px; }
+  .category { min-height: 2.2em; }
+  .chips { max-height: 84px; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+  /* camp report */
+  .trans-card { padding: 14px 16px 14px; gap: 2px; }
+  .trans-gain { font-size: 40px; }
+  .trans-gain small { font-size: 20px; }
+  .trans-row { padding-top: 7px; margin-top: 3px; }
+  .trans-next { font-size: 20px; margin: 2px 0 4px; }
+  /* results: the screen scrolls, not the sheet, so the sheet starts low and is pulled up over the mountain */
+  .results { overflow-y: auto; overscroll-behavior: contain; }
+  .sheet { margin-top: 56vh; flex: none; overflow: visible; position: relative; }
+  .sheet::before { content: ""; position: absolute; top: 7px; left: 50%; width: 40px; height: 4px; margin-left: -20px; background: var(--line); }
+}
+/* short phones (iPhone SE and the like): the intro line lives in the help dialog */
+@media (max-width: 899px) and (max-height: 760px) {
+  .home-sub { display: none; }
+  .sheet { margin-top: 50vh; }
+}
+@media (max-width: 899px) and (max-height: 640px) { .category { min-height: 0; } }
 </style>
 </head>
 <body>
@@ -4624,6 +4660,10 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     const scapeFrom = (p) => { let lo = 0, hi = SCAPE.length; while (lo < hi) { const m = (lo + hi) >> 1; if (SCAPE[m].p < p) lo = m + 1; else hi = m; } return lo; };
     const TENT = ['#f2b81f', '#ef7a1a', '#f2b81f', '#d94f2a', '#3d6fc0', '#f2b81f'];
     function tents(p0, p1, n, seed) { const r = E.rng(seed), out = []; for (let i = 0; i < n; i++) out.push({ p: p0 + r() * (p1 - p0), d: r() * 10, c: TENT[(i + seed) % TENT.length] }); return out.sort((a, b) => a.d - b.d); }
+    // overview signs, most important first (they give way in this order when space is short)
+    const PLATE_ORDER = ['summit', 'basecamp', 'lukla', 'deathzone', 'camp2', 'camp1', 'teahouse']
+      .map((id) => C.milestones.find((m) => m.id === id)).filter(Boolean)
+      .concat(C.milestones.filter((m) => !['summit', 'basecamp', 'lukla', 'deathzone', 'camp2', 'camp1', 'teahouse'].includes(m.id)));
     const CAMPS = [tents(0.538, 0.556, 6, 11), tents(0.62, 0.63, 3, 12), tents(0.662, 0.672, 4, 13), tents(0.731, 0.739, 2, 14), tents(0.79, 0.8, 3, 15)];
     const SERACS = [];
     for (let i = 0; i < 9; i++) SERACS.push({ p: 0.562 + R() * 0.046, d: R() * 14, w: 5 + R() * 9, h: 6 + R() * 10, shade: i % 3 });
@@ -4654,13 +4694,19 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     // where the climber's feet are framed on screen (CSS px), mirrored on the element for tests
     let climberY = -1;
     function noteClimberY(y) { const r = Math.round(y); if (r !== climberY) { climberY = r; cv.dataset.climberY = r; } }
+    // the follow (and ride) zoom: metres shown top to bottom, and the p-span left to right. Phones pull
+    // out a little further, so the open strip under the answer card shows the slope ahead, not one field
+    function followSpan() {
+      // (1.2 keeps phones on the large sprite size class: sizeClass() switches below cam.sy ≈ 0.44)
+      const z = W < 600 ? 1.2 : 1;
+      return { range: clamp(H * 1.8 * z, 1350, 2100 * z), wp: clamp(0.3 * (W / H) / 0.462 * z, 0.24, 0.6) };
+    }
     function computeTarget() {
       if (view === 'ride') {
         // same zoom as the climb (pixel sprites never scale, so zooming only stretched the terrain,
         // and every zoom frame is a full redraw); the camera pans to frame the herd
-        const range = clamp(H * 1.8, 1350, 2100);
+        const { range, wp } = followSpan();
         tgt.sy = H / range;
-        const wp = clamp(0.3 * (W / H) / 0.462, 0.24, 0.6);
         tgt.sx = W / wp;
         const vv = window.visualViewport;
         const vh = vv && vv.height > 100 ? Math.min(H, vv.height) : H, vTop = vv ? vv.offsetTop : 0;
@@ -4673,9 +4719,8 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
         return;
       }
       if (view === 'follow') {
-        const range = clamp(H * 1.8, 1350, 2100);
+        const { range, wp } = followSpan();
         tgt.sy = H / range;
-        const wp = clamp(0.3 * (W / H) / 0.462, 0.24, 0.6);
         tgt.sx = W / wp;
         tgt.p = pFor(climbTarget) + 0.02 * wp;
         // the climber stands at 72% of the screen, moved up into the open strip below the answer card
@@ -5636,16 +5681,39 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
       if (dzy > -4 && dzy < AH + 4) { actx.fillStyle = 'rgba(255,110,90,0.75)'; for (let x = 0; x < AW; x++) if (((x - oxA) % 6 + 6) % 6 < 3) actx.fillRect(x, dzy, 1, 1); }
       const wide = W >= 700;
       // landmark signs step aside during an alpaca ride, so the herd and its banner have the stage
-      if (!ride) for (const m of C.milestones) {
+      // overview: signs are placed in priority order, each on its preferred side, else the other side,
+      // else left out, so they never pile up when the mountain is small (a phone above a card)
+      const cx0 = Math.round(X(pc)), cy0 = Math.round(gy(pc));
+      const taken = [];
+      const hits = (a) => taken.some((b) => a.x < b.x + b.w + 2 && b.x < a.x + a.w + 2 && a.y < b.y + b.h + 1 && b.y < a.y + a.h + 1);
+      if (overview && !ride) {
+        taken.push({ x: cx0 - 8, y: cy0 - 24, w: 16, h: 24 });   // the climber
+        if (view === 'overview' && showPin) { const s = K.sign(fmt(Math.round(climbTarget)) + ' m', null, { accent: true }); taken.push({ x: clamp(cx0 - s.w / 2, 2, AW - s.w - 2), y: cy0 - 30 - s.h, w: s.w, h: s.h }); }
+      }
+      if (!ride) for (const m of (overview ? PLATE_ORDER : C.milestones)) {
         const p = m._p != null ? m._p : (m._p = pFor(m.alt)), x = Math.round(X(p)), y = Math.round(gy(p));
+        if (m.id === 'deathzone') {
+          if (dzy < -30 || dzy > AH + 30) continue;
+          const s = K.sign('8,000 m', 'Death Zone'), r = { x: AW - s.w - 5, y: dzy - s.h - 3, w: s.w, h: s.h };
+          if (overview && hits(r)) continue;
+          taken.push(r); actx.drawImage(s.cv, r.x, r.y); continue;
+        }
         if (x < -80 || x > AW + 80 || y < -30 || y > AH + 30) continue;
-        if (m.id === 'deathzone') { const s = K.sign('8,000 m', 'Death Zone'); actx.drawImage(s.cv, AW - s.w - 5, dzy - s.h - 3); continue; }
         if (overview) {
           const s = K.sign(m.short, wide ? fmt(m.alt) + ' m' : null);
-          const left = !['lukla', 'camp1'].includes(m.id);
-          const yy = y - (m.id === 'summit' ? 9 : m.id === 'teahouse' ? 8 : 4) - Math.floor(s.h / 2);
-          const xx = clamp(left ? x - 4 - s.w : x + 4, 2, AW - s.w - 2);
-          actx.drawImage(s.cv, Math.round(xx), Math.round(yy));
+          const yy = Math.round(y - (m.id === 'summit' ? 9 : m.id === 'teahouse' ? 8 : 4) - Math.floor(s.h / 2));
+          // keep signs inside the framed rect (not under the home card or the results sheet)
+          const xL = rect ? Math.max(2, Math.round((rect.x0 * DPR - LX - shX) / UP)) : 2;
+          const xR = rect ? Math.min(AW - 2, Math.round((rect.x1 * DPR - LX - shX) / UP)) : AW - 2;
+          const lx = Math.round(clamp(x - 4 - s.w, xL, xR - s.w)), rx = Math.round(clamp(x + 4, xL, xR - s.w));
+          const sides = ['lukla', 'camp1'].includes(m.id) ? [rx, lx] : [lx, rx];
+          // the summit sign may also sit straight above the peak
+          if (m.id === 'summit') sides.push({ x: Math.round(clamp(x - s.w / 2, xL, xR - s.w)), y: y - 12 - s.h });
+          for (const sd of sides) {
+            const r = typeof sd === 'number' ? { x: sd, y: yy, w: s.w, h: s.h } : { x: sd.x, y: sd.y, w: s.w, h: s.h };
+            if (hits(r)) continue;
+            taken.push(r); actx.drawImage(s.cv, r.x, r.y); break;
+          }
         } else {
           pline(x, y, x, y - 14, 'rgba(40,30,22,0.85)');
           const s = K.sign(m.short, fmt(m.alt) + ' m');

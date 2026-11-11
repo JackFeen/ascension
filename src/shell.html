@@ -758,6 +758,42 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
 .kb-open .play-card { gap: 8px; padding-top: 10px; padding-bottom: 10px; }
 .kb-open .chips { max-height: 44px; }
 .kb-open .next-mark { display: none; }
+
+/* ---------------------------------------------------------------- phones (under 900 px wide)
+   The mountain is the hero, so every card is as short as it can be and the scene gets the rest:
+   a compact home card, a slim leg card and answer tags, a short camp report, and a results sheet
+   that starts low (the final mountain first) and scrolls up over it. */
+@media (max-width: 899px) {
+  /* home */
+  .home-card { padding: 16px 16px calc(14px + env(safe-area-inset-bottom, 0px)); gap: 10px; }
+  .home-title { font-size: 24px; }
+  .home-sub { font-size: 15px; line-height: 1.4; }
+  .home-facts .fact { padding: 4px 8px; }
+  .fact dd { margin-top: 2px; }
+  .home-actions { gap: 2px; }
+  .home-actions .btn-primary { margin-bottom: 4px; }
+  .judge-row { padding-top: 10px; }
+  /* leg */
+  .play-card { gap: 8px; padding: 10px 12px 12px; }
+  .category { min-height: 2.2em; }
+  .chips { max-height: 84px; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+  /* camp report */
+  .trans-card { padding: 14px 16px 14px; gap: 2px; }
+  .trans-gain { font-size: 40px; }
+  .trans-gain small { font-size: 20px; }
+  .trans-row { padding-top: 7px; margin-top: 3px; }
+  .trans-next { font-size: 20px; margin: 2px 0 4px; }
+  /* results: the screen scrolls, not the sheet, so the sheet starts low and is pulled up over the mountain */
+  .results { overflow-y: auto; overscroll-behavior: contain; }
+  .sheet { margin-top: 56vh; flex: none; overflow: visible; position: relative; }
+  .sheet::before { content: ""; position: absolute; top: 7px; left: 50%; width: 40px; height: 4px; margin-left: -20px; background: var(--line); }
+}
+/* short phones (iPhone SE and the like): the intro line lives in the help dialog */
+@media (max-width: 899px) and (max-height: 760px) {
+  .home-sub { display: none; }
+  .sheet { margin-top: 50vh; }
+}
+@media (max-width: 899px) and (max-height: 640px) { .category { min-height: 0; } }
 </style>
 
 <canvas id="scene" aria-hidden="true"></canvas>
