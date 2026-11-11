@@ -739,6 +739,13 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
 /* 60 fps: per-frame HUD changes stay inside their plates (the timer row's seconds pop past its edges, so no paint containment there) */
 .altimeter, .next-mark, .dev-hud { contain: layout paint style; }
 .timer-row { contain: layout style; }
+
+/* phone keyboard open (from the visual viewport; app.js measureKeyboard): a compact leg screen, so the
+   climber keeps a clear strip between the answer card and the keyboard */
+.kb-open .play .category { font-size: clamp(24px, 6.6vw, 34px); min-height: 0; }
+.kb-open .play-card { gap: 8px; padding-top: 10px; padding-bottom: 10px; }
+.kb-open .chips { max-height: 44px; }
+.kb-open .next-mark { display: none; }
 </style>
 
 <canvas id="scene" aria-hidden="true"></canvas>

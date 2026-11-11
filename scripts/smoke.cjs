@@ -49,6 +49,25 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
   });
   await f.click('#btn-begin');
   await page.waitForTimeout(1300);
+  // phone keyboard: with the visual viewport 300 px shorter, the leg screen compacts and the climber is
+  // framed above the keyboard (the test browser has no on-screen keyboard, so the viewport is simulated)
+  const kb = await f.evaluate(async () => {
+    const real = window.visualViewport, H = innerHeight;
+    const stub = { width: innerWidth, height: H - 300, offsetTop: 0, offsetLeft: 0, scale: 1, addEventListener() {}, removeEventListener() {} };
+    Object.defineProperty(window, 'visualViewport', { configurable: true, get: () => stub });
+    window.dispatchEvent(new Event('resize'));
+    await new Promise((r) => setTimeout(r, 250));
+    const out = { y: Number(document.querySelector('#scene').dataset.climberY), open: document.documentElement.classList.contains('kb-open'), top: H - 300 };
+    Object.defineProperty(window, 'visualViewport', { configurable: true, get: () => real });
+    window.dispatchEvent(new Event('resize'));
+    await new Promise((r) => setTimeout(r, 250));
+    out.closed = !document.documentElement.classList.contains('kb-open');
+    out.yAfter = Number(document.querySelector('#scene').dataset.climberY);
+    return out;
+  });
+  if (!kb.open || !(kb.y > 0 && kb.y < kb.top - 10)) fail(`keyboard: climber framed at ${kb.y} px with the keyboard from ${kb.top} px (kb-open ${kb.open})`);
+  else if (!kb.closed || kb.yAfter <= kb.y) fail('keyboard: the leg screen did not return when the keyboard closed');
+  else console.log(`keyboard: climber framed at ${kb.y} px, above a keyboard from ${kb.top} px (${kb.yAfter} px without it)`);
 
   for (let i = 0; i < 7; i++) {
     const shown = await f.textContent('#category');

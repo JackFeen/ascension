@@ -353,6 +353,9 @@
     function nearAlt(u) { return 2950 + 330 * Math.sin(u * 5.3 + 1) + 170 * Math.sin(u * 13 + 2) + 50 * Math.sin(u * 41 + 0.5); }
 
     // --- view framing (CSS px, as before) ------------------------------------------
+    // where the climber's feet are framed on screen (CSS px), mirrored on the element for tests
+    let climberY = -1;
+    function noteClimberY(y) { const r = Math.round(y); if (r !== climberY) { climberY = r; cv.dataset.climberY = r; } }
     function computeTarget() {
       if (view === 'ride') {
         // same zoom as the climb (pixel sprites never scale, so zooming only stretched the terrain,
@@ -362,9 +365,13 @@
         const wp = clamp(0.3 * (W / H) / 0.462, 0.24, 0.6);
         tgt.sx = W / wp;
         const vv = window.visualViewport;
-        const vh = vv && vv.height > 100 ? Math.min(H, vv.height) : H;
+        const vh = vv && vv.height > 100 ? Math.min(H, vv.height) : H, vTop = vv ? vv.offsetTop : 0;
         tgt.p = pFor(climbTarget) + (0.5 - 0.42) * W / tgt.sx;
-        tgt.alt = climbTarget - (H / 2 - 0.6 * vh) / tgt.sy;
+        // the herd and its banner need about 110 px above the climber; keep its feet above the keyboard
+        let y = vTop + 0.6 * vh;
+        if (rect) { const lo = (rect.hud || 80) + 110, hi = rect.y1 - 18; y = hi < lo ? hi : clamp(y, lo, hi); }
+        noteClimberY(y);
+        tgt.alt = climbTarget - (H / 2 - y) / tgt.sy;
         return;
       }
       if (view === 'follow' || view === 'peek') {
@@ -373,7 +380,12 @@
         const wp = clamp(0.3 * (W / H) / 0.462, 0.24, 0.6);
         tgt.sx = W / wp;
         tgt.p = pFor(climbTarget) + 0.02 * wp;
-        tgt.alt = climbTarget + 0.22 * range + (view === 'peek' ? 0.3 * range : 0);
+        // the climber stands at 72% of the screen, moved up into the open strip below the answer card
+        // when the phone keyboard covers the bottom (rect comes from layoutScene()); the zoom never changes
+        let y = 0.72 * H;
+        if (rect) { const lo = rect.y0 + 60, hi = rect.y1 - 26; y = hi < lo ? hi : clamp(y, lo, hi); }
+        noteClimberY(y);
+        tgt.alt = climbTarget + (y - H / 2) / tgt.sy + (view === 'peek' ? 0.3 * range : 0);
       } else {
         const r = rect || { x0: 0, y0: 0, x1: W, y1: H };
         const rw = Math.max(80, r.x1 - r.x0), rh = Math.max(80, r.y1 - r.y0);
@@ -1652,9 +1664,40 @@
       const sh = $('#sheet').getBoundingClientRect();
       if (W >= 900) Scene.setView('overview', { x0: 24, y0: 70, x1: sh.left - 24, y1: H - 40 }, { pin: true });
       else Scene.setView('overview', { x0: 8, y0: 62, x1: W - 8, y1: Math.max(180, sh.top - 6) }, { pin: true });
-    } else Scene.setView(G.peek ? 'peek' : 'follow');
+    } else {
+      // play: frame the climber in the open strip below the answer card (and the room its tags can
+      // take), above the phone keyboard; during a ride the card fades, so the strip starts under the HUD
+      measureKeyboard();
+      const vv = window.visualViewport;
+      const visTop = vv ? vv.offsetTop : 0, visBot = vv ? vv.offsetTop + vv.height : H;
+      const hud = $('.hud').getBoundingClientRect();
+      const card = $('.play-card').getBoundingClientRect(), chips = ui.chips.getBoundingClientRect();
+      const chipsMax = parseFloat(getComputedStyle(ui.chips).maxHeight) || 0;
+      const top = Math.max(card.bottom, chips.top + chipsMax, visTop);
+      const nm = ui.next.getBoundingClientRect();
+      const bot = nm.height > 0 && nm.top > top && nm.top < visBot ? nm.top - 4 : visBot;
+      Scene.setView(G.peek ? 'peek' : 'follow', { x0: 0, y0: top, x1: W, y1: bot, hud: Math.max(hud.bottom, visTop) });
+    }
+  }
+  // The phone keyboard covers the bottom of the layout viewport (the visual viewport shrinks); how much is
+  // kept in --kb, and .kb-open on <html> compacts the leg screen so the climber's strip stays clear.
+  let kbPx = 0;
+  function measureKeyboard() {
+    const vv = window.visualViewport;
+    const covered = vv ? window.innerHeight - (vv.height + vv.offsetTop) : 0;
+    const k = covered > 80 ? Math.round(covered) : 0;
+    if (k !== kbPx) {
+      kbPx = k;
+      document.documentElement.style.setProperty('--kb', k + 'px');
+      document.documentElement.classList.toggle('kb-open', k > 0);
+    }
+    return k;
   }
   window.addEventListener('resize', () => requestAnimationFrame(layoutScene));
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => requestAnimationFrame(layoutScene));
+    window.visualViewport.addEventListener('scroll', () => requestAnimationFrame(layoutScene));
+  }
 
   function totalAltitude() {
     const r = G.round;
@@ -1819,6 +1862,7 @@
     const who = G.mode === 'practice' ? 'Practice' : G.mode === 'dev' ? `Dev leg ${i + 1}` : `Leg ${i + 1} of 7`;
     announce(`${who}: ${G.cats[i].text}. ${Math.round(secs)} seconds.`);
     devEmit('leg-start', i);
+    requestAnimationFrame(layoutScene);   // the category's height can change the climber's strip
   }
   function setLegHeader(i, secs, mult) {
     ui.category.textContent = G.cats[i].text;
