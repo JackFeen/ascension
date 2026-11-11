@@ -364,8 +364,8 @@
   const textCache = new Map();
   /** Crisp pixel text: drawn at 1:1, alpha thresholded, optionally outlined. */
   function text(str, o) {
-    const opt = Object.assign({ color: '#ffffff', outline: null, size: 8, bold: false }, o);
-    const key = [str, opt.color, opt.outline, opt.size, opt.bold].join('|');
+    const opt = Object.assign({ color: '#ffffff', outline: null, size: 8, bold: false, space: 0 }, o);
+    const key = [str, opt.color, opt.outline, opt.size, opt.bold, opt.space].join('|');
     if (textCache.has(key)) return textCache.get(key);
     if (textCache.size > 400) textCache.clear();   // bounded: a changing label never grows the cache forever
     // without Silkscreen (fonts blocked or still loading) a fallback face is drawn a touch larger and
@@ -375,9 +375,14 @@
     const size = fontOk ? opt.size : opt.size + 1, cut = fontOk ? 110 : 60;
     const font = fontOk ? `${opt.bold ? 700 : 400} ${size}px Silkscreen, monospace` : `700 ${size}px "Pixelify Sans", ui-monospace, monospace`;
     const m = canvas(4, 4).getContext('2d'); m.font = font;
-    const tw = Math.ceil(m.measureText(str).width) + 4, th = size * 2;
+    // space > 0: words are drawn one by one with that gap (art px) instead of the face's own space
+    const words = opt.space ? str.split(' ') : [str];
+    const ww = words.map((wd) => Math.ceil(m.measureText(wd).width));
+    const tw = ww.reduce((a, v) => a + v, 0) + (words.length - 1) * opt.space + 4, th = size * 2;
     const c = canvas(tw, th), g = c.getContext('2d');
-    g.font = font; g.textBaseline = 'alphabetic'; g.fillStyle = '#000'; g.fillText(str, 2, Math.round(size * 1.25));
+    g.font = font; g.textBaseline = 'alphabetic'; g.fillStyle = '#000';
+    let tx0 = 2;
+    words.forEach((wd, i) => { g.fillText(wd, tx0, Math.round(size * 1.25)); tx0 += ww[i] + opt.space; });
     const id = g.getImageData(0, 0, tw, th), col = rgb(opt.color);
     let x0 = tw, x1 = -1, y0 = th, y1 = -1;
     for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
@@ -395,13 +400,16 @@
   /** A wood sign (or an orange accent tag) holding one or two lines of text. */
   const signCache = new Map();
   function sign(title, sub, o) {
-    const opt = Object.assign({ accent: false, night: false }, o);
-    const key = [title, sub, opt.accent, opt.night].join('|');
+    const opt = Object.assign({ accent: false, night: false, small: false }, o);
+    const key = [title, sub, opt.accent, opt.night, opt.small].join('|');
     if (signCache.has(key)) return signCache.get(key);
     if (signCache.size > 200) signCache.clear();
-    const t = text(title, { color: opt.accent ? '#281e16' : '#fff3d6', bold: false });
-    const s2 = sub ? text(sub, { color: opt.accent ? '#5b2a10' : '#ffe2b0' }) : null;
-    const w = t.w + (s2 ? s2.w + 4 : 0) + 8, h = Math.max(t.h, s2 ? s2.h : 0) + 7;
+    // small (phones): about 10% smaller. Pixel text can't be scaled and stay crisp, so the 8 px face
+    // stays and the padding, the gap between the lines and the word spaces are trimmed instead
+    const padX = opt.small ? 6 : 8, padY = opt.small ? 5 : 7, gap = opt.small ? 3 : 4, sp = opt.small ? 2 : 0;
+    const t = text(title, { color: opt.accent ? '#281e16' : '#fff3d6', bold: false, space: sp });
+    const s2 = sub ? text(sub, { color: opt.accent ? '#5b2a10' : '#ffe2b0', space: sp }) : null;
+    const w = t.w + (s2 ? s2.w + gap : 0) + padX, h = Math.max(t.h, s2 ? s2.h : 0) + padY;
     const b = buf(w, h);
     const base = opt.accent ? rgb('#ff5a1f') : P.wood, hi = opt.accent ? rgb('#ff9a6a') : P.woodHi, lo = opt.accent ? rgb('#b23c0e') : P.woodLo;
     rect(b, 0, 0, w, h, base); rect(b, 0, 0, w, 1, hi); rect(b, 0, h - 2, w, 2, lo);
@@ -410,8 +418,9 @@
     const c = canvas(spr.w, spr.h), g = c.getContext('2d');
     g.drawImage(spr.cv, 0, 0);
     const ty = Math.floor((h - 1 - t.h) / 2) + 1;
-    g.drawImage(t.cv, 4, ty);
-    if (s2) g.drawImage(s2.cv, 4 + t.w + 4, Math.floor((h - 1 - s2.h) / 2) + 1);
+    const tx = Math.floor(padX / 2);
+    g.drawImage(t.cv, tx, ty);
+    if (s2) g.drawImage(s2.cv, tx + t.w + gap, Math.floor((h - 1 - s2.h) / 2) + 1);
     const out = { cv: c, w: spr.w, h: spr.h, ax: 0, ay: 0 };
     signCache.set(key, out);
     return out;

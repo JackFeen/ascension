@@ -327,6 +327,7 @@
     const TENT = ['#f2b81f', '#ef7a1a', '#f2b81f', '#d94f2a', '#3d6fc0', '#f2b81f'];
     function tents(p0, p1, n, seed) { const r = E.rng(seed), out = []; for (let i = 0; i < n; i++) out.push({ p: p0 + r() * (p1 - p0), d: r() * 10, c: TENT[(i + seed) % TENT.length] }); return out.sort((a, b) => a.d - b.d); }
     // overview signs, most important first (they give way in this order when space is short)
+    const SIGN_SMALL = { small: true };
     const PLATE_ORDER = ['summit', 'basecamp', 'lukla', 'deathzone', 'camp2', 'camp1', 'teahouse']
       .map((id) => C.milestones.find((m) => m.id === id)).filter(Boolean)
       .concat(C.milestones.filter((m) => !['summit', 'basecamp', 'lukla', 'deathzone', 'camp2', 'camp1', 'teahouse'].includes(m.id)));
@@ -363,8 +364,9 @@
     // the follow (and ride) zoom: metres shown top to bottom, and the p-span left to right. Phones pull
     // out a little further, so the open strip under the answer card shows the slope ahead, not one field
     function followSpan() {
-      // (1.2 keeps phones on the large sprite size class: sizeClass() switches below cam.sy ≈ 0.44)
-      const z = W < 600 ? 1.2 : 1;
+      // phones pull out 1.44× (1.2 × a further 20%); at this zoom sizeClass() drops phones to the
+      // medium sprite size class, so scenery and the climber read smaller along with the terrain
+      const z = W < 600 ? 1.44 : 1;
       return { range: clamp(H * 1.8 * z, 1350, 2100 * z), wp: clamp(0.3 * (W / H) / 0.462 * z, 0.24, 0.6) };
     }
     function computeTarget() {
@@ -1356,17 +1358,19 @@
         taken.push({ x: cx0 - 8, y: cy0 - 24, w: 16, h: 24 });   // the climber
         if (view === 'overview' && showPin) { const s = K.sign(fmt(Math.round(climbTarget)) + ' m', null, { accent: true }); taken.push({ x: clamp(cx0 - s.w / 2, 2, AW - s.w - 2), y: cy0 - 30 - s.h, w: s.w, h: s.h }); }
       }
+      // phones: milestone signs about 10% smaller (tighter padding and word spacing; see K.sign)
+      const SIGN_O = W < 900 ? SIGN_SMALL : undefined;
       if (!ride) for (const m of (overview ? PLATE_ORDER : C.milestones)) {
         const p = m._p != null ? m._p : (m._p = pFor(m.alt)), x = Math.round(X(p)), y = Math.round(gy(p));
         if (m.id === 'deathzone') {
           if (dzy < -30 || dzy > AH + 30) continue;
-          const s = K.sign('8,000 m', 'Death Zone'), r = { x: AW - s.w - 5, y: dzy - s.h - 3, w: s.w, h: s.h };
+          const s = K.sign('8,000 m', 'Death Zone', SIGN_O), r = { x: AW - s.w - 5, y: dzy - s.h - 3, w: s.w, h: s.h };
           if (overview && hits(r)) continue;
           taken.push(r); actx.drawImage(s.cv, r.x, r.y); continue;
         }
         if (x < -80 || x > AW + 80 || y < -30 || y > AH + 30) continue;
         if (overview) {
-          const s = K.sign(m.short, wide ? fmt(m.alt) + ' m' : null);
+          const s = K.sign(m.short, wide ? fmt(m.alt) + ' m' : null, SIGN_O);
           const yy = Math.round(y - (m.id === 'summit' ? 9 : m.id === 'teahouse' ? 8 : 4) - Math.floor(s.h / 2));
           // keep signs inside the framed rect (not under the home card or the results sheet)
           const xL = rect ? Math.max(2, Math.round((rect.x0 * DPR - LX - shX) / UP)) : 2;
@@ -1382,7 +1386,7 @@
           }
         } else {
           pline(x, y, x, y - 14, 'rgba(40,30,22,0.85)');
-          const s = K.sign(m.short, fmt(m.alt) + ' m');
+          const s = K.sign(m.short, fmt(m.alt) + ' m', SIGN_O);
           actx.drawImage(s.cv, Math.round(clamp(x - 2 - s.w, 2, AW - s.w - 2)), y - 15 - s.h);
         }
       }
@@ -2321,6 +2325,8 @@
     ui.timer.classList.remove('urgent');
     ui.input.value = '';
     ui.input.placeholder = 'Time!';
+    // phones: drop the keyboard when the leg ends so it isn't covering the camp break; Next brings it back
+    if (isPhone()) ui.input.blur();
     setFeedback('');
     renderLegDots();
     Sound.play('end');
@@ -2551,7 +2557,10 @@
     d.addEventListener('click', (e) => { if (e.target === d || e.target.closest('[data-close]')) { d.close(); refocus(); } });
     d.addEventListener('close', refocus);
   });
-  function refocus() { if (G.screen === 'play') ui.input.focus({ preventScroll: true }); }
+  function refocus() { if (G.screen === 'play' && !keepKbDown()) ui.input.focus({ preventScroll: true }); }
+  // a touch phone under the phone breakpoint: the keyboard is put away between legs
+  function isPhone() { try { return window.innerWidth < 900 && window.matchMedia('(pointer: coarse)').matches; } catch (e) { return false; } }
+  const keepKbDown = () => isPhone() && (G.state === 'settle' || G.state === 'transition');
 
   // Help copy is generated from CONFIG so tuning never leaves stale numbers behind.
   function renderHelp() {
@@ -2649,7 +2658,7 @@
   ui.input.addEventListener('drop', (e) => e.preventDefault());
   ui.play.addEventListener('pointerdown', (e) => {
     if (e.target === ui.input || e.target.closest('button')) return;
-    if (['leg', 'countdown', 'settle', 'transition'].includes(G.state)) setTimeout(() => ui.input.focus({ preventScroll: true }), 0);
+    if (['leg', 'countdown', 'settle', 'transition'].includes(G.state) && !keepKbDown()) setTimeout(() => ui.input.focus({ preventScroll: true }), 0);
   });
   $('#btn-begin').addEventListener('click', beginDaily);
   $('#btn-practice').addEventListener('click', beginPractice);

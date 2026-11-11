@@ -780,6 +780,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
   .home-actions .btn-primary { margin-bottom: 4px; }
   .judge-row { padding-top: 10px; }
   /* leg */
+  .play .hud { zoom: 0.8; }   /* the leg dots and altimeter plates, 20% smaller */
   .play-card { gap: 8px; padding: 10px 12px 12px; }
   .category { min-height: 2.2em; }
   .chips { max-height: 84px; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
@@ -3949,8 +3950,8 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
   const textCache = new Map();
   /** Crisp pixel text: drawn at 1:1, alpha thresholded, optionally outlined. */
   function text(str, o) {
-    const opt = Object.assign({ color: '#ffffff', outline: null, size: 8, bold: false }, o);
-    const key = [str, opt.color, opt.outline, opt.size, opt.bold].join('|');
+    const opt = Object.assign({ color: '#ffffff', outline: null, size: 8, bold: false, space: 0 }, o);
+    const key = [str, opt.color, opt.outline, opt.size, opt.bold, opt.space].join('|');
     if (textCache.has(key)) return textCache.get(key);
     if (textCache.size > 400) textCache.clear();   // bounded: a changing label never grows the cache forever
     // without Silkscreen (fonts blocked or still loading) a fallback face is drawn a touch larger and
@@ -3960,9 +3961,14 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     const size = fontOk ? opt.size : opt.size + 1, cut = fontOk ? 110 : 60;
     const font = fontOk ? `${opt.bold ? 700 : 400} ${size}px Silkscreen, monospace` : `700 ${size}px "Pixelify Sans", ui-monospace, monospace`;
     const m = canvas(4, 4).getContext('2d'); m.font = font;
-    const tw = Math.ceil(m.measureText(str).width) + 4, th = size * 2;
+    // space > 0: words are drawn one by one with that gap (art px) instead of the face's own space
+    const words = opt.space ? str.split(' ') : [str];
+    const ww = words.map((wd) => Math.ceil(m.measureText(wd).width));
+    const tw = ww.reduce((a, v) => a + v, 0) + (words.length - 1) * opt.space + 4, th = size * 2;
     const c = canvas(tw, th), g = c.getContext('2d');
-    g.font = font; g.textBaseline = 'alphabetic'; g.fillStyle = '#000'; g.fillText(str, 2, Math.round(size * 1.25));
+    g.font = font; g.textBaseline = 'alphabetic'; g.fillStyle = '#000';
+    let tx0 = 2;
+    words.forEach((wd, i) => { g.fillText(wd, tx0, Math.round(size * 1.25)); tx0 += ww[i] + opt.space; });
     const id = g.getImageData(0, 0, tw, th), col = rgb(opt.color);
     let x0 = tw, x1 = -1, y0 = th, y1 = -1;
     for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
@@ -3980,13 +3986,16 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
   /** A wood sign (or an orange accent tag) holding one or two lines of text. */
   const signCache = new Map();
   function sign(title, sub, o) {
-    const opt = Object.assign({ accent: false, night: false }, o);
-    const key = [title, sub, opt.accent, opt.night].join('|');
+    const opt = Object.assign({ accent: false, night: false, small: false }, o);
+    const key = [title, sub, opt.accent, opt.night, opt.small].join('|');
     if (signCache.has(key)) return signCache.get(key);
     if (signCache.size > 200) signCache.clear();
-    const t = text(title, { color: opt.accent ? '#281e16' : '#fff3d6', bold: false });
-    const s2 = sub ? text(sub, { color: opt.accent ? '#5b2a10' : '#ffe2b0' }) : null;
-    const w = t.w + (s2 ? s2.w + 4 : 0) + 8, h = Math.max(t.h, s2 ? s2.h : 0) + 7;
+    // small (phones): about 10% smaller. Pixel text can't be scaled and stay crisp, so the 8 px face
+    // stays and the padding, the gap between the lines and the word spaces are trimmed instead
+    const padX = opt.small ? 6 : 8, padY = opt.small ? 5 : 7, gap = opt.small ? 3 : 4, sp = opt.small ? 2 : 0;
+    const t = text(title, { color: opt.accent ? '#281e16' : '#fff3d6', bold: false, space: sp });
+    const s2 = sub ? text(sub, { color: opt.accent ? '#5b2a10' : '#ffe2b0', space: sp }) : null;
+    const w = t.w + (s2 ? s2.w + gap : 0) + padX, h = Math.max(t.h, s2 ? s2.h : 0) + padY;
     const b = buf(w, h);
     const base = opt.accent ? rgb('#ff5a1f') : P.wood, hi = opt.accent ? rgb('#ff9a6a') : P.woodHi, lo = opt.accent ? rgb('#b23c0e') : P.woodLo;
     rect(b, 0, 0, w, h, base); rect(b, 0, 0, w, 1, hi); rect(b, 0, h - 2, w, 2, lo);
@@ -3995,8 +4004,9 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     const c = canvas(spr.w, spr.h), g = c.getContext('2d');
     g.drawImage(spr.cv, 0, 0);
     const ty = Math.floor((h - 1 - t.h) / 2) + 1;
-    g.drawImage(t.cv, 4, ty);
-    if (s2) g.drawImage(s2.cv, 4 + t.w + 4, Math.floor((h - 1 - s2.h) / 2) + 1);
+    const tx = Math.floor(padX / 2);
+    g.drawImage(t.cv, tx, ty);
+    if (s2) g.drawImage(s2.cv, tx + t.w + gap, Math.floor((h - 1 - s2.h) / 2) + 1);
     const out = { cv: c, w: spr.w, h: spr.h, ax: 0, ay: 0 };
     signCache.set(key, out);
     return out;
@@ -4661,6 +4671,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     const TENT = ['#f2b81f', '#ef7a1a', '#f2b81f', '#d94f2a', '#3d6fc0', '#f2b81f'];
     function tents(p0, p1, n, seed) { const r = E.rng(seed), out = []; for (let i = 0; i < n; i++) out.push({ p: p0 + r() * (p1 - p0), d: r() * 10, c: TENT[(i + seed) % TENT.length] }); return out.sort((a, b) => a.d - b.d); }
     // overview signs, most important first (they give way in this order when space is short)
+    const SIGN_SMALL = { small: true };
     const PLATE_ORDER = ['summit', 'basecamp', 'lukla', 'deathzone', 'camp2', 'camp1', 'teahouse']
       .map((id) => C.milestones.find((m) => m.id === id)).filter(Boolean)
       .concat(C.milestones.filter((m) => !['summit', 'basecamp', 'lukla', 'deathzone', 'camp2', 'camp1', 'teahouse'].includes(m.id)));
@@ -4697,8 +4708,9 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     // the follow (and ride) zoom: metres shown top to bottom, and the p-span left to right. Phones pull
     // out a little further, so the open strip under the answer card shows the slope ahead, not one field
     function followSpan() {
-      // (1.2 keeps phones on the large sprite size class: sizeClass() switches below cam.sy ≈ 0.44)
-      const z = W < 600 ? 1.2 : 1;
+      // phones pull out 1.44× (1.2 × a further 20%); at this zoom sizeClass() drops phones to the
+      // medium sprite size class, so scenery and the climber read smaller along with the terrain
+      const z = W < 600 ? 1.44 : 1;
       return { range: clamp(H * 1.8 * z, 1350, 2100 * z), wp: clamp(0.3 * (W / H) / 0.462 * z, 0.24, 0.6) };
     }
     function computeTarget() {
@@ -5690,17 +5702,19 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
         taken.push({ x: cx0 - 8, y: cy0 - 24, w: 16, h: 24 });   // the climber
         if (view === 'overview' && showPin) { const s = K.sign(fmt(Math.round(climbTarget)) + ' m', null, { accent: true }); taken.push({ x: clamp(cx0 - s.w / 2, 2, AW - s.w - 2), y: cy0 - 30 - s.h, w: s.w, h: s.h }); }
       }
+      // phones: milestone signs about 10% smaller (tighter padding and word spacing; see K.sign)
+      const SIGN_O = W < 900 ? SIGN_SMALL : undefined;
       if (!ride) for (const m of (overview ? PLATE_ORDER : C.milestones)) {
         const p = m._p != null ? m._p : (m._p = pFor(m.alt)), x = Math.round(X(p)), y = Math.round(gy(p));
         if (m.id === 'deathzone') {
           if (dzy < -30 || dzy > AH + 30) continue;
-          const s = K.sign('8,000 m', 'Death Zone'), r = { x: AW - s.w - 5, y: dzy - s.h - 3, w: s.w, h: s.h };
+          const s = K.sign('8,000 m', 'Death Zone', SIGN_O), r = { x: AW - s.w - 5, y: dzy - s.h - 3, w: s.w, h: s.h };
           if (overview && hits(r)) continue;
           taken.push(r); actx.drawImage(s.cv, r.x, r.y); continue;
         }
         if (x < -80 || x > AW + 80 || y < -30 || y > AH + 30) continue;
         if (overview) {
-          const s = K.sign(m.short, wide ? fmt(m.alt) + ' m' : null);
+          const s = K.sign(m.short, wide ? fmt(m.alt) + ' m' : null, SIGN_O);
           const yy = Math.round(y - (m.id === 'summit' ? 9 : m.id === 'teahouse' ? 8 : 4) - Math.floor(s.h / 2));
           // keep signs inside the framed rect (not under the home card or the results sheet)
           const xL = rect ? Math.max(2, Math.round((rect.x0 * DPR - LX - shX) / UP)) : 2;
@@ -5716,7 +5730,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
           }
         } else {
           pline(x, y, x, y - 14, 'rgba(40,30,22,0.85)');
-          const s = K.sign(m.short, fmt(m.alt) + ' m');
+          const s = K.sign(m.short, fmt(m.alt) + ' m', SIGN_O);
           actx.drawImage(s.cv, Math.round(clamp(x - 2 - s.w, 2, AW - s.w - 2)), y - 15 - s.h);
         }
       }
@@ -6655,6 +6669,8 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     ui.timer.classList.remove('urgent');
     ui.input.value = '';
     ui.input.placeholder = 'Time!';
+    // phones: drop the keyboard when the leg ends so it isn't covering the camp break; Next brings it back
+    if (isPhone()) ui.input.blur();
     setFeedback('');
     renderLegDots();
     Sound.play('end');
@@ -6885,7 +6901,10 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
     d.addEventListener('click', (e) => { if (e.target === d || e.target.closest('[data-close]')) { d.close(); refocus(); } });
     d.addEventListener('close', refocus);
   });
-  function refocus() { if (G.screen === 'play') ui.input.focus({ preventScroll: true }); }
+  function refocus() { if (G.screen === 'play' && !keepKbDown()) ui.input.focus({ preventScroll: true }); }
+  // a touch phone under the phone breakpoint: the keyboard is put away between legs
+  function isPhone() { try { return window.innerWidth < 900 && window.matchMedia('(pointer: coarse)').matches; } catch (e) { return false; } }
+  const keepKbDown = () => isPhone() && (G.state === 'settle' || G.state === 'transition');
 
   // Help copy is generated from CONFIG so tuning never leaves stale numbers behind.
   function renderHelp() {
@@ -6983,7 +7002,7 @@ var DA_DEV_LOCK = { salt: 'd+jMBlNRvzlbyH0IOc1nmA==', iterations: 310000, hash: 
   ui.input.addEventListener('drop', (e) => e.preventDefault());
   ui.play.addEventListener('pointerdown', (e) => {
     if (e.target === ui.input || e.target.closest('button')) return;
-    if (['leg', 'countdown', 'settle', 'transition'].includes(G.state)) setTimeout(() => ui.input.focus({ preventScroll: true }), 0);
+    if (['leg', 'countdown', 'settle', 'transition'].includes(G.state) && !keepKbDown()) setTimeout(() => ui.input.focus({ preventScroll: true }), 0);
   });
   $('#btn-begin').addEventListener('click', beginDaily);
   $('#btn-practice').addEventListener('click', beginPractice);

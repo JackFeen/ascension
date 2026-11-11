@@ -101,7 +101,7 @@ No dev server or bundler: build, then open `index.html`. Node 18+.
 1. **Edit `src/`, then build.**
 2. **The output stays a single file.** All JS and CSS is inlined. The only external loads are Google Fonts (one `<link>` per family: one bad name makes Google return 400 for the whole request). The claude.ai artifact CSP blocks everything else; art is drawn on canvas from `src/pixel.js`, no image files.
 3. **Enter is handled on `keydown` on `#answer`, not form submit.** Sandboxed iframes block form submission before the submit event fires (a real shipped bug). The same handler presses Next during a camp break.
-4. **The input keeps focus for the whole round** so the phone keyboard never closes. `#btn-send` and `#tr-go-next` `preventDefault()` on `pointerdown`/`mousedown`; taps on the play screen refocus the input; `beginDaily()` focuses inside the click gesture (iOS).
+4. **The input keeps focus during each leg** so the phone keyboard never closes mid-leg. On touch phones (`isPhone()`) `endLeg()` blurs it so the keyboard drops for the camp break, and `keepKbDown()` stops taps from bringing it back until Next. `#btn-send` and `#tr-go-next` `preventDefault()` on `pointerdown`/`mousedown`; taps on the play screen refocus the input; `beginDaily()` focuses inside the click gesture (iOS).
 5. **`localStorage` can be empty or throw.** Always go through `Store`. The game must work without persistence.
 6. **`window.claude` exists only in the claude.ai viewer.** `Judge.state === 'off'` everywhere else.
 7. **Timers are wall-clock deadlines (`Date.now()`), not frames.** A hidden tab doesn't pause a leg. Leg end is checked every frame *and* by a 200 ms interval.
@@ -118,7 +118,7 @@ No dev server or bundler: build, then open `index.html`. Node 18+.
     - No per-frame sprite allocation: memo keys must be integers or fixed strings.
     - Keep the page quiet: write HUD text only when it changes (`hudSet`, `setAlt`), no `:has()` on the play screen, no layout reads inside the frame.
     - Check with the dev FPS meter and Chrome CPU throttling (4×, 6×) while climbing, riding and on the results view.
-17. **The follow and ride views share one zoom (`followSpan()`)**: rides pan, never zoom (pixel sprites never scale, and zoom frames are full redraws). Phones zoom out 1.2×; going further drops them to the medium sprite size class (`sizeClass()`).
+17. **The follow and ride views share one zoom (`followSpan()`)**: rides pan, never zoom (pixel sprites never scale, and zoom frames are full redraws). Phones zoom out 1.44×, which puts them on the medium sprite size class (`sizeClass()`).
 
 ---
 
