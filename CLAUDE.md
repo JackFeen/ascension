@@ -373,7 +373,7 @@ Only in the claude.ai artifact with the `sample` capability; calls spend the vie
 | Autocorrect | Silent weighted correction with sound-alikes; "you typed …" on the tag; no visible suggestions | Spelling shouldn't cost knowledgeable players; suggestions would leak the bank |
 | Art | Cozy pixel art (mockups approved November 2026) | Kevin picked a farm-game reference |
 | Frame rate | Capped 60 fps; cached layers, strip rebuilds, flat shading | First pixel renderer ran 8–23 fps throttled |
-| Phone layout | Short cards, signs that give way, 1.2× zoom-out in legs, results that start low | The mountain was hidden or crushed on phones |
+| Phone layout | Short cards, signs that give way (about 10% smaller), a 20% smaller HUD, 1.44× zoom-out in legs, keyboard drops between legs, results that start low | The mountain was hidden or crushed on phones |
 
 ---
 
