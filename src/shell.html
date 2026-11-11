@@ -429,7 +429,7 @@ dialog::backdrop { background: rgba(10, 16, 36, 0.55); }
 /* ================================================================ pixel layer
    Restyles the components above in the cozy pixel look. Kept as one block so the
    structure (ids, classes, layout) stays exactly as the game and tests expect. */
-body { font: 400 16px/1.45 var(--f-body); -webkit-font-smoothing: auto; }
+body { font: 400 16px/1.45 var(--f-body); -webkit-font-smoothing: auto; font-variant-ligatures: none; }  /* Pixelify's "fi" ligature reads as "A" */
 .panel { background: var(--panel); border: 3px solid var(--panel-edge); border-radius: 0; clip-path: var(--notch);
   box-shadow: inset 0 3px 0 var(--panel-hi), inset 0 -5px 0 var(--panel-lo); }
 .wordmark { font: 700 24px/1 var(--f-stencil); letter-spacing: 0.02em; }
@@ -842,6 +842,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
         <div class="trans-row" id="tr-next-row"><span>Next landmark</span><b id="tr-next-dist"></b></div>
         <div class="trans-next" id="tr-next">The Tea House</div>
         <div class="trans-row" id="tr-leg-row"><span id="tr-leg">Leg 2</span><b id="tr-leg-info">30 s  ×1</b></div>
+        <button class="btn btn-primary tr-go-next" id="tr-go-next" type="button" hidden>Next leg <span aria-hidden="true">›</span></button>
         <div class="res-actions" id="tr-actions" hidden></div>
       </div>
     </div>

@@ -22,7 +22,7 @@
     // rotating), a wildcard breather between them, one harder category to finish.
     legKinds: ['broad', 'mid', 'wild', 'mid', 'hard'],
     countdownSecs: 3,
-    transitionMs: 4500,             // camp break: the camera pulls out to the whole mountain
+    campLockMs: 1000,               // camp break (whole-mountain view) waits for Next; Next unlocks after this, so a stray Enter at time-up can't skip it
     invalidPenaltySecs: 1,          // open question 3: invalid costs time, not altitude
     maxAcceptedPerLeg: 30,
     // Alpaca ride (§8.6): after a Sherpa spotlight, a herd carries the climber up

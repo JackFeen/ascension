@@ -139,7 +139,7 @@ ok(idx.africa.entries.filter((e) => e.canon !== 'Western Sahara').length === 54,
 ok(JSON.stringify(E.CONFIG.legs.map((l) => l.secs)) === '[30,25,25,20,20]', 'leg timers are 30/25/25/20/20');
 ok(JSON.stringify(E.CONFIG.legs.map((l) => l.mult)) === '[1,1.25,1.25,1.5,1.5]', 'leg multipliers 1/1.25/1.25/1.5/1.5');
 ok(E.CONFIG.legKinds.join() === 'broad,mid,wild,mid,hard' && E.CONFIG.legKinds.length === E.CONFIG.legs.length, 'leg kinds: broad, mid, wild, mid, hard');
-ok(E.CONFIG.extraTimeFactor === 1.5 && E.CONFIG.countdownSecs === 3 && E.CONFIG.transitionMs === 4500 && E.CONFIG.invalidPenaltySecs === 1, 'extra time, countdown and penalty unchanged; camp break 4.5 s');
+ok(E.CONFIG.extraTimeFactor === 1.5 && E.CONFIG.countdownSecs === 3 && E.CONFIG.campLockMs === 1000 && !('transitionMs' in E.CONFIG) && E.CONFIG.invalidPenaltySecs === 1, 'extra time, countdown and penalty unchanged; camp break waits for Next (unlocks after 1 s)');
 ok(E.CONFIG.legs.reduce((s, l) => s + l.secs, 0) === 120, 'total answering time is 120 s');
 
 // ---- scoring

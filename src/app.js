@@ -1622,7 +1622,7 @@
   // ===========================================================================
   const G = {
     screen: 'home', state: 'idle', mode: 'daily', today: '', puzzle: 1, cats: [], index: [], round: null,
-    legIdx: 0, aid: 0, lastSubmit: 0, camp: false, lastSec: -1, pauseUntil: 0,
+    legIdx: 0, aid: 0, lastSubmit: 0, camp: false, campGo: null, campT: 0, lastSec: -1, pauseUntil: 0,
     rideQ: [], rideActive: null, slotT: 0, slotTxt: '',   // alpaca rides (queued, playing) and the slot-machine altimeter
     dev: null,   // dev climb tool state (mode 'dev' only), see the dev mode section
   };
@@ -2312,13 +2312,31 @@
     G.state = 'transition';
     showTransition({});
     G.camp = true; layoutScene();   // after the card is shown, so the mountain is framed around it
-    await sleep(C.transitionMs);
+    await campWait();
     if (G.round !== round || G.state !== 'transition') return;
     G.camp = false;
     $('#transition').hidden = true;
     startLeg(G.legIdx + 1);
     layoutScene();
   }
+  // The camp break waits for Next (the button, or Enter in the answer box, which keeps focus so the
+  // phone keyboard stays up). Next unlocks after campLockMs so an Enter mashed at time-up can't skip it.
+  function campWait() {
+    const btn = $('#tr-go-next');
+    btn.hidden = false; btn.disabled = true;
+    return new Promise((resolve) => {
+      G.campGo = null;
+      G.campT = setTimeout(() => {
+        if (G.state !== 'transition') return;
+        btn.disabled = false;
+        ui.input.placeholder = 'Enter for the next leg';
+        G.campGo = () => { G.campGo = null; btn.hidden = true; resolve(); };
+        announce(`Leg ${G.legIdx + 2} ready. Press Next to continue.`);
+      }, C.campLockMs);
+    });
+  }
+  function campNext() { if (G.state === 'transition' && G.campGo) { G.campGo(); return true; } return false; }
+  function campClear() { clearTimeout(G.campT); G.campGo = null; $('#tr-go-next').hidden = true; }
 
   function showTransition(o) {
     const tr = $('#transition');
@@ -2344,6 +2362,7 @@
       $('#tr-leg-info').textContent = `${Math.round(c.secs * (G.round.extra ? C.extraTimeFactor : 1))} s  ×${c.mult}`;
     }
     const acts = $('#tr-actions'); acts.hidden = true; acts.innerHTML = '';
+    campClear();
     tr.hidden = false;
     if (!o.checking) announce(`${G.mode === 'dev' ? 'Dev leg' : 'Leg'} ${G.legIdx + 1} complete. Plus ${fmt(E.legEffective(leg.raw))} meters. Altitude ${fmt(alt)} meters.`);
   }
@@ -2579,8 +2598,14 @@
     if (e.key !== 'Enter' && e.keyCode !== 13) return;
     if (e.isComposing || e.keyCode === 229) return;
     e.preventDefault();
+    if (G.state === 'transition') { campNext(); ui.input.value = ''; return; }
     submit();
   });
+  // Next (camp break): like the send button, it never takes focus from the answer box
+  const goNext = $('#tr-go-next');
+  goNext.addEventListener('pointerdown', (e) => e.preventDefault());
+  goNext.addEventListener('mousedown', (e) => e.preventDefault());
+  goNext.addEventListener('click', () => { campNext(); ui.input.focus({ preventScroll: true }); });
   const send = $('#btn-send');
   send.addEventListener('pointerdown', (e) => e.preventDefault());
   send.addEventListener('mousedown', (e) => e.preventDefault());
@@ -2727,7 +2752,7 @@
     clearSpotlight();
     $('#transition').hidden = true;
     $('#countdown').hidden = true;
-    G.camp = false;
+    G.camp = false; campClear();
     r.legs.forEach((l) => {
       if (!l) return;
       l.answers.forEach((a) => { if (a.s === 'pending') a.s = 'unchecked'; });
@@ -2822,7 +2847,7 @@
     clearTimeout(G.dev.lapT1); clearTimeout(G.dev.lapT2);
     $('#transition').hidden = true;
     $('#countdown').hidden = true;
-    G.state = 'idle'; G.camp = false; G.round = null;
+    G.state = 'idle'; G.camp = false; campClear(); G.round = null;
     DevStore.load();
     const r = DevStore.data.devRound;
     if (!r || !Array.isArray(r.legs)) { exitDev(); return 'The dev save could not be read back. Storage may be blocked here.'; }
@@ -2990,6 +3015,7 @@
       // draft cosmetics preview (Effects tab); the game itself never sets an outfit
       cosmetics: window.DA_PIXEL.COSMETICS, setOutfit(o) { Scene.setOutfit(o); },
       submit: devSubmit,
+      campNext,   // the autoplay bot presses Next at camp breaks
       openStatsWith(store) { withStore(store, openStats); },
       recordClimbToday(store) { return withStore(store, () => { updateStreak(E.localDateStr()); store.save(); return Object.assign({}, store.data.streak); }); },
       liveStreakOf(store) { return withStore(store, liveStreak); },

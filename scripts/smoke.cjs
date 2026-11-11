@@ -41,7 +41,7 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
   const answerWeight = await f.evaluate(() => getComputedStyle(document.querySelector('#answer')).fontWeight);
   if (answerWeight !== '500') fail(`answer box font weight is ${answerWeight}, want 500`);
   // Speed the climb up: short legs, fast transitions.
-  await f.evaluate(() => { const C = DA_ENGINE.CONFIG; C.legs.forEach((l) => (l.secs = 6)); C.transitionMs = 700; C.countdownSecs = 1; C.ride.speed = 3; });
+  await f.evaluate(() => { const C = DA_ENGINE.CONFIG; C.legs.forEach((l) => (l.secs = 6)); C.campLockMs = 300; C.countdownSecs = 1; C.ride.speed = 3; });
   const legs = await f.evaluate(() => {
     const E = DA_ENGINE;
     const cats = E.dailyCategories({ categories: DA_CATS.filter((c) => c.kind !== 'practice') }, E.puzzleNumber(E.localDateStr()));
@@ -118,7 +118,13 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
       const camp = await f.evaluate(() => document.querySelector('#scene').dataset.view);
       if (camp !== 'overview') fail(`leg ${i + 1} camp break: camera view is "${camp}", expected the mountain overview`);
       if (i === 0) { await page.waitForTimeout(450); await page.screenshot({ path: path.join(SHOTS, 'newlook-camp.png') }); }
-      await f.waitForFunction(() => document.querySelector('#transition').hidden, null, { timeout: 20000 });
+      // the camp break waits for Next: it must not move on by itself, and Next keeps the answer box focused
+      await page.waitForTimeout(900);
+      if (await f.evaluate(() => document.querySelector('#transition').hidden)) fail(`leg ${i + 1} camp break moved on without Next`);
+      await f.waitForSelector('#tr-go-next:not([hidden]):not([disabled])', { timeout: 3000 });
+      if (i % 2 === 0) await f.click('#tr-go-next'); else await page.keyboard.press('Enter');   // the button and Enter both work
+      await f.waitForFunction(() => document.querySelector('#transition').hidden, null, { timeout: 5000 });
+      if (await f.evaluate(() => document.activeElement && document.activeElement.id) !== 'answer') fail(`leg ${i + 2}: the answer box lost focus after Next`);
       const back = await f.evaluate(() => document.querySelector('#scene').dataset.view);
       if (back !== 'follow') fail(`leg ${i + 2}: camera view is "${back}" after the camp break, expected follow`);
     }
@@ -182,7 +188,7 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
     await d.press('#dev-lock-pw', 'Enter');
     try { await d.waitForSelector('#dev-badge:not([hidden])', { timeout: 5000 }); } catch (e) { fail('dev mode did not unlock'); }
     const realBefore = await d.evaluate(() => localStorage.getItem('daily-ascent:v1'));
-    await d.evaluate(() => { const C = DA_ENGINE.CONFIG; C.legs.forEach((l) => (l.secs = 6)); C.transitionMs = 700; C.countdownSecs = 1; });
+    await d.evaluate(() => { const C = DA_ENGINE.CONFIG; C.legs.forEach((l) => (l.secs = 6)); C.campLockMs = 300; C.countdownSecs = 1; });
     await d.click('#dev-acts [data-act="start-climb"]');
     await d.waitForFunction(() => /^Dev leg 1/.test(document.querySelector('#leg-label').textContent), null, { timeout: 5000 });
     // pause holds the clock

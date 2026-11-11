@@ -629,6 +629,7 @@
   }
   function botStep() {
     const G = H.G;
+    if (G.state === 'transition') { H.campNext(); return; }   // camp break: press Next
     if (!H.devLegLive() || (G.dev && G.dev.paused) || Date.now() < G.pauseUntil) return;
     const leg = H.curLeg(), ix = G.index[G.legIdx];
     if (!leg || !ix) return;
