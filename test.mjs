@@ -387,7 +387,7 @@ for (const [cat, list] of Object.entries(MUST_REJECT)) for (const input of list)
   ok(!m || !m.entry, `${cat}: must reject "${input}", got ${m && m.entry ? (m.qualifier ? m.qualifier + ' + ' : '') + m.entry.canon : ''}`);
 }
 
-// ---- alpaca ride plan (§8.6): chances, bands, timing, share line
+// ---- yak ride plan (§8.6): chances, bands, timing, share line
 {
   const R = E.CONFIG.ride;
   ok(R.goldenChance === 1 / 20 && R.lateChance === 1 / 10 && R.spitChance === 1 / 50, 'CONFIG.ride chances: golden 1/20, late 1/10, spit 1/50');
@@ -425,7 +425,7 @@ for (const [cat, list] of Object.entries(MUST_REJECT)) for (const input of list)
   R.speed = 1;
   const red = E.ridePlan({ fromAlt: 4000, meters: 600, seed: 'r', reduced: true });
   ok(red.reduced === true && red.durationMs === 0, 'reduced motion: no ride');
-  ok(E.shareAlpacas(0) === '' && E.shareAlpacas(1) === '🦙' && E.shareAlpacas(5) === '🦙🦙🦙🦙🦙' && E.shareAlpacas(6) === '🦙×6' && E.shareAlpacas(12) === '🦙×12', 'share line: 🦙 for 1–5, 🦙×N from 6');
+  ok(E.shareAlpacas(0) === '' && E.shareAlpacas(1) === '🐂' && E.shareAlpacas(5) === '🐂🐂🐂🐂🐂' && E.shareAlpacas(6) === '🐂×6' && E.shareAlpacas(12) === '🐂×12', 'share line: 🐂 for 1–5, 🦙×N from 6');
   ok([0, 1, 3, 5, 6, 40].every((n) => !/[a-z]/i.test(E.shareAlpacas(n))), 'the share line never contains letters (so never answers)');
 }
 

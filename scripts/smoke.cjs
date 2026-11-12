@@ -85,8 +85,8 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
         if (i === 0) await page.screenshot({ path: path.join(SHOTS, `spot-t${t}.png`) });
         await f.waitForSelector('#spot', { state: 'hidden', timeout: 4000 });
         if (t === 4) {
-          // the alpaca ride follows the Sherpa spotlight: clock held, card faded, focus and typed text kept
-          try { await f.waitForSelector('#play.riding', { timeout: 1500 }); } catch (e) { fail(`leg ${i + 1}: no alpaca ride after the Sherpa spotlight`); continue; }
+          // the yak ride follows the Sherpa spotlight: clock held, card faded, focus and typed text kept
+          try { await f.waitForSelector('#play.riding', { timeout: 1500 }); } catch (e) { fail(`leg ${i + 1}: no yak ride after the Sherpa spotlight`); continue; }
           const sa = await f.textContent('#secs');
           if (i === 0) { await page.keyboard.type('ab'); await page.waitForTimeout(250); await page.screenshot({ path: path.join(SHOTS, 'ride-daily.png') }); await page.screenshot({ path: path.join(SHOTS, 'newlook-ride.png') }); }
           await page.waitForTimeout(300);
@@ -135,10 +135,10 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
   await page.screenshot({ path: path.join(SHOTS, 'newlook-results.png') });
   const share = await f.textContent('#share-box');
   if (!/^Daily Ascent #\d+/.test(share)) fail('share text missing: ' + share);
-  if (!/🦙/.test(share)) fail('share text has no 🦙 for the Sherpa rides');
+  if (!/🐂/.test(share)) fail('share text has no 🐂 for the Sherpa rides');
   const leaked = legs.flatMap((l) => l.words.map((x) => x.w)).filter((w) => share.toLowerCase().includes(w.toLowerCase()));
   if (leaked.length) fail('share text contains answers: ' + leaked.join(', '));
-  if (!/Alpaca rides/.test(await f.textContent('#sheet'))) fail('results do not show alpaca rides');
+  if (!/Yak rides/.test(await f.textContent('#sheet'))) fail('results do not show yak rides');
   console.log(share);
 
   await page.reload(); await page.waitForTimeout(1200);
@@ -161,9 +161,9 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
     await r.click('#answer'); await page.keyboard.type(sherpa); await page.keyboard.press('Enter');
     let rode = false;
     for (let k = 0; k < 12; k++) { await page.waitForTimeout(200); if (await r.evaluate(() => document.querySelector('#play').classList.contains('riding'))) rode = true; }
-    if (rode) fail('reduced motion: the alpaca ride played');
+    if (rode) fail('reduced motion: the yak ride played');
     const fb = await r.textContent('#feedback');
-    if (!/Carried up by alpacas/.test(fb)) fail('reduced motion: no "Carried up by alpacas" line (' + fb + ')');
+    if (!/Carried up by yaks/.test(fb)) fail('reduced motion: no "Carried up by yaks" line (' + fb + ')');
     await setReduced(false);
   }
 
@@ -241,7 +241,7 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
     const n = await d.$$eval('.dev-ans-table tbody tr', (r) => r.length);
     if (!n || !(await onlySherpa())) fail(`Answers rank filter: ${n} rows for "island", not all Sherpa`);
     await page.screenshot({ path: path.join(SHOTS, 'dev-answers.png') });
-    // alpaca ride effect trigger: once per band, with the rare variants spread across the runs.
+    // yak ride effect trigger: once per band, with the rare variants spread across the runs.
     // The bot stops first, and Alt+H hides the UI so the screenshot shows the herd.
     await d.click('#dev-tab-content');
     if (await d.evaluate(() => /Stop/i.test((document.querySelector('[data-act="bot"]') || {}).textContent || ''))) await d.click('[data-act="bot"]');
@@ -254,9 +254,9 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
       await d.click('[data-act="ride-fx"]');
       await page.keyboard.press('Alt+KeyH');
       const fps = await d.evaluate(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const tick = () => { n++; if (performance.now() - t0 < 1400) requestAnimationFrame(tick); else res(Math.round(n / ((performance.now() - t0) / 1000))); }; requestAnimationFrame(tick); }));
-      await page.screenshot({ path: path.join(SHOTS, `alpaca-${band}.png`) });
-      console.log(`alpaca ride ${band} (${extras.join('+')}): ${fps} fps`);
-      if (fps < 30) fail(`the ${band} alpaca ride ran at ${fps} fps (needs 30 or more)`);
+      await page.screenshot({ path: path.join(SHOTS, `yak-${band}.png`) });
+      console.log(`yak ride ${band} (${extras.join('+')}): ${fps} fps`);
+      if (fps < 30) fail(`the ${band} yak ride ran at ${fps} fps (needs 30 or more)`);
       await page.keyboard.press('Alt+KeyH');
       await page.waitForTimeout(3200);
     }
@@ -271,7 +271,7 @@ const PAGE = 'file://' + path.join(ROOT, 'index.html');
     if (realBefore !== await d.evaluate(() => localStorage.getItem('daily-ascent:v1'))) fail('the outfit preview touched the real save');
     if (/bobble|shades|scarf/.test(await d.evaluate(() => localStorage.getItem('daily-ascent:dev:v1') || ''))) fail('the outfit preview was saved to the dev save');
     await d.click('#dev-tab-debug');
-    if (!/alpaca ride \(effect test\)/.test(await d.textContent('#dev-dbg-log'))) fail('the dev log has no alpaca ride line');
+    if (!/yak ride \(effect test\)/.test(await d.textContent('#dev-dbg-log'))) fail('the dev log has no yak ride line');
     if (!/outfit: yak-wool bobble hat \+ summit shades \+ prayer-flag scarf/.test(await d.textContent('#dev-dbg-log'))) fail('the dev log has no outfit line');
     await d.click('#dev-acts [data-act="end-climb"]');
     await d.waitForSelector('#results:not([hidden])', { timeout: 5000 });

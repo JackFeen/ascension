@@ -239,43 +239,44 @@
     return out;
   }
 
-  // --- alpacas (24 x 22, facing right) ------------------------------------------------
+  // --- ride animals ----------------------------------------------------------------------
+  // yaks (24 x 22, facing right): a low head with wide horns, a shoulder hump, a long skirt of hair
   const ALPACA = [
-    '.................e..e...',
-    '.................ee.ee..',
-    '................tFFFFF..',
-    '...............tFFFFFFF.',
-    '...............FFFFoFFF.',
-    '...............FFFFFFFmn',
-    '................FFFFFmm.',
-    '................FFFFFF..',
-    '................FFFFF...',
-    '...............tFFFFF...',
-    '...............FFFFFF...',
-    '...tt.tt.tt.tt.FFFFFF...',
-    '..tFFFFFFFFFFFFFFFFFF...',
-    '.tFFFFFFFFFFFFFFFFFFF...',
-    'tFFFFFFFFFFFFFFFFFFFF...',
-    'tFFFFFFFFFFFFFFFFFFF....',
-    '.FFFFFFFFFFFFFFFFFFF....',
-    '..FFFFFFFFFFFFFFFFF.....',
-    '...dFd.dFd...dFd.dFd....',
-    '...dFd.dFd...dFd.dFd....',
-    '...dd..dd....dd..dd.....',
-    '...kk..kk....kk..kk.....',
+    '........................',
+    '........................',
+    '................h......h',
+    '.................h....h.',
+    '..........ttt....hh..hh.',
+    '........ttFFFt....hhhh..',
+    '......ttFFFFFFt..tFFFF..',
+    '...tttFFFFFFFFFtdFFFFFF.',
+    '..tFFFFFFFFFFFFFdFFFFFF.',
+    '.tFFFFFFFFFFFFFFdFFFoFF.',
+    'TFFFFFFFFFFFFFFFsFFFFFFw',
+    'TFFFFFFFFFFFFFFFFsFFwwwm',
+    'TFFFFFFFFFFFFFFFFsFFwwwn',
+    'TsFFFFFFFFFFFFFFFss.www.',
+    'TsFFFFFFFFFFFFFFFsss....',
+    '.ssFFFFFFFFFFFFFFsss....',
+    '.sssssssssssssssssss....',
+    '.sssssssssssssssssss....',
+    '.s.ssssdssss.sdsss.s....',
+    '..s.s.d.s.s.s.d.s.s.....',
+    '.....dd.......dd........',
+    '.....kk.......kk........',
   ];
-  const ALPACA_RUN = ALPACA.slice(0, 18).concat(['..dFd...dFd.dFd...dFd...', '.dFd.....dFdFd.....dFd..', 'dd.........dd.......dd..', 'kk.........kk.......kk..']);
-  const ALPACA_SLED = ['', '', ''].concat(ALPACA.slice(0, 18), ['.SSSSSSSSSSSSSSSSSSS....']);
-  const COATS = [['#f8eeda', '#d8c6a8'], ['#e2bc8e', '#ba9266'], ['#a6744e', '#7c5436'], ['#fcfaf4', '#ded8ce'], ['#463e3c', '#302a2a']];
+  const ALPACA_RUN = ALPACA.slice(0, 18).concat(['.s.ssssdssss.sdsss.s....', '....dd..dd...dd..dd.....', '...dd....dd.dd....dd....', '...kk....kk.kk....kk....']);
+  const ALPACA_SLED = ['', ''].concat(ALPACA.slice(0, 19), ['.SSSSSSSSSSSSSSSSSSS....']);
+  const COATS = [['#4a3e3a', '#2e2624'], ['#6e4a34', '#4e3426'], ['#ece6dc', '#c4baac'], ['#82684f', '#604a3a'], ['#b08a5a', '#86663e']];
   const GOLD_COAT = ['#fcd048', '#d49a1e'];
   const alpacaCache = new Map();
-  /** coat: index into COATS or 'gold'; frame: 'stand' | 'run' | 'sled'; sad droops the ears. */
+  /** A yak (the name is historical). coat: index into COATS or 'gold'; frame: 'stand' | 'run' | 'sled'; sad: half-shut eye. */
   function buildAlpaca(coat, frame, o) {
     const opt = o || {};
     const key = coat + ':' + frame + ':' + (opt.sad ? 's' : '') + (opt.seed || 0);
     if (alpacaCache.has(key)) return alpacaCache.get(key);
     const pair = coat === 'gold' ? GOLD_COAT : COATS[coat] || COATS[0];
-    const c = rgb(pair[0]), sh = rgb(pair[1]), hi = mix(c, [255, 255, 255], 0.45), deep = mix(sh, [40, 30, 30], 0.15);
+    const c = rgb(pair[0]), sh = rgb(pair[1]), hi = mix(c, [255, 255, 255], 0.35), deep = mix(sh, [20, 16, 16], 0.3);
     const R4 = [deep, sh, c, hi];
     const rows = frame === 'run' ? ALPACA_RUN : frame === 'sled' ? ALPACA_SLED : ALPACA;
     const rnd = rng(7 + (opt.seed || 0) * 31 + (coat === 'gold' ? 99 : coat * 13));
@@ -283,20 +284,23 @@
     rows.forEach((row, j) => {
       for (let i = 0; i < row.length; i++) {
         const ch = row[i]; let col = null;
-        if (ch === 'F' || ch === 't') {
-          const v = 0.62 - (j / 22) * 0.55 + (ch === 't' ? 0.25 : 0) + (rnd() - 0.5) * 0.24;
+        if (ch === 'F' || ch === 't' || ch === 'T') {
+          let v = 0.66 - (j / 22) * 0.5 + (ch === 't' ? 0.22 : 0) + (rnd() - 0.5) * 0.24;
+          if (ch === 'T') v = 0.35 + (rnd() - 0.5) * 0.3;
           col = rampPick(R4, v, i, j);
-        } else if (ch === 'd') col = deep;
-        else if (ch === 'e') col = opt.sad && j === 0 ? null : mix(sh, [60, 40, 40], 0.2);
-        else if (ch === 'o') col = [30, 24, 26];
-        else if (ch === 'm') col = mix(c, [230, 190, 170], 0.5);
-        else if (ch === 'n') col = [90, 60, 56];
-        else if (ch === 'k') col = [60, 46, 40];
+        } else if (ch === 's') col = (i + j) % 3 ? sh : deep;
+        else if (ch === 'd') col = deep;
+        else if (ch === 'h') col = [236, 226, 196];
+        else if (ch === 'o') col = [20, 16, 16];
+        else if (ch === 'w') col = mix(c, [214, 200, 180], 0.6);
+        else if (ch === 'm') col = mix(c, [90, 70, 66], 0.35);
+        else if (ch === 'n') col = [40, 30, 30];
+        else if (ch === 'k') col = [44, 34, 30];
         else if (ch === 'S') col = [236, 244, 252];
         if (col) put(b, i + 1, j + 1, col);
       }
     });
-    if (opt.sad) { put(b, 19, 3, mix(sh, [60, 40, 40], 0.2)); put(b, 22, 3, mix(sh, [60, 40, 40], 0.2)); put(b, 19, 5, [30, 24, 26]); }
+    if (opt.sad) { put(b, 21, 11, [20, 16, 16]); put(b, 22, 10, deep); }
     const s = sprite(b, 13, 23);
     alpacaCache.set(key, s);
     return s;
@@ -308,13 +312,13 @@
     let s = null;
     if (kind === 'mask') {         // Death Zone: oxygen mask on the muzzle, tank on the back
       const b = buf(26, 24);
-      rect(b, 21, 6, 3, 3, rgb('#7896be')); put(b, 22, 7, rgb('#b6cce4'));
-      for (let i = 0; i < 9; i++) put(b, 20 - i, 8 + Math.round(i * 0.45), rgb('#60708c'));
-      rect(b, 6, 9, 6, 3, rgb('#60708c')); rect(b, 6, 9, 6, 1, rgb('#8ea0bc'));
+      rect(b, 21, 12, 3, 3, rgb('#7896be')); put(b, 22, 13, rgb('#b6cce4'));
+      for (let i = 0; i < 9; i++) put(b, 20 - i, 13 - Math.round(i * 0.8), rgb('#60708c'));
+      rect(b, 7, 4, 6, 3, rgb('#60708c')); rect(b, 7, 4, 6, 1, rgb('#8ea0bc'));
       s = sprite(b, 13, 23);
     } else if (kind === 'lamp') {  // night: a 2 px headlamp
       const b = buf(26, 24);
-      rect(b, 17, 3, 3, 1, rgb('#323240')); rect(b, 20, 3, 2, 2, rgb('#fff6c8'));
+      rect(b, 18, 8, 3, 1, rgb('#323240')); rect(b, 21, 8, 2, 2, rgb('#fff6c8'));
       s = sprite(b, 13, 23);
     } else if (kind === 'map') {   // short hop: a tiny map
       const b = buf(12, 9);
@@ -406,7 +410,9 @@
     if (signCache.size > 200) signCache.clear();
     // small (phones): about 10% smaller. Pixel text can't be scaled and stay crisp, so the 8 px face
     // stays and the padding, the gap between the lines and the word spaces are trimmed instead
-    const padX = opt.small ? 6 : 8, padY = opt.small ? 5 : 7, gap = opt.small ? 3 : 4, sp = opt.small ? 2 : 0;
+    // with a second part (an altitude), a carved divider sits between the two, so "Camp 1" and
+    // "6,065 m" can't run together into "Camp 16,065 m"
+    const padX = opt.small ? 6 : 8, padY = opt.small ? 5 : 7, gap = sub ? (opt.small ? 9 : 11) : 0, sp = opt.small ? 2 : 0;
     const t = text(title, { color: opt.accent ? '#281e16' : '#fff3d6', bold: false, space: sp });
     const s2 = sub ? text(sub, { color: opt.accent ? '#5b2a10' : '#ffe2b0', space: sp }) : null;
     const w = t.w + (s2 ? s2.w + gap : 0) + padX, h = Math.max(t.h, s2 ? s2.h : 0) + padY;
@@ -414,6 +420,10 @@
     const base = opt.accent ? rgb('#ff5a1f') : P.wood, hi = opt.accent ? rgb('#ff9a6a') : P.woodHi, lo = opt.accent ? rgb('#b23c0e') : P.woodLo;
     rect(b, 0, 0, w, h, base); rect(b, 0, 0, w, 1, hi); rect(b, 0, h - 2, w, 2, lo);
     put(b, 0, 0, [0, 0, 0], 0); put(b, w - 1, 0, [0, 0, 0], 0); put(b, 0, h - 1, [0, 0, 0], 0); put(b, w - 1, h - 1, [0, 0, 0], 0);
+    if (sub) {
+      const dx = Math.floor(padX / 2) + t.w + Math.floor(gap / 2) - 1;
+      rect(b, dx, 2, 1, h - 4, lo); rect(b, dx + 1, 2, 1, h - 4, hi);
+    }
     const spr = sprite(b, 0, 0, true, { bottom: 0.8, left: 0.75, right: 0.75, top: 0.75 });
     const c = canvas(spr.w, spr.h), g = c.getContext('2d');
     g.drawImage(spr.cv, 0, 0);

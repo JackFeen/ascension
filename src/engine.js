@@ -25,22 +25,22 @@
     campLockMs: 1000,               // camp break (whole-mountain view) waits for Next; Next unlocks after this, so a stray Enter at time-up can't skip it
     invalidPenaltySecs: 1,          // open question 3: invalid costs time, not altitude
     maxAcceptedPerLeg: 30,
-    // Alpaca ride (§8.6): after a Sherpa spotlight, a herd carries the climber up
+    // Yak ride (§8.6): after a Sherpa spotlight, a herd carries the climber up
     // by the meters the answer earned. The clock is held, so it costs no time.
     ride: {
       minMs: 2600, maxMs: 3600,     // ride length after the spotlight, scaled by meters…
       fullAtMeters: 1400,           // …reaching maxMs at this many meters
-      herdMin: 4, herdMax: 6,       // alpacas in the herd
-      goldenChance: 1 / 20,         // one gold alpaca (cosmetic only, no extra points)
-      lateChance: 1 / 10,           // an alpaca sprints in after the herd has gone and slumps
+      herdMin: 4, herdMax: 6,       // yaks in the herd
+      goldenChance: 1 / 20,         // one gold yak (cosmetic only, no extra points)
+      lateChance: 1 / 10,           // a yak sprints in after the herd has gone and slumps
       spitChance: 1 / 50,           // farewell spit at the camera (skipped with reduced motion)
       styles: [                     // ride styles and their weights
-        { id: 'conga', w: 0.35 },   // a line of alpacas, climber riding the middle one
-        { id: 'pyramid', w: 0.30 }, // an alpaca pyramid with the climber on top
+        { id: 'conga', w: 0.35 },   // a line of yaks, climber riding the middle one
+        { id: 'pyramid', w: 0.30 }, // a yak pyramid with the climber on top
         { id: 'crowdsurf', w: 0.30 }, // the herd passes the climber along overhead
         { id: 'paraglide', w: 0.05 }, // rare: the herd glides up under a paraglider
       ],
-      shortHopMeters: 100,          // under this: the lead alpaca checks a tiny map and shrugs
+      shortHopMeters: 100,          // under this: the lead yak checks a tiny map and shrugs
       treelineAlt: 3900,            // the Scene's forest treeline: grass below, rocky trail above
       glacierFrom: 'basecamp',      // milestone id where the herd starts belly-sledding
       deathZoneFrom: 'deathzone',   // milestone id where the herd wears oxygen masks
@@ -560,7 +560,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Alpaca ride plan (§8.6). Pure: the Scene draws whatever this returns.
+  // Yak ride plan (§8.6). Pure: the Scene draws whatever this returns.
   //   ridePlan({ fromAlt, toAlt, meters, night, seed, reduced, force })
   // `seed` is any string (the game uses date|leg|answer id, so a resumed round
   // replays the same ride). `force` overrides any returned field.
@@ -606,11 +606,11 @@
     };
     return Object.assign(plan, opts.force || {});
   }
-  // The share line for alpaca rides: never letters, so never answers.
+  // The share line for yak rides (🐂: there is no yak emoji): never letters, so never answers.
   function shareAlpacas(n) {
     const k = Math.max(0, Math.floor(Number(n) || 0));
     if (!k) return '';
-    return k <= 5 ? '🦙'.repeat(k) : '🦙×' + k;
+    return k <= 5 ? '🐂'.repeat(k) : '🐂×' + k;
   }
 
   function puzzleNumber(dateStr) {

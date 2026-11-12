@@ -765,7 +765,7 @@
   }
 
   // ---------------------------------------------------------------- effects
-  // alpaca ride preview settings (Effects tab)
+  // yak ride preview settings (Effects tab)
   const rideFx = { style: 'auto', band: 'auto', golden: false, late: false, spit: false, reduced: false, meters: 625 };
   // draft climber cosmetics (preview only: never saved, gone on lock or reload). '' = the slot's default.
   const outfit = { hat: '', eyes: '', neck: '', over: '', suit: '' };
@@ -792,15 +792,15 @@
       <div class="dev-row">${kinds.map((k) => btn('sound', k, { v: k })).join('')}</div>
       <h3>Moments</h3>
       <div class="dev-row">${btn('flag', 'Plant summit flag')}${btn('confetti', 'Prayer-flag confetti')}${btn('shake', 'Wrong-answer shake')}</div>
-      <h3>Alpaca ride</h3>
-      <p class="dev-note">Plays the Sherpa alpaca ride without changing the score or holding the clock. Unticked rare variants are off, so each preview shows exactly what you pick.</p>
+      <h3>Yak ride</h3>
+      <p class="dev-note">Plays the Sherpa yak ride without changing the score or holding the clock. Unticked rare variants are off, so each preview shows exactly what you pick.</p>
       <div class="dev-row">
         <label>Style <select class="dev-in" id="dev-ride-style">${opt([['auto', 'Random']].concat(H.C.ride.styles.map((st) => [st.id, st.id])), rideFx.style)}</select></label>
         <label>Band <select class="dev-in" id="dev-ride-band">${opt([['auto', 'Current altitude'], ['grass', 'Grass'], ['trail', 'Trail'], ['glacier', 'Glacier'], ['deathzone', 'Death Zone']], rideFx.band)}</select></label>
         <label>Meters <input class="dev-in" type="number" id="dev-ride-m" min="0" max="1500" step="25" value="${rideFx.meters}"></label>
       </div>
-      <div class="dev-row">${chk('dev-ride-golden', 'Golden alpaca', rideFx.golden)}${chk('dev-ride-late', 'Late alpaca', rideFx.late)}${chk('dev-ride-spit', 'Farewell spit', rideFx.spit)}${chk('dev-ride-reduced', 'Reduced-motion preview', rideFx.reduced)}</div>
-      <div class="dev-row">${btn('ride-fx', 'Play alpaca ride', { cls: 'primary' })}</div>
+      <div class="dev-row">${chk('dev-ride-golden', 'Golden yak', rideFx.golden)}${chk('dev-ride-late', 'Late yak', rideFx.late)}${chk('dev-ride-spit', 'Farewell spit', rideFx.spit)}${chk('dev-ride-reduced', 'Reduced-motion preview', rideFx.reduced)}</div>
+      <div class="dev-row">${btn('ride-fx', 'Play yak ride', { cls: 'primary' })}</div>
       <h3>Climber outfit (draft)</h3>
       <p class="dev-note">Draft cosmetics, for checking how items layer on the climber. Preview only: never saved and never shown to players. It resets when dev mode locks or the page reloads.</p>
       <div class="dev-row">${OUTFIT_SLOTS.map(([k, label, dflt, none]) => {
@@ -942,7 +942,7 @@
   function logRide(d) {
     const p = d.plan || {};
     const what = p.reduced ? 'reduced motion, no ride' : [p.style, p.band, p.golden && 'golden', p.late && 'late', p.spit && 'spit', p.shortHop && 'short hop', p.noMove && 'no move'].filter(Boolean).join(' · ');
-    LOG.unshift({ t: new Date(), kind: 'ride', text: d.ans ? d.ans.c : '', line: `alpaca ride${d.test ? ' (effect test)' : ''}: ${what} · +${fmt(d.eff || 0)} m` });
+    LOG.unshift({ t: new Date(), kind: 'ride', text: d.ans ? d.ans.c : '', line: `yak ride${d.test ? ' (effect test)' : ''}: ${what} · +${fmt(d.eff || 0)} m` });
     if (LOG.length > 300) LOG.length = 300;
     if (tab === 'debug' && !$('#dev-panel').hidden) renderLog();
   }

@@ -62,8 +62,8 @@
     pxIcon('M3 0h2v3h3v2h-3v3h-2v-3h-3v-2h3z'),
     pxIcon('M4 0h3v2h-2v1h-1zM3 3h2v1h1v1h1v1h1v2h-8v-2h1v-1h1v-1h1z'),
   ];
-  // a tiny pixel alpaca for the results' "Alpaca rides" row
-  const ALPACA_ICON = '<svg viewBox="0 0 10 10" aria-hidden="true" fill="currentColor" shape-rendering="crispEdges"><path d="M7 0h1v1h1v3h-1v3h-1v-1h-5v-1h-1v-1h1v-1h5v-2h-1v-1h1zM2 7h1v3h-1zM6 7h1v3h-1z"/></svg>';
+  // a tiny pixel yak for the results' "Yak rides" row
+  const ALPACA_ICON = '<svg viewBox="0 0 10 10" aria-hidden="true" fill="currentColor" shape-rendering="crispEdges"><path d="M6 0h1v1h-1zM9 0h1v1h-1zM6 1h4v1h-4zM2 2h3v1h-3zM6 2h4v1h-4zM1 3h9v1h-9zM0 4h10v1h-10zM0 5h9v1h-9zM0 6h9v1h-9zM1 7h7v1h-7zM1 8h2v1h-2zM6 8h2v1h-2zM1 9h2v1h-2zM6 9h2v1h-2z"/></svg>';
   const tierName = (t) => C.tiers[t].name;
 
   // ===========================================================================
@@ -136,14 +136,14 @@
         case 'count': this.tone(660, t, 0.12, { vol: 0.09 }); break;
         case 'go': this.tone(587, t, 0.14, { vol: 0.09 }); this.tone(880, t + 0.11, 0.3, { vol: 0.11 }); break;
         case 'end': this.bell(330, t, 1.6, 0.1); break;
-        // alpaca ride
+        // yak ride
         case 'hooves': // clip-clop gallop
           for (let i = 0; i < 12; i++) { const tt = t + i * 0.13 + (i % 2 ? 0.05 : 0); this.tone(i % 2 ? 180 : 230, tt, 0.05, { vol: 0.08, type: 'triangle', attack: 0.002 }); this.hiss(tt, 0.03, 0.05, 2600); }
           break;
-        case 'alpaca': // a hum, then a "mwaa"
-          this.tone(330, t, 0.45, { vol: 0.06, type: 'triangle', attack: 0.05, glide: 290 });
-          this.tone(520, t + 0.45, 0.35, { vol: 0.05, type: 'sawtooth', attack: 0.03, glide: 400 }); break;
-        case 'golden': // bright fanfare for the golden alpaca
+        case 'alpaca': // the yak: two low grunts (the sound kind keeps its old name)
+          this.tone(150, t, 0.28, { vol: 0.09, type: 'sawtooth', attack: 0.03, glide: 110 });
+          this.tone(130, t + 0.34, 0.4, { vol: 0.08, type: 'sawtooth', attack: 0.04, glide: 90 }); break;
+        case 'golden': // bright fanfare for the golden yak
           [784, 988, 1175, 1568, 1976].forEach((f, i) => this.bell(f, t + i * 0.07, 1.4, 0.07));
           [523, 659, 784].forEach((f) => this.tone(f, t + 0.35, 1.2, { vol: 0.06, type: 'triangle', attack: 0.04 })); break;
         case 'splat': this.hiss(t, 0.25, 0.12, 1200); this.tone(120, t, 0.16, { vol: 0.12, glide: 60 }); break;
@@ -296,44 +296,60 @@
     const R = E.rng(2026);
     // fewer trees and houses right by the trail...
     const TRAIL_TREES = [];
-    for (let i = 0; i < 7; i++) TRAIL_TREES.push({ p: 0.01 + i * 0.045 + R() * 0.02, d: 8 + R() * 14, seed: i % 7 });
+    for (let i = 0; i < 7; i++) { const t = { p: 0.01 + i * 0.045 + R() * 0.02, d: 8 + R() * 14, seed: i % 7 }; if (i % 2 === 0) TRAIL_TREES.push(t); }
     TRAIL_TREES.sort((a, b) => a.d - b.d);
-    const HOUSES = [{ p: 0.19, d: 40, seed: 2 }, { p: 0.232, d: 34, seed: 5 }, { p: 0.214, d: 12, seed: 9, big: true }];
+    const HOUSES = [{ p: 0.232, d: 34, seed: 5 }, { p: 0.214, d: 12, seed: 9, big: true }];
     HOUSES.sort((a, b) => a.d - b.d);
     // ...and more scenery spread across the face of the mountain (seeded by world position)
     const SCAPE = [];
     {
-      const RS = E.rng(4417);
-      // groves in the lower valleys
-      for (let g = 0; g < 10; g++) {
-        const cp = -0.06 + RS() * 0.4, cd = 110 + Math.pow(RS(), 0.85) * 380, n = 2 + Math.floor(RS() * 3);
-        for (let i = 0; i < n; i++) SCAPE.push({ p: cp + (RS() - 0.5) * 0.026, d: cd + (RS() - 0.5) * 46, kind: 'grove', seed: Math.floor(RS() * 7) });
+      // Pieces are placed one by one in "climb view" space (about 1,300 CSS px per unit of p, depth
+      // in CSS px below the trail) and a piece is kept only if it has room: 80 px from anything,
+      // 190 px from the same kind. So nothing bunches, and no kind repeats in a clump.
+      const RS = E.rng(4417), KX = 1300, SYF = 0.556;
+      const kept = [];
+      const room = (p, d, kind, r0, r1) => {
+        for (const o of kept) {
+          const dx = (o.p - p) * KX, dy = o.d - d, dd = dx * dx + dy * dy;
+          const need = Math.max(r0, o.r, o.kind === kind ? r1 : 0);
+          if (dd < need * need) return false;
+        }
+        return true;
+      };
+      const keep = (it, r) => { it.r = r; kept.push(it); SCAPE.push(it); };
+      // a farmstead and a grazing yak first, with the most room
+      const fp = 0.11 + RS() * 0.06, fd = 230 + RS() * 80;
+      keep({ p: fp, d: fd, kind: 'farm', seed: 1 }, 120);
+      SCAPE.push({ p: fp + 0.016, d: fd + 18, kind: 'plot', seed: 1 });
+      keep({ p: 0.035 + RS() * 0.03, d: 190 + RS() * 60, kind: 'yak', seed: 0 }, 110);
+      // singles: the kind comes from the altitude band the piece lands in
+      const pick = (alt, r) => {
+        if (alt < 3450) return r < 46 ? 'tree' : r < 60 ? 'bush' : r < 70 ? 'stone' : r < 76 ? 'cairn' : r < 84 ? 'pair' : null;
+        if (alt < 3920) return r < 55 ? 'pine' : r < 66 ? 'stone' : r < 72 ? 'cairn' : r < 80 ? 'pair' : null;
+        if (alt < 4300) return r < 16 ? 'cairn' : r < 28 ? 'stone' : r < 38 ? 'chorten' : r < 48 ? 'flagPole' : r < 54 ? 'stoneHut' : null;
+        if (alt < 5300) return r < 26 ? 'outcrop' : r < 46 ? 'stone' : r < 52 ? 'maniWall' : r < 58 ? 'cairn' : null;
+        if (alt < 8050) return r < 22 ? 'crevasse' : r < 34 ? 'iceRock' : null;
+        return r < 16 ? 'snowRock' : null;
+      };
+      for (let i = 0; i < 900 && kept.length < 90; i++) {
+        const p = -0.08 + RS() * 1.1, d = 95 + Math.pow(RS(), 0.9) * 430, seed = Math.floor(RS() * 1000);
+        const kind = pick(ground(p) - d / SYF, seed % 100);
+        if (!kind || !room(p, d, kind, 80, 190)) continue;
+        keep({ p, d, kind, seed }, kind === 'pair' ? 90 : 70);
       }
-      // farmsteads: a house, a field, a couple of trees
-      for (let f = 0; f < 5; f++) {
-        const cp = -0.03 + RS() * 0.33, cd = 130 + RS() * 300;
-        SCAPE.push({ p: cp, d: cd, kind: 'farm', seed: f });
-        SCAPE.push({ p: cp + 0.012, d: cd + 14, kind: 'plot', seed: f });
-        SCAPE.push({ p: cp - 0.008, d: cd + 4, kind: 'grove', seed: f % 7 });
-        SCAPE.push({ p: cp + 0.022, d: cd - 6, kind: 'grove', seed: (f + 3) % 7 });
-      }
-      // grazing alpacas on the meadows
-      for (let a = 0; a < 3; a++) SCAPE.push({ p: 0.02 + RS() * 0.3, d: 140 + RS() * 260, kind: 'alpaca', seed: a });
-      // singles everywhere, picked by the altitude band they land in
-      for (let i = 0; i < 260; i++) SCAPE.push({ p: -0.08 + RS() * 1.1, d: 80 + Math.pow(RS(), 0.8) * 420, kind: 'auto', seed: Math.floor(RS() * 1000) });
       SCAPE.sort((a, b) => a.p - b.p);
     }
     const scapeFrom = (p) => { let lo = 0, hi = SCAPE.length; while (lo < hi) { const m = (lo + hi) >> 1; if (SCAPE[m].p < p) lo = m + 1; else hi = m; } return lo; };
     const TENT = ['#f2b81f', '#ef7a1a', '#f2b81f', '#d94f2a', '#3d6fc0', '#f2b81f'];
-    function tents(p0, p1, n, seed) { const r = E.rng(seed), out = []; for (let i = 0; i < n; i++) out.push({ p: p0 + r() * (p1 - p0), d: r() * 10, c: TENT[(i + seed) % TENT.length] }); return out.sort((a, b) => a.d - b.d); }
+    function tents(p0, p1, n, seed) { const r = E.rng(seed), out = []; for (let i = 0; i < n; i++) out.push({ p: p0 + (n > 1 ? i / (n - 1) : 0.5) * (p1 - p0) + (r() - 0.5) * 0.002, d: r() * 16, c: TENT[(i + seed) % TENT.length] }); return out.sort((a, b) => a.d - b.d); }
     // overview signs, most important first (they give way in this order when space is short)
     const SIGN_SMALL = { small: true };
     const PLATE_ORDER = ['summit', 'basecamp', 'lukla', 'deathzone', 'camp2', 'camp1', 'teahouse']
       .map((id) => C.milestones.find((m) => m.id === id)).filter(Boolean)
       .concat(C.milestones.filter((m) => !['summit', 'basecamp', 'lukla', 'deathzone', 'camp2', 'camp1', 'teahouse'].includes(m.id)));
-    const CAMPS = [tents(0.538, 0.556, 6, 11), tents(0.62, 0.63, 3, 12), tents(0.662, 0.672, 4, 13), tents(0.731, 0.739, 2, 14), tents(0.79, 0.8, 3, 15)];
+    const CAMPS = [tents(0.538, 0.556, 3, 11), tents(0.62, 0.63, 2, 12), tents(0.662, 0.672, 2, 13), tents(0.735, 0.735, 1, 14), tents(0.79, 0.8, 2, 15)];
     const SERACS = [];
-    for (let i = 0; i < 9; i++) SERACS.push({ p: 0.562 + R() * 0.046, d: R() * 14, w: 5 + R() * 9, h: 6 + R() * 10, shade: i % 3 });
+    for (let i = 0; i < 9; i++) { const sr = { p: 0.562 + R() * 0.046, d: R() * 14, w: 5 + R() * 9, h: 6 + R() * 10, shade: i % 3 }; if (i % 2 === 0 && i < 8) SERACS.push(sr); }
     SERACS.sort((a, b) => a.d - b.d);
     for (let i = 0; i < 160; i++) R();   // (draws once used by trailside boulders: keeps the stars and clouds where they were)
     const STARS = [];
@@ -487,6 +503,7 @@
     // scenery across the face: each item lands at (p, depth d) and takes the band of the
     // altitude it is drawn at; drawn top to bottom so nearer things overlap farther ones
     const scapeList = [];
+    const SMALL = { bush: 1, stone: 1, cairn: 1, crevasse: 1 };
     function drawScape(cls) {
       scapeList.length = 0;
       const ds = clamp(cam.sy / 0.55, 0.3, 1.35);
@@ -495,7 +512,7 @@
         const it = SCAPE[si];
         if (it.p > pEnd) break;
         // the far-away overview keeps the bigger pieces only (small ones would just be specks)
-        if (cls === 'S' && it.kind === 'auto' && (it.seed & 1)) continue;
+        if (cls === 'S' && SMALL[it.kind]) continue;
         const x = X(it.p);
         if (x < -30 || x > AW + 30) continue;
         if (it.g === undefined) it.g = ground(it.p);
@@ -511,20 +528,28 @@
         const it = scapeList[i], x = scapeList[i + 1], y = scapeList[i + 2];
         const a = altAt(y), sd = it.seed;
         let s = null;
-        if (it.kind === 'grove') { if (a < 3920) s = a < 3450 ? K.tree(cls, sd) : K.pine(cls, sd); }
-        else if (it.kind === 'farm') { if (a < 3700) s = K.teahouse(L ? 'L' : 'S', 20 + sd); else if (a < 4600) s = K.stoneHut(cls, sd); }
-        else if (it.kind === 'plot') { if (a < 3700 && !S) s = K.field(L ? 14 : 8, 2); }
-        else if (it.kind === 'alpaca') { if (a < 4300 && L) s = K.buildAlpaca(sd % K.COATS.length, 'stand', { seed: 20 + sd }); }
-        else {
-          const r = sd % 100;
-          if (S && r >= 30 && r < 60) s = null;
-          else if (a < 3450) s = r < 12 ? K.tree(cls, sd % 7) : r < 30 ? K.bush(sd % 2) : r < 50 ? K.flowers(sd % 4) : r < 60 ? K.stone(L ? 2.2 : 1.4, sd % 5) : r < 63 ? K.cairn(cls) : null;
-          else if (a < 3920) s = r < 26 ? K.pine(cls, sd % 7) : r < 40 ? K.bush(sd % 2) : r < 48 ? K.flowers(sd % 4) : r < 58 ? K.stone(L ? 2.2 : 1.4, sd % 5) : r < 62 ? K.cairn(cls) : r < 64 ? K.stoneHut(cls, sd) : null;
-          else if (a < 4300) s = r < 20 ? K.bush(sd % 2) : r < 36 ? K.stone(L ? 2.4 : 1.4, sd % 5) : r < 42 ? K.cairn(cls) : r < 45 ? K.stoneHut(cls, sd) : r < 48 ? K.chorten(cls) : r < 51 ? K.flagPole(cls, sd) : null;
-          else if (a < 5300) s = r < 26 ? K.stone(L ? 2.6 : 1.5, sd % 5) : r < 40 ? K.outcrop(cls, sd % 4, 0) : r < 45 ? K.cairn(cls) : r < 48 ? K.maniWall(cls) : r < 50 ? K.chorten(cls) : r < 52 ? K.flagPole(cls, sd) : null;
-          else if (a < 8050) s = r < 14 ? K.crevasse(cls, sd % 3) : r < 26 ? K.outcrop(cls, sd % 4, 1) : null;
-          else s = r < 18 ? K.outcrop(cls, sd % 4, 2) : r < 24 ? K.crevasse(cls, sd % 3) : null;
+        const k = it.kind, st = L ? 2.4 : 1.5;
+        if (k === 'farm') { if (a < 3700) s = K.teahouse(L ? 'L' : 'S', 20 + sd); else if (a < 4600) s = K.stoneHut(cls, sd); }
+        else if (k === 'plot') { if (a < 3700 && !S) s = K.field(L ? 14 : 8, 2); }
+        else if (k === 'yak') { if (a < 4300 && L) s = K.buildAlpaca(sd % K.COATS.length, 'stand', { seed: 20 + sd }); }
+        else if (k === 'tree') s = K.tree(cls, sd % 7);
+        else if (k === 'pine') s = K.pine(cls, sd % 7);
+        else if (k === 'pair') {   // two trees side by side, the only "group" left
+          const t = a < 3450 ? K.tree : K.pine;
+          draw(t(cls, (sd + 3) % 7), x - (L ? 7 : 4), y - (L ? 3 : 2), true);
+          s = t(cls, sd % 7);
         }
+        else if (k === 'bush') s = K.bush(sd % 2);
+        else if (k === 'stone') s = K.stone(st, sd % 5);
+        else if (k === 'cairn') s = K.cairn(cls);
+        else if (k === 'chorten') s = K.chorten(cls);
+        else if (k === 'flagPole') s = K.flagPole(cls, sd);
+        else if (k === 'stoneHut') s = K.stoneHut(cls, sd);
+        else if (k === 'maniWall') s = K.maniWall(cls);
+        else if (k === 'outcrop') s = K.outcrop(cls, sd % 4, 0);
+        else if (k === 'crevasse') s = K.crevasse(cls, sd % 3);
+        else if (k === 'iceRock') s = K.outcrop(cls, sd % 4, 1);
+        else if (k === 'snowRock') s = K.outcrop(cls, sd % 4, 2);
         if (s) draw(s, x, y, true);
       }
     }
@@ -540,12 +565,12 @@
       const img = skyCtx.createImageData(AW, AH), d32 = new Uint32Array(img.data.buffer);
       skyPix = d32;
       const s1 = mixc(sky.top, sky.bot, 0.78), s2 = mixc(sky.bot, [255, 248, 236], 0.18);
-      const LV = 6;
+      const LV = 14;
       const colAt = (t) => (t < 0.62 ? mixc(sky.top, s1, t / 0.62) : mixc(s1, s2, (t - 0.62) / 0.38));
       const pal = []; for (let l = 0; l <= LV; l++) { const c = colAt(l / LV); pal.push((255 << 24) | ((c[2] | 0) << 16) | ((c[1] | 0) << 8) | (c[0] | 0)); }
       for (let y = 0; y < AH; y++) {
         const f = (y / Math.max(1, AH - 1)) * LV, base = f | 0, fr = f - base;
-        for (let x = 0; x < AW; x++) d32[y * AW + x] = pal[Math.min(LV, base)];
+        for (let x = 0; x < AW; x++) d32[y * AW + x] = pal[Math.min(LV, base + (fr > K.dither(x, y) ? 1 : 0))];
       }
       // a soft aurora band near the summit at night
       if (sky.star > 0.5) {
@@ -586,9 +611,10 @@
       { fn: midAlt, fx: 0.45, fy: 0.3, base: [104, 112, 126], haze: 0.32, snow: 5300 },
       { fn: nearAlt, fx: 0.7, fy: 0.62, base: [70, 112, 66], haze: 0.12, snow: 99999, forest: true },
     ];
-    // column geometry for range ri over w columns (canvas column i = screen art column i - mx, row j = j - my):
-    // the ridge top, the snow line and the haze line per column, a lit flag, and the six colours
-    const RG = [0, 1, 2].map(() => ({ top: new Int32Array(4096), s1: new Int32Array(4096), h1: new Int32Array(4096), lit: new Uint8Array(4096), col: null }));
+    // the background ranges as in the original look: broad faces whose edges run diagonally
+    // down from the ridges (traced back up the slope), a dithered 4-step ramp, a dithered snow
+    // line and a hazy foot. Drawn per pixel, but only into the range caches a strip at a time.
+    const RG = [0, 1, 2].map(() => ({ T: null, U: new Float32Array(4096), w: 0, sy0: 0, kY: 1, wx0: 0, P: null }));
     function rangeCols(ri, w, mx, my) {
       const r = RANGES[ri], T = rtops[ri], G0 = RG[ri];
       const par = cam.sx * r.fx, hs = Math.max(par, 20000 * cam.sy * r.fy);
@@ -597,71 +623,89 @@
         const xc = ((i - M - mx + 0.5) * UP + LX + shX) / DPR;
         const u = (cam.p * par + xc - W / 2) / hs;
         T[i] = sy0 - r.fn(u) * kY;
-        if (r.forest) T[i] -= Math.abs(Math.sin(u * 2600)) * 2.5;
+        if (r.forest) { G0.U[i] = u; T[i] -= Math.abs(Math.sin(u * 2600)) * 2.5; }
       }
-      const ySnow = sy0 - r.snow * kY, yHaze = r.forest ? 1e9 : sy0 - 4700 * kY;
-      for (let x = -SL; x < w + SL; x++) LIT[x + SL] = r.forest ? 1 : (T[x + M - 4] - T[x + M + 4] > 0.4 ? 1 : 0);
-      settleRuns(w + 2 * SL, 5);
-      const ux = par * DPR / UP;   // world-anchored wobble: columns counted from the range's own origin
-      for (let x = 0; x < w; x++) {
-        const top = Math.ceil(T[x + M]), wx = x - mx + cam.p * ux;
-        const wob = Math.round(Math.sin(wx * 0.7) * 1.5 + Math.sin(wx * 0.23) * 3);
-        G0.top[x] = top; G0.s1[x] = Math.max(top, Math.round(ySnow) + wob); G0.h1[x] = Math.max(top, Math.round(Math.min(1e8, yHaze))); G0.lit[x] = LIT[x + SL];
+      G0.T = T; G0.w = w; G0.sy0 = sy0; G0.kY = kY; G0.yo = Math.round(sy0);
+      G0.wx0 = Math.round(-mx + cam.p * par * DPR / UP);   // world-anchored column origin for wobble and dither
+      if (G0.key !== ambKey + '|' + HAZE.join(',')) {
+        G0.key = ambKey + '|' + HAZE.join(',');
+        const shadowC = [38, 50, 104];
+        const base4 = r.forest ? [[38, 74, 50], [52, 98, 56], [76, 128, 64], [112, 160, 78]] : [mixc(r.base, shadowC, 0.5), mixc(r.base, shadowC, 0.22), r.base, mixc(r.base, [255, 255, 255], 0.25)];
+        const rock = base4.map((c) => amb(mixc(c, HAZE, r.haze * 0.85)));
+        const snow = [[150, 168, 206], [186, 202, 232], [222, 232, 246], [246, 250, 255]].map((c) => amb(mixc(c, HAZE, r.haze * 0.5)));
+        const hz = amb(HAZE);
+        G0.P = {
+          rock: rock.map(pack), snow: snow.map(pack), edge: pack(mixc(rock[0], hz, 0.2)),
+          rockH: rock.map((c) => pack(mixc(c, hz, 0.55))), snowH: snow.map((c) => pack(mixc(c, hz, 0.55))),
+        };
       }
-      const shadowC = [38, 50, 104];
-      const lit = amb(mixc(r.forest ? [76, 128, 64] : r.base, HAZE, r.haze * 0.85));
-      const sh = amb(mixc(r.forest ? [52, 98, 56] : mixc(r.base, shadowC, 0.3), HAZE, r.haze * 0.85));
-      const sLit = amb(mixc([238, 244, 252], HAZE, r.haze * 0.5)), sSh = amb(mixc([186, 202, 232], HAZE, r.haze * 0.5));
-      const hz = amb(mixc(mixc(r.base, HAZE, 0.6), HAZE, r.forest ? 0 : 0.3));
-      G0.col = [mixc(sh, [20, 20, 40], 0.25), sLit, sSh, lit, sh, r.forest ? sh : hz];   // edge, snow lit/shade, body lit/shade, haze
       return G0;
     }
-    // draws columns x0..x0+sw of range ri into buffer B (each column filled to the bottom)
-    function renderRangeStrip(ri, B, J, x0, sw) {
-      const g = B.ug;
-      g.clearRect(x0, 0, sw, J.h);
-      const G0 = rangeCols(ri, sw, J.mx - x0, J.my), fills = G0.col.map(cssOf);
-      const runs = [[], [], [], [], [], []], h = J.h;
-      for (let j = 0; j < sw; j++) {
-        const x = x0 + j, top = G0.top[j];
-        B.tops[x] = clamp(top, -30000, 30000);
-        if (top >= h) continue;
-        const isLit = G0.lit[j] === 1;
-        const s1 = Math.min(h, G0.s1[j]), h1 = Math.min(h, G0.h1[j]);
-        runs[0].push(x, top, 1);
-        if (s1 > top + 1) runs[isLit ? 1 : 2].push(x, top + 1, s1 - top - 1);
-        const r0 = Math.max(top + 1, s1);
-        if (h1 > r0) runs[isLit ? 3 : 4].push(x, r0, h1 - r0);
-        const z0 = Math.max(r0, h1);
-        if (h > z0) runs[5].push(x, z0, h - z0);
+    // writes rows y0..y1 of column x (local, 0..w-1) of range ri into d32 (stride, offset)
+    function rangeColumn(ri, G0, x, y0, y1, d32, stride, off) {
+      const r = RANGES[ri], T = G0.T, P = G0.P, n = G0.w + 2 * M;
+      const tx = T[x + M], top = Math.ceil(tx), wx = x + G0.wx0;
+      const snowY = G0.sy0 - (r.snow + Math.sin(wx * 0.7) * 25 + Math.sin(wx * 0.23) * 60) * G0.kY;
+      const hazeY = G0.sy0 - 5200 * G0.kY, hazeK = 1 / (1300 * G0.kY);
+      for (let y = Math.max(y0, top), i = off + y * stride; y < y1; y++, i += stride) {
+        if (y === top) { d32[i] = P.edge; continue; }
+        const dpt = y - tx;
+        let xr = x + M - Math.round(0.35 * dpt); xr = xr < 3 ? 3 : xr > n - 4 ? n - 4 : xr;
+        xr = x + M - Math.round(0.35 * (y - T[xr])); xr = xr < 3 ? 3 : xr > n - 4 ? n - 4 : xr;
+        const sl = T[xr - 3] - T[xr + 3];
+        let v = (sl > 0.4 ? 0.82 : sl < -0.4 ? 0.3 : 0.56) - dpt / 400;
+        const yw = y - G0.yo, dth = K.dither(wx, yw);
+        const snowy = y < snowY + (dth - 0.5) * 80 * G0.kY;
+        const hazy = !r.forest && y > hazeY && Math.min(1, (y - hazeY) * hazeK) > K.dither(wx + 2, yw + 1);
+        let pal = snowy ? (hazy ? P.snowH : P.snow) : (hazy ? P.rockH : P.rock);
+        if (r.forest) {   // canopy clumps: a lit top on each round crown, darker gaps between
+          const cx = Math.round(G0.U[x + M] * 2600 / Math.PI * 2), cy = Math.round(dpt);
+          const cl = K.hash2(cx >> 2, cy >> 2, 11), inner = ((cy & 3) === 0) ? 0.25 : ((cx & 3) === 0 ? -0.2 : 0);
+          v = 0.6 + (cl - 0.5) * 0.7 + inner - dpt / 200;
+        }
+        const f = (v < 0 ? 0 : v > 0.9999 ? 0.9999 : v) * 3; let ci = f | 0; if (ci < 3 && f - ci > dth) ci++;
+        d32[i] = pal[ci];
       }
-      for (let k = 0; k < 6; k++) { const a = runs[k]; if (!a.length) continue; g.fillStyle = fills[k]; for (let q = 0; q < a.length; q += 3) g.fillRect(a[q], a[q + 1], 1, a[q + 2]); }
+    }
+    // draws columns x0..x0+sw of range ri into buffer B (each column filled to the bottom)
+    const stripImg = new Map();
+    function renderRangeStrip(ri, B, J, x0, sw) {
+      const h = J.h, k = sw + 'x' + h;
+      let img = stripImg.get(k);
+      if (!img) { img = new ImageData(sw, h); img.d32 = new Uint32Array(img.data.buffer); stripImg.set(k, img); if (stripImg.size > 12) stripImg.delete(stripImg.keys().next().value); }
+      const d32 = img.d32; d32.fill(0);
+      const G0 = rangeCols(ri, sw, J.mx - x0, J.my);
+      for (let j = 0; j < sw; j++) {
+        const top = Math.ceil(G0.T[j + M]);
+        B.tops[x0 + j] = clamp(top, -30000, 30000);
+        if (top < h) rangeColumn(ri, G0, j, 0, h, d32, sw, j);
+      }
+      B.ug.putImageData(img, x0, 0);
     }
     // while zooming: all three ranges in one pass, each clipped by the one in front and by the ground,
     // written straight into pixel memory (no overdraw), then one copy
-    let flatImg = null, flat32 = null;
+    let flatImg = null, flat32 = null, flatCv = null, flatN = 0;
     const skyTop = new Int32Array(4096);
+    // the per-pixel faces cost a few ms, so while zooming they are redrawn every other frame
+    // (the ranges move slowly behind the ground; each column runs a few pixels past it to hide the lag)
     function renderRangesFlat() {
+      if (!flatCv) flatCv = document.createElement('canvas');
+      if (flatN++ & 1 && flatCv.width === AW && flatCv.height === AH) { actx.drawImage(flatCv, 0, 0); return; }
       if (!flatImg || flatImg.width !== AW || flatImg.height !== AH) { flatImg = new ImageData(AW, AH); flat32 = new Uint32Array(flatImg.data.buffer); }
       if (skyPix && skyPix.length === flat32.length) flat32.set(skyPix); else flat32.fill(0);
       terrainTops();
-      const Gs = [0, 1, 2].map((ri) => rangeCols(ri, AW, 0, 0));
-      const P6 = Gs.map((g) => g.col.map(pack));
+      const Gs = [0, 1, 2].map((ri) => { const g = rangeCols(ri, AW, 0, 0); return { T: Float32Array.from(g.T.subarray(0, AW + 2 * M)), U: Float32Array.from(g.U.subarray(0, AW + 2 * M)), w: g.w, sy0: g.sy0, kY: g.kY, wx0: g.wx0, yo: g.yo, P: g.P }; });
       for (let x = 0; x < AW; x++) {
-        let limit = Math.min(AH, tops[x + M] + 1);
+        let limit = Math.min(AH, tops[x + M] + 6);
         for (let ri = 2; ri >= 0; ri--) {
-          const g = Gs[ri], pk = P6[ri], top = Math.max(0, g.top[x]);
-          if (top < limit) {
-            const lit = g.lit[x] === 1, s1 = g.s1[x], h1 = g.h1[x];
-            for (let y = top, i = top * AW + x; y < limit; y++, i += AW) {
-              flat32[i] = y === g.top[x] ? pk[0] : y < s1 ? (lit ? pk[1] : pk[2]) : y < h1 ? (lit ? pk[3] : pk[4]) : pk[5];
-            }
-            limit = top;
-          }
+          const g = Gs[ri], top = Math.max(0, Math.ceil(g.T[x + M]));
+          if (top < limit) { rangeColumn(ri, g, x, top, limit, flat32, AW, x); limit = top; }
         }
         skyTop[x] = Math.max(0, limit);
       }
-      actx.putImageData(flatImg, 0, 0);
+      if (flatCv.width !== AW || flatCv.height !== AH) { flatCv.width = AW; flatCv.height = AH; }
+      flatCv.getContext('2d').putImageData(flatImg, 0, 0);
+      actx.drawImage(flatCv, 0, 0);
     }
     // each range layer is cached and slid by its parallax while the zoom holds still
     let still = true, stillFrames = 0, lastCamKey = '';
@@ -752,46 +796,64 @@
     function terrainTops() {
       for (let i = 0; i < AW + 2 * M; i++) tops[i] = Math.round(Y(ground(pAt(i - M + 0.5))));
     }
-    // terrain is flat colour bands per column: a lit or shaded face, a darker body,
-    // a 1 px highlight on top. No per-pixel texture.
+    // terrain is calm flat colour: a 1 px highlight on top, a lit outer band, then a darker inner
+    // part per altitude band, with 2-row dithered seams between them; beyond the summit, one
+    // ridge line puts the far face in shade. Nothing depends on the column, so there are no vertical stripes.
     const BANDS = [[3900, 'grass'], [4300, 'scrub'], [5300, 'rock'], [8050, 'ice'], [1e9, 'snow']];
+    const RIM = 34, DEEP = 1e6, SUMMIT_P = 0.868;
+    const bandAt = (y, yb, wob) => { for (let bi = 0; bi < BANDS.length - 1; bi++) if (y > Math.round(yb[bi]) + wob) return BANDS[bi][1]; return BANDS[BANDS.length - 1][1]; };
     let bandKey = '', BC = null;
     function renderTerrain() {
       if (bandKey !== ambKey) {
         bandKey = ambKey; BC = {};
-        for (const k in RAMP) { const R = RAMP[k], n = R.length; BC[k] = { hi: cssOf(amb(R[n - 1])), lit: cssOf(amb(R[n - 2])), sh: cssOf(amb(R[Math.max(0, n - 3)])), deep: cssOf(amb(R[0])) }; }
+        for (const k in RAMP) { const R = RAMP[k], n = R.length; const SH = [38, 50, 104]; BC[k] = { hi: cssOf(amb(R[n - 1])), lit: cssOf(amb(R[n - 2])), body: cssOf(amb(R[n - 3])), deep: cssOf(amb(R[Math.max(0, n - 4)])), shTop: cssOf(amb(mixc(R[n - 3], SH, 0.12))), sh: cssOf(amb(mixc(R[n - 3], SH, 0.26))), shDeep: cssOf(amb(mixc(R[Math.max(0, n - 4)], SH, 0.26))) }; }
       }
       const yb = BANDS.map(([a]) => Y(a));
-      for (let x = -SL; x < AW + SL; x++) {
-        const sl = (tops[x + M - 6] - tops[x + M + 6]) - (tops[x + M - 30] - tops[x + M + 30]) / 5;
-        LIT[x + SL] = sl > -2 ? 1 : 0;
-      }
-      settleRuns(AW + 2 * SL, 8);
-      // the body below the face is shaded only on the far side of the summit: facet runs shaded all
-      // the way down read as vertical stripes, most of all in the overview
-      const xFar = X(PS);
-      const runs = new Map();
+      const runs = new Map(), dots = new Map();
       const add = (st, x, y, h) => { let r = runs.get(st); if (!r) runs.set(st, (r = [])); r.push(x, y, h); };
+      const dot = (st, x, y) => { let r = dots.get(st); if (!r) dots.set(st, (r = [])); r.push(x, y); };
+      // a seam: the colour above spills 2 rows into the one below (50% then 25%), world-anchored
+      const seam = (st, x, y, lim) => {
+        const wx = x - oxA, wy = y - oyA;
+        if (y < lim && (wx + wy) & 1) dot(st, x, y);
+        if (y + 1 < lim && ((wx & 1) === 0 && ((wy + 1) & 3) === ((wx >> 1) & 1) * 2)) dot(st, x, y + 1);
+      };
+      // one ridge splits light from shade: the far side of the summit, below a line running
+      // down and to the right from the top (the way light falls across a pyramid face)
+      const sX = X(SUMMIT_P), sYr = Y(C.summitAlt);
       for (let x = 0; x < AW; x++) {
         const top = tops[x + M], ty = Math.max(0, top);
         if (ty >= AH) continue;
-        const lit = LIT[x + SL] === 1, litBody = x < xFar;
-        const wob = Math.round(Math.sin((x - oxA) * 0.31) * 3 + Math.sin((x - oxA) * 0.11 + 1) * 4);
+        const wob = Math.round(Math.sin((x - oxA) * 0.06) * 4 + Math.sin((x - oxA) * 0.023 + 1) * 6);
+        const yShade = x > sX ? Math.round(sYr + (x - sX) / 0.15) : -1e9;   // rows above this are in shade
         let y = ty;
         for (let bi = BANDS.length - 1; bi >= 0 && y < AH; bi--) {
           const lower = bi > 0 ? Math.round(yb[bi - 1]) + wob : AH;
           if (lower <= y) continue;
           const c = BC[BANDS[bi][1]], end = Math.min(AH, lower);
-          const deepAt = top + 34;
-          if (y === top) { add(c.hi, x, y, 1); y++; if (y >= end) continue; }
-          if (y < deepAt) { const e = Math.min(end, deepAt); add(lit ? c.lit : c.sh, x, y, e - y); y = e; }
-          if (y < end) { add(c.sh === c.deep ? c.deep : (litBody ? c.sh : c.deep), x, y, end - y); y = end; }
+          const segs = [[top, top + 1, c.hi, c.shTop], [top + 1, top + RIM, c.lit, c.sh], [top + RIM, top + DEEP, c.body, c.sh], [top + DEEP, 1e9, c.deep, c.shDeep]];
+          for (let si = 0; si < segs.length && y < end; si++) {
+            const [a, b, st, sh] = segs[si];
+            if (b <= y) continue;
+            const e = Math.min(end, b), y0 = Math.max(y, a);
+            const ys = clamp(yShade, y0, e);
+            if (ys > y0) add(sh, x, y0, ys - y0);
+            if (e > ys) add(st, x, ys, e - ys);
+            if (e === b && si > 0 && si < 3 && b >= yShade) seam(st, x, b, end);   // rim → body → deep
+            y = e;
+          }
+          if (bi > 0 && end < AH) {   // band seam: this band's tone at that depth spills into the next
+            const d = end - top, st = end < yShade ? c.sh : d < RIM ? c.lit : d < DEEP ? c.body : c.deep;
+            seam(st, x, end, AH);
+          }
         }
+        if (yShade > ty && yShade < AH) seam(BC[bandAt(yShade, yb, wob)].sh, x, yShade, AH);   // soften the ridge line
       }
       for (const [st, r] of runs) { actx.fillStyle = st; for (let q = 0; q < r.length; q += 3) actx.fillRect(r[q], r[q + 1], 1, r[q + 2]); }
+      for (const [st, r] of dots) { actx.fillStyle = st; for (let q = 0; q < r.length; q += 2) actx.fillRect(r[q], r[q + 1], 1, 1); }
     }
 
-    // --- alpaca ride (§8.6) ---------------------------------------------------------
+    // --- yak ride (§8.6) ------------------------------------------------------------
     // After a Sherpa spotlight, a herd carries the climber up by the meters earned.
     // The plan (style, band, rare variants, timing) comes from E.ridePlan(); this
     // only draws it. The timeline runs on u = elapsed / duration:
@@ -911,7 +973,7 @@
         ride.strip = { cv: c, w };
       }
       actx.drawImage(ride.strip.cv, x - 1, y);
-      const sg = K.sign('ALPACA EXPRESS', null);   // the express sign rides on top of the banner
+      const sg = K.sign('YAK EXPRESS', null);   // the express sign rides on top of the banner
       actx.drawImage(sg.cv, Math.round(clamp(x + (w - sg.w) / 2, 2, AW - sg.w - 2)), y - sg.h + 1);
     }
     function climberSprite(pose, o) {
@@ -940,7 +1002,7 @@
         const bounce = galloping ? Math.round(Math.abs(Math.sin(time * 11 + H0[i].bob)) * 2) : 0;
         line[i] = { x, y: groundY(x) - bounce, row: 0 };
       }
-      let pos = line, climberX = line[carrier].x - 2, climberY = line[carrier].y - 10, lying = false;
+      let pos = line, climberX = line[carrier].x - 2, climberY = line[carrier].y - 14, lying = false;
       if (style === 'pyramid') {
         const rows = []; let left = n, w = Math.min(3, n);
         while (left > 0) { const k = Math.min(w, left); rows.push(k); left -= k; w = Math.max(1, w - 1); }
@@ -950,7 +1012,7 @@
           for (let j = 0; j < k; j++) {
             let x, y;
             if (!ri) { x = alongX(baseX, (j - (k - 1) / 2) * gap * 0.95); y = groundY(x); }
-            else { const a = prev[Math.min(j, prev.length - 1)], b = prev[Math.min(j + 1, prev.length - 1)]; x = (a.x + b.x) / 2; y = Math.min(a.y, b.y) - 12; }
+            else { const a = prev[Math.min(j, prev.length - 1)], b = prev[Math.min(j + 1, prev.length - 1)]; x = (a.x + b.x) / 2; y = Math.min(a.y, b.y) - 14; }
             const wob = galloping && ri ? Math.round(Math.sin(time * 8 + ri * 1.3) * ri) : 0;
             cur.push({ x: x + wob, y, row: ri });
           }
@@ -958,7 +1020,7 @@
           prev = cur;
         });
         pos = pyr.map((p, i) => ({ x: lerp(line[i].x, p.x, carried), y: lerp(line[i].y, p.y, carried), row: p.row }));
-        const top = pos[n - 1]; climberX = top.x - 2; climberY = top.y - 10;
+        const top = pos[n - 1]; climberX = top.x - 4; climberY = top.y - 14;
       } else if (style === 'paraglide') {
         const fly = carried * (40 + (galloping ? Math.sin(time * 2) * 4 : 0));
         const hx = baseX, hy = groundY(baseX) - fly;
@@ -993,7 +1055,7 @@
         const coat = h.gold ? 'gold' : h.coat;
         const frame = tucked && !p.row ? 'sled' : walking && Math.floor(time * legRate + h.ph) % 2 ? 'run' : 'stand';
         const ax = Math.round(p.x), ay = Math.round(p.y);
-        if (P.headlamps) draw(K.overlay('beam'), ax + 9, ay - 20);
+        if (P.headlamps) draw(K.overlay('beam'), ax + 11, ay - 14);
         draw(K.buildAlpaca(coat, frame, { seed: h.seed }), ax, ay, false);
         if (band === 'deathzone') draw(K.overlay('mask'), ax, ay);
         if (P.headlamps) draw(K.overlay('lamp'), ax, ay);
@@ -1003,10 +1065,10 @@
         }
         if (mapUp && i === lead) draw(K.overlay('map'), ax + 8, ay - 22);
       }
-      // ALPACA EXPRESS: a wood sign over the banner (or over the lead alpaca when there is no banner)
+      // YAK EXPRESS: a wood sign over the banner (or over the lead yak when there is no banner)
       const bannerOn = !P.noMove && u > 0.2 && u < 0.84;
       if (!bannerOn) {
-        const lp = pos[lead], sg = K.sign('ALPACA EXPRESS', null);
+        const lp = pos[lead], sg = K.sign('YAK EXPRESS', null);
         const sx = Math.round(clamp(lp.x + 4 - sg.w / 2, 2, AW - sg.w - 2)), sy = Math.round(lp.y - 38);
         pline(Math.round(lp.x + 6), Math.round(lp.y - 12), Math.round(lp.x + 6), sy + sg.h, '#5b3a22');
         actx.drawImage(sg.cv, sx, sy);
@@ -1046,13 +1108,13 @@
         }
       }
       if (u > 0.84 && u < 0.97) for (let i = 0; i < 3; i++) { const a = time * 6 + i * 2.1; draw(K.overlay('dizzy'), cx + Math.cos(a) * 7, cy - 27 + Math.sin(a) * 2); }
-      // the late alpaca: sprints in after the herd has gone, skids, slumps
+      // the late yak: sprints in after the herd has gone, skids, slumps
       if (P.late && u > 0.84) {
         const k = seg(u, 0.84, 0.94);
         const lx = alongX(cx0, -lerp(AW * 0.7, 28, easeIO(k)));
         if (k < 1 && !reduced && Math.random() < 0.5) puff(lx - 9, groundY(lx) - 1, band);
         const fr = k >= 1 ? 'stand' : Math.floor(time * 12) % 2 ? 'run' : 'stand';
-        if (P.headlamps) draw(K.overlay('beam'), lx + 9, groundY(lx) - 20);
+        if (P.headlamps) draw(K.overlay('beam'), lx + 11, groundY(lx) - 14);
         draw(K.buildAlpaca(1, fr, { sad: k >= 1 }), lx, groundY(lx));
         if (band === 'deathzone') draw(K.overlay('mask'), lx, groundY(lx));
       }
@@ -1068,10 +1130,84 @@
 
     // --- the frame ------------------------------------------------------------------
     // the static world: terrain, scenery, landmarks and the dashed route (drawn into the world cache)
+    // the home overview keeps the original look: per pixel, facets traced diagonally back to the
+    // ridge, a dithered ramp that darkens with depth, flowers and the Yellow Band. It is only drawn
+    // into the cached world (home and results stand still), never per frame while zooming.
+    const FLOWERS = K.ramp('#fffcf0', '#ffdc5a', '#faaac8', '#c8b4ff');
+    let origImg = null, origCv = null;
+    function renderTerrainOriginal() {
+      if (!origImg || origImg.width !== AW || origImg.height !== AH) { origImg = new ImageData(AW, AH); origImg.d32 = new Uint32Array(origImg.data.buffer); }
+      if (!origCv) origCv = document.createElement('canvas');
+      if (origCv.width !== AW || origCv.height !== AH) { origCv.width = AW; origCv.height = AH; }
+      const terr32 = origImg.d32; terr32.fill(0);
+      const ramps = {}; for (const kname in RAMP) ramps[kname] = RAMP[kname].map((c) => pack(amb(c)));
+      const flowerP = FLOWERS.map((c) => pack(amb(c))), gold = pack(amb([255, 200, 60]));
+      const crev = pack(amb([70, 100, 160])), lip = pack(amb([214, 232, 250])), white = pack(amb([255, 255, 255])), outcrop = pack(amb([88, 80, 96]));
+      const ochre = amb([201, 170, 104]);
+      const pick = (P, v, x, y) => { const f = clamp(v, 0, 0.9999) * (P.length - 1); let i = f | 0; if (i < P.length - 1 && f - i > K.dither(x, y)) i++; return P[i]; };
+      const rowAlt = new Float32Array(AH); for (let y = 0; y < AH; y++) rowAlt[y] = altAt(y + 0.5);
+      const xb0 = X(0.73), xb1 = X(0.94), NN = AW + 2 * M;
+      for (let x = 0; x < AW; x++) {
+        const ty = tops[x + M];
+        const wx = x - oxA, wob = Math.sin(wx * 0.31) * 18 + Math.sin(wx * 0.11 + 1) * 26;
+        for (let y = Math.max(0, ty); y < AH; y++) {
+          const d = y - ty, wy = oyA - y, a = rowAlt[y] + wob;
+          const dz = (K.dither(wx, wy) - 0.5) * 90;
+          const band = a + dz < 3900 ? 'grass' : a + dz < 4300 ? 'scrub' : a + dz < 5300 ? 'rock' : a + dz < 8050 ? 'ice' : 'snow';
+          let xr = x + M - Math.round(0.35 * d); xr = Math.max(4, Math.min(NN - 5, xr));
+          xr = x + M - Math.round(0.35 * (y - tops[xr])); xr = Math.max(4, Math.min(NN - 5, xr));
+          const sl = (tops[xr - 4] - tops[xr + 4]) - (tops[Math.max(0, xr - 24)] - tops[Math.min(NN - 1, xr + 24)]) / 6;
+          let v = 0.62 + (sl > 1.5 ? 0.16 : sl < -1.5 ? -0.2 : 0) - Math.min(0.3, d / 110);
+          if (d === 0) v += 0.4;
+          let c = 0;
+          if (band === 'grass' || band === 'scrub') {
+            if (K.hash2(wx, wy, 1) < 0.035) v -= 0.3;
+            else if (K.hash2(wx, wy - 1, 1) < 0.035) v += 0.3;
+            if (band === 'grass' && d > 3) {
+              if (K.hash2(wx, wy, 2) < 0.004) c = gold;
+              else {
+                let pc = null;
+                if (K.hash2(wx - 1, wy, 2) < 0.004) pc = wx - 1 + wy * 7;
+                else if (K.hash2(wx + 1, wy, 2) < 0.004) pc = wx + 1 + wy * 7;
+                else if (K.hash2(wx, wy - 1, 2) < 0.004) pc = wx + (wy - 1) * 7;
+                if (pc !== null) c = flowerP[((pc % 4) + 4) % 4];
+              }
+            }
+          } else if (band === 'rock') {
+            if (K.hash2(wx >> 2, wy, 3) < 0.05) v -= 0.25;
+            else if (K.hash2(wx, wy, 4) < 0.04) v += 0.25;
+          } else if (band === 'ice' && d > 4) {
+            const cr = (q) => { const run = ((wx + q) / 9) | 0; return K.hash2(run, q, 5) < 0.0035 && K.hash2(run, q, 8) > 0.2; };
+            if (cr(wy)) c = crev; else if (cr(wy + 1)) c = lip;
+            else if (K.hash2(wx, wy, 6) < 0.004) c = white;
+          } else if (band === 'snow' && d > 3) {
+            const oc = K.hash2(wx >> 3, wy >> 3, 7);
+            if (oc < 0.035 && K.hash2(wx >> 1, wy >> 1, 9) < 0.7 - Math.abs(((wx & 7) - 3.5) / 7) - Math.abs(((wy & 7) - 3.5) / 6)) c = outcrop;
+            else if (K.hash2(wx, wy, 6) < 0.006) c = white;
+          }
+          if (!c) {
+            c = pick(ramps[band], v, wx, wy);
+            if (x > xb0 && x < xb1) {   // the Yellow Band across the Lhotse face
+              const sl2 = (x - xb0) / Math.max(1, xb1 - xb0);
+              const lo = 7540 - sl2 * 60, hi = 7780 - sl2 * 60, aa = rowAlt[y];
+              if (aa > lo && aa < hi) {
+                const e = Math.min(aa - lo, hi - aa) / 60;
+                if (Math.min(1, e) * 0.5 > K.dither(wx, wy) * 0.9) { const o = c; c = pack(mixc([o & 255, (o >> 8) & 255, (o >> 16) & 255], ochre, 0.45)); }
+              }
+            }
+          }
+          terr32[y * AW + x] = c;
+        }
+      }
+      origCv.getContext('2d').putImageData(origImg, 0, 0);
+      actx.drawImage(origCv, 0, 0);
+    }
+    let directing = false;
+    const originalLook = () => view === 'overview' && !directing;
     function staticWorld() {
       const cls = sizeClass();
       terrainTops();
-      renderTerrain();
+      if (originalLook()) renderTerrainOriginal(); else renderTerrain();
       const gy = (p) => Y(ground(p));
       // scenery across the face of the mountain, nearest (lowest on screen) last
       drawScape(cls);
@@ -1091,11 +1227,10 @@
         if (cls !== 'S') draw(K.plane(), X(0.08), gy(0.08) - 1, true);
         draw(K.teahouse('S', 3), X(0.058), gy(0.058) + 1, true);
       }
-      // Namche Bazaar: a few teahouses, the field, the pond, a grazing alpaca
+      // Namche Bazaar: a few teahouses, the field, the pond, a grazing yak
       if (visible(0.205, 80)) {
         if (cls !== 'S') {
           draw(K.pond(cls === 'L' ? 9 : 5, cls === 'L' ? 3 : 2), X(0.172), gy(0.172) + depth(78), true);
-          draw(K.field(cls === 'L' ? 22 : 12, cls === 'L' ? 3 : 2), X(0.224), gy(0.224) + depth(86), true);
         }
         for (const hs of HOUSES) {
           const sz = hs.big ? (cls === 'L' ? 'XL' : cls === 'M' ? 'L' : 'S') : (cls === 'L' ? 'L' : 'S');
@@ -1118,7 +1253,7 @@
           for (let i = 0; i <= 6; i++) { const tt = i / 6, x = Math.round(lerp(lx1, lx2, tt)), y = Math.round(lerp(ly1, ly2, tt)); pline(x, y, x, y - 3, '#8e96a4'); }
         }
       }
-      if (cls !== 'S') for (let p = 0.565; p < 0.8; p += 0.03) if (visible(p)) draw(K.wand(), X(p) + 2, gy(p) + 2, true);
+      if (cls !== 'S') for (let p = 0.565; p < 0.8; p += 0.06) if (visible(p)) draw(K.wand(), X(p) + 2, gy(p) + 2, true);
       for (const camp of CAMPS) {
         if (!visible(camp[0].p, 60)) continue;
         for (const tn of camp) draw(K.tent(tn.c, cls), X(tn.p), gy(tn.p) + depth(tn.d), true);
@@ -1134,7 +1269,7 @@
     // world cache: rebuilt when the zoom, light, size class or screen changes, or when the camera
     // slides past the margin; while zooming it is drawn without a margin every frame
     const isLit = (A) => A[0] < 0.995 || A[1] < 0.995 || A[2] < 0.995;
-    const worldKey = () => cam.sx + ':' + cam.sy + ':' + sizeClass() + ':' + AW + 'x' + AH;
+    const worldKey = () => cam.sx + ':' + cam.sy + ':' + sizeClass() + ':' + AW + 'x' + AH + ':' + (view === 'overview' ? 'o' : 'c');
     const worldCovers = (B) => B.valid && Math.abs(oxA - B.ox) <= B.mx && Math.abs(oyA - B.oy) <= B.my;
     // a world job: render (strips of terrain + scenery, untinted) and/or tint (strips of one multiply pass)
     function startWorldJob(render) {
@@ -1180,8 +1315,8 @@
     }
     function directWorld() {
       const sA = AMB, sK = ambKey;
-      AMB = dLight.AMB; ambKey = dLight.ambKey;
-      try { staticWorld(); } finally { AMB = sA; ambKey = sK; }
+      AMB = dLight.AMB; ambKey = dLight.ambKey; directing = true;
+      try { staticWorld(); } finally { AMB = sA; ambKey = sK; directing = false; }
     }
     function drawWorld(settled) {
       const sA = AMB, sK = ambKey;
@@ -1348,7 +1483,7 @@
       const dzy = Math.round(Y(8000));
       if (dzy > -4 && dzy < AH + 4) { actx.fillStyle = 'rgba(255,110,90,0.75)'; for (let x = 0; x < AW; x++) if (((x - oxA) % 6 + 6) % 6 < 3) actx.fillRect(x, dzy, 1, 1); }
       const wide = W >= 700;
-      // landmark signs step aside during an alpaca ride, so the herd and its banner have the stage
+      // landmark signs step aside during a yak ride, so the herd and its banner have the stage
       // overview: signs are placed in priority order, each on its preferred side, else the other side,
       // else left out, so they never pile up when the mountain is small (a phone above a card)
       const cx0 = Math.round(X(pc)), cy0 = Math.round(gy(pc));
@@ -1502,13 +1637,13 @@
       for (let i = 0; i < 4; i++) jobs.push(() => K.flowers(i));
       jobs.push(() => K.bush(0), () => K.bush(1), () => K.field(14, 2), () => K.field(8, 2), () => K.field(22, 3), () => K.field(12, 2), () => K.pond(9, 3), () => K.pond(5, 2), () => K.plane(), () => K.moon());
       for (let i = 0; i < 5; i++) jobs.push(() => K.buildAlpaca(i % K.COATS.length, 'stand', { seed: 20 + i }));
-      // the alpaca ride's sprites, so the first ride doesn't build them mid-gallop
+      // the yak ride's sprites, so the first ride doesn't build them mid-gallop
       for (let c = 0; c < K.COATS.length; c++) for (const f of ['stand', 'run', 'sled']) for (let sd = 0; sd < 8; sd++) jobs.push(() => K.buildAlpaca(c, f, { seed: sd }));
       for (const f of ['stand', 'run', 'sled']) for (let sd = 0; sd < 8; sd++) jobs.push(() => K.buildAlpaca('gold', f, { seed: sd }));
       jobs.push(() => K.buildAlpaca(1, 'stand', { sad: true }), () => K.buildAlpaca(1, 'run', {}), () => K.buildAlpaca(1, 'stand', {}));
       for (const o of ['mask', 'lamp', 'beam', 'map', 'sparkle', 'dizzy', 'flag', 'canopy', 'splat']) jobs.push(() => K.overlay(o));
       for (const pose of ['stand', 'walk', 'cheer', 'sit']) jobs.push(() => climberSprite(pose), () => climberSprite(pose, { hatless: true }));
-      jobs.push(() => climberSprite('stand', { ghost: true }), () => K.hatSprites(null), () => K.sign('ALPACA EXPRESS', null), () => K.text('?', { color: '#ffffff', outline: '#281e16', bold: true }));
+      jobs.push(() => climberSprite('stand', { ghost: true }), () => K.hatSprites(null), () => K.sign('YAK EXPRESS', null), () => K.text('?', { color: '#ffffff', outline: '#281e16', bold: true }));
       for (const c of Object.values({ grass: '#b09670', trail: '#96928c', glacier: '#fafcff', deathzone: '#ecf0fa' })) for (let r = 1; r <= 4; r++) jobs.push(() => K.puff(r, c));
       const step = (dl) => {
         const t0 = performance.now();
@@ -1543,7 +1678,7 @@
       get artSize() { return { w: AW, h: AH, px: PX, up: UP }; },
       onFrame(fn) { onFrame = fn; },
       get alt() { return climb; },
-      // alpaca ride: resolves true when it finishes, false if cancelled
+      // yak ride: resolves true when it finishes, false if cancelled
       ride(plan, o) { return startRide(plan, o || {}); },
       cancelRide() { if (ride) endRide(false); splat = null; },
       get riding() { return !!ride; },
@@ -1662,7 +1797,7 @@
   const G = {
     screen: 'home', state: 'idle', mode: 'daily', today: '', puzzle: 1, cats: [], index: [], round: null,
     legIdx: 0, aid: 0, lastSubmit: 0, camp: false, campGo: null, campT: 0, lastSec: -1, pauseUntil: 0,
-    rideQ: [], rideActive: null, slotT: 0, slotTxt: '',   // alpaca rides (queued, playing) and the slot-machine altimeter
+    rideQ: [], rideActive: null, slotT: 0, slotTxt: '',   // yak rides (queued, playing) and the slot-machine altimeter
     dev: null,   // dev climb tool state (mode 'dev' only), see the dev mode section
   };
   // camp report and gain-pop states as classes (see the stylesheet: cheaper than :has())
@@ -2083,7 +2218,7 @@
     }
     const lapUp = G.mode === 'dev' && devLap().lap > devLap(devTotal() - eff).lap;
     const live = legIdx === G.legIdx && G.screen === 'play';
-    // Sherpa: the alpacas carry the climber after the spotlight, so the climb waits for them
+    // Sherpa: the yaks carry the climber after the spotlight, so the climb waits for them
     const sherpaRide = ans.tier === 4 && live && G.state === 'leg';
     if (sherpaRide && !isReduced()) queueRide({ ans, eff, legIdx, lapUp, from: altBefore, to: lapUp ? C.summitAlt : totalAltitude() });
     else if (lapUp) devLapUp(); else Scene.setClimb(totalAltitude());
@@ -2097,23 +2232,23 @@
     if (sherpaRide && !isReduced() && $('#spot').hidden) runNextRide();
     announce(ans.x ? `Corrected to ${ans.c}. ${tierName(ans.tier)}, plus ${eff} meters` : `${ans.c}, ${tierName(ans.tier)}, plus ${eff} meters`);
     if (sherpaRide && isReduced()) {   // reduced motion: no ride, just the words
-      setFeedback(`Carried up by alpacas · +${fmt(eff)} m`);
+      setFeedback(`Carried up by yaks · +${fmt(eff)} m`);
       announce(rideSentence(altBefore, lapUp ? C.summitAlt : totalAltitude(), eff, null));
     }
     setNight();
     devEmit('answer', { kind: 'ok', ans, rawGain, eff, legIdx });
   }
 
-  // ---------------------------------------------------------------- alpaca ride
+  // ---------------------------------------------------------------- yak ride
   // After a Sherpa spotlight the herd carries the climber up by the meters earned
   // (Scene.ride draws it, E.ridePlan decides it). The clock is held for the ride
   // with holdClock(), Enter waits (G.pauseUntil), the leg card fades (.riding) and
   // rides queue: a judge result can land mid-ride.
   function rideSentence(from, to, eff, plan) {
-    if (plan && plan.noMove) return 'Alpaca express! The herd shrugs: this leg is already at its limit.';
+    if (plan && plan.noMove) return 'Yak express! The herd shrugs: this leg is already at its limit.';
     const m0 = E.milestoneFor(from), m1 = E.milestoneFor(to);
     const to1 = m1 && m0 && m1.id !== m0.id ? `, to ${m1.short}` : '';
-    return `Alpaca express! Carried up ${fmt(eff)} meters${to1}.${plan && plan.golden ? ' Golden alpaca!' : ''}`;
+    return `Yak express! Carried up ${fmt(eff)} meters${to1}.${plan && plan.golden ? ' Golden yak!' : ''}`;
   }
   // the spotlight's timer starts the ride (runNextRide); accept() starts it at once if no spotlight is up
   function queueRide(job) { G.rideQ.push(job); }
@@ -2445,10 +2580,10 @@
     const m = E.milestoneFor(r.final);
     const row = Array.from({ length: r.catIds.length }, (_, i) => { const t = legRarest(r.legs[i]); return t >= 0 ? C.tiers[t].emoji : C.noFindEmoji; }).join('');
     const url = shareUrl();
-    const llamas = E.shareAlpacas(alpacaRides(r).n);   // one 🦙 per Sherpa ride: no letters, so never answers
+    const llamas = E.shareAlpacas(alpacaRides(r).n);   // one 🐂 per Sherpa ride: no letters, so never answers
     return `Daily Ascent #${r.puzzle} ⛰️\n${m.emoji} ${m.short} · ${fmt(r.final)} m\n${row}${llamas ? '\n' + llamas : ''}${url ? '\n' + url : ''}`;
   }
-  // Alpaca rides in a round: its ok Sherpa answers (judge-accepted ones too).
+  // Yak rides in a round: its ok Sherpa answers (judge-accepted ones too).
   // The longest is the one that climbed the most effective meters.
   function alpacaRides(r) {
     let n = 0, longest = null;
@@ -2507,7 +2642,7 @@
       </header>
       ${r.forfeited ? '<p class="forfeit">You left mid-climb, so this round was scored on the answers you’d entered.</p>' : ''}
       ${r.extra ? '<p class="res-note">Extra time was on for this climb.</p>' : ''}
-      ${alpacaRides(r).n ? `<p class="res-note res-rides">${ALPACA_ICON}<span>Alpaca rides: <b>${alpacaRides(r).n}</b></span></p>` : ''}
+      ${alpacaRides(r).n ? `<p class="res-note res-rides">${ALPACA_ICON}<span>Yak rides: <b>${alpacaRides(r).n}</b></span></p>` : ''}
       <section aria-label="The climb"><h3>The climb</h3><ol class="legrows">${legRows}</ol></section>
       <section aria-label="Best finds"><h3>Best finds</h3>${best.length ? `<ul class="finds">${best.map((a) => `<li class="find"><span class="chip t${a.tier}">${ICON[a.tier]}<span class="txt">${esc(a.c)}</span></span><span class="where">${tierName(a.tier)} · ${esc(a.cat)}</span></li>`).join('')}</ul>` : '<p class="res-note">No answers found this time.</p>'}</section>
       ${gems.length ? `<section aria-label="Missed gems"><h3>Missed gems</h3><ul class="finds">${gems.map((g) => `<li class="find"><span class="chip t${g.e.tier}">${ICON[g.e.tier]}<span class="txt">${esc(g.e.canon)}</span></span><span class="where">${tierName(g.e.tier)} · ${esc(g.cat)}</span></li>`).join('')}</ul></section>` : ''}
@@ -2576,7 +2711,7 @@
       `The air thins: timers shrink from ${Math.max(...secs)} to ${Math.min(...secs)} seconds, but later legs score up to ${Math.max(...mults)}×.`,
       `Each leg counts in full up to ${fmt(C.legFullUpTo)} m, then at ${Math.round(C.legOverRate * 100)}%, to a limit of ${fmt(C.legCap)} m.`,
     ].map((t) => `<li>${t}</li>`).join('');
-    $('#help-miles').textContent = 'Milestones: ' + C.milestones.map((m) => `${m.name} ${fmt(m.alt)} m`).join(', ') + '.';
+    $('#help-miles').textContent = 'Milestones: ' + C.milestones.map((m) => `${m.name} (${fmt(m.alt)} m)`).join(', ') + '.';
     $('#tier-table').innerHTML = '<tbody>' + C.tiers.map((t, i) => `<tr class="t${i}"><td><span class="badge">${ICON[i]}${t.name}</span></td><td class="theme">${t.theme}</td><td>+${t.gain} m</td></tr>`).join('') + '</tbody>';
   }
   function openStats() {
@@ -2604,10 +2739,10 @@
         <div class="fact"><dt>Summits</dt><dd>${summits}</dd></div>
         <div class="fact"><dt>Streak</dt><dd>${liveStreak()}</dd></div>
         <div class="fact"><dt>Rest days</dt><dd>${s.tokens}</dd></div>
-        <div class="fact"><dt>Alpaca rides</dt><dd>${rides}</dd></div>
+        <div class="fact"><dt>Yak rides</dt><dd>${rides}</dd></div>
         <div class="fact"><dt>Longest ride</dt><dd>${longestRide ? fmt(longestRide.g) + '<small> m</small>' : '—'}</dd></div>
       </div>
-      ${longestRide ? `<p class="res-note"><span aria-hidden="true">🦙</span> Longest alpaca ride: +${fmt(longestRide.g)} m for <b>${esc(longestRide.c)}</b> (${esc(longestRide.cat)}).</p>` : ''}
+      ${longestRide ? `<p class="res-note"><span aria-hidden="true">🐂</span> Longest yak ride: +${fmt(longestRide.g)} m for <b>${esc(longestRide.c)}</b> (${esc(longestRide.cat)}).</p>` : ''}
       <p>Longest streak: ${s.best} day${s.best === 1 ? '' : 's'}. You earn one rest day for every 14 days in a row; it covers a single missed day.</p>
       ${rarest ? `<div class="find"><span class="chip t${rarest.tier}">${ICON[rarest.tier]}<span class="txt">${esc(rarest.c)}</span></span><span class="where">Rarest find · ${esc(rarest.cat)}</span></div>` : ''}
       <div class="dist" aria-label="Finds by rarity">${C.tiers.map((t, i) => `<div class="dist-row t${i}"><span class="badge">${ICON[i]}${t.name}</span><span class="bar"><i style="width:${((dist[i] / maxD) * 100).toFixed(1)}%"></i></span><span class="v">${dist[i]}</span></div>`).join('')}</div>`;
@@ -2976,7 +3111,7 @@
     announce(`Effect test: ${tierName(tier)}`);
   }
   function devPlaySound(kind) { Sound.force = true; Sound.play(kind); Sound.force = false; }
-  // Effects tab: plays an alpaca ride without changing the score or holding the clock.
+  // Effects tab: plays a yak ride without changing the score or holding the clock.
   // o: { style, band ('auto' or a band), golden, late, spit, meters, reduced }
   const RIDE_BAND_ALT = { grass: 3300, trail: 4500, glacier: 6000, deathzone: 8100 };
   function devPlayRide(o) {
@@ -2988,10 +3123,10 @@
     const pick = ix && ix.entries.find((e) => e.tier === 4);
     const answer = pick ? pick.canon : 'Test find';
     if (o.reduced) {
-      if (G.screen === 'play') setFeedback(`Carried up by alpacas · +${fmt(to - from)} m`);
+      if (G.screen === 'play') setFeedback(`Carried up by yaks · +${fmt(to - from)} m`);
       announce(rideSentence(from, to, to - from, null));
       devEmit('ride', { plan: { reduced: true }, ans: { c: answer }, eff: to - from, test: true });
-      return `Reduced-motion preview: "Carried up by alpacas · +${fmt(to - from)} m", no ride.`;
+      return `Reduced-motion preview: "Carried up by yaks · +${fmt(to - from)} m", no ride.`;
     }
     const force = { golden: !!o.golden, late: !!o.late, spit: !!o.spit };
     if (o.style && o.style !== 'auto') force.style = o.style;
@@ -3006,7 +3141,7 @@
       if (!G.rideActive) pl.classList.remove('riding');
       Scene.setClimb(G.round && G.screen === 'play' ? totalAltitude() : back, { snap: true });
     });
-    return `Alpaca ride: ${plan.style} · ${plan.band}${plan.golden ? ' · golden' : ''}${plan.late ? ' · late' : ''}${plan.spit ? ' · spit' : ''} · +${fmt(to - from)} m (${(plan.durationMs / 1000).toFixed(1)} s)`;
+    return `Yak ride: ${plan.style} · ${plan.band}${plan.golden ? ' · golden' : ''}${plan.late ? ' · late' : ''}${plan.spit ? ' · spit' : ''} · +${fmt(to - from)} m (${(plan.durationMs / 1000).toFixed(1)} s)`;
   }
   function devPlantFlag() {
     Scene.setClimb(C.summitAlt, { snap: true });
