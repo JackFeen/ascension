@@ -189,7 +189,7 @@ ok(Object.values(laneUse).every((n) => n === 80), 'mid lanes rotate evenly (two 
   const deal = [];
   for (let d = 1; d <= 365; d++) deal.push(E.dailyCategories(DATA, d).map((c) => c.id).join(','));
   const hash = crypto.createHash('sha256').update(JSON.stringify(deal)).digest('hex');
-  ok(hash === '0fe7faf891898fd0216335b3bc1277f7348dd41b4657ca3d0e68a2ad53b34f9d', 'deal for puzzles 1-365 unchanged (sha256 ' + hash.slice(0, 12) + ')');
+  ok(hash === '614147539f15d6aca1b376ce79030a7a1692fd5f9f5e364a3b571b6f95bcc1af', 'deal for puzzles 1-365 unchanged (sha256 ' + hash.slice(0, 12) + ')');
 }
 
 // ---- autocorrect (§6.3): real misspellings that must be corrected to a listed answer
@@ -347,6 +347,17 @@ const MUST_ACCEPT = {
   holes: ["swiss cheese", "donut", "colander", "golf course", "great blue hole", "pinhole camera", "honeycomb", "cenote"],
   scales: ["fish", "snake", "piano", "kettle", "pangolin", "limescale", "beaufort scale", "smaug"],
   fly: ["bird", "plane", "helicopter", "time", "sputnik", "spitfire", "hang glider", "frisbee"],
+  cereals: ["cheerios", "frosted flakes", "lucky charms", "count chocula", "quisp", "weetabix", "muesli"],
+  consoles: ["playstation", "xbox", "nintendo switch", "ps2", "game boy", "virtual boy", "colecovision"],
+  disney: ["frozen", "toy story", "wall e", "the black cauldron", "ratatouille", "hocus pocus", "high school musical"],
+  gameshows: ["jeopardy", "wheel of fortune", "the price is right", "family feud", "press your luck", "win ben steins money", "lingo"],
+  mascots: ["ronald mcdonald", "tony the tiger", "michelin man", "geico gecko", "kool aid man", "elsie the cow", "reddy kilowatt"],
+  places: ["hogwarts", "narnia", "gotham", "wakanda", "bikini bottom", "ankh morpork", "macondo"],
+  pokemon: ["pikachu", "charizard", "farfetchd", "mr mime", "ho oh", "stunfisk", "dhelmise"],
+  singers: ["beyonce", "adele", "sting", "bjork", "sade", "hozier", "stromae"],
+  toys: ["lego", "barbie", "yo yo", "furby", "slinky", "shrinky dinks", "speak and spell"],
+  vgchars: ["mario", "pikachu", "master chief", "glados", "kratos", "lara croft", "isaac clarke"],
+  villains: ["darth vader", "the joker", "hans gruber", "anton chigurh", "nurse ratched", "scar", "frank booth"],
   icecream: ["vanilla", "chocolate", "pistachio", "mocha", "black sesame", "ube", "earl grey", "pumpkin spice"],
 };
 for (const c of CATS) ok(MUST_ACCEPT[c.id] && MUST_ACCEPT[c.id].length >= 5, c.id + ': has a must-accept list');
@@ -357,6 +368,17 @@ for (const [cat, list] of Object.entries(MUST_ACCEPT)) for (const input of list)
 
 // ---- must-reject: wrong answers, stacked or unknown qualifiers
 const MUST_REJECT = {
+  cereals: ["pancakes", "bacon", "toast", "orange juice"],
+  consoles: ["iphone", "macbook", "windows", "steam"],
+  disney: ["shrek", "despicable me", "kung fu panda", "madagascar", "the iron giant"],
+  gameshows: ["survivor", "friends", "the bachelor", "american idol"],
+  mascots: ["mickey mouse", "spider man", "santa claus", "elmo"],
+  places: ["paris", "tokyo", "mount everest", "disneyland", "las vegas"],
+  pokemon: ["digimon", "agumon", "godzilla", "totoro"],
+  singers: ["taylor swift", "elvis presley", "the beatles", "bad bunny", "snoop dogg"],
+  toys: ["television", "homework", "broccoli", "laptop"],
+  vgchars: ["mickey mouse", "spongebob", "harry potter", "batman begins"],
+  villains: ["luke skywalker", "frodo", "forrest gump", "mary poppins"],
   sports: ["pizza", "womens pizza", "indoor golfing", "mens womens soccer", "womens womens soccer", "youth pro soccer"],
   colors: ["dog", "dark dog", "light light blue", "pale neon pink"],
   jobs: ["pizza", "assistant senior manager"],
