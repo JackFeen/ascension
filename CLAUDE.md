@@ -58,9 +58,9 @@ No dev server or bundler: build, then open `index.html`. Node 18+.
 ├─ CLAUDE.md, AGENTS.md (points here), README.md, docs/product-spec.md
 ├─ src/
 │  ├─ engine.js          pure logic, no DOM: CONFIG, normalize/match/autocorrect, scoring, daily deal, judge prompt
-│  ├─ data-broad.js      14 broad categories (leg 1)
-│  ├─ data-mid.js        21 mid categories in 3 lanes (legs 2 and 4)
-│  ├─ data-hard-wild.js  7 hard (leg 5) + 7 wildcard (leg 3) + 1 practice category
+│  ├─ data-broad.js      17 broad categories (leg 1)
+│  ├─ data-mid.js        24 mid categories in 3 lanes (legs 2 and 4)
+│  ├─ data-hard-wild.js  9 hard (leg 5) + 10 wildcard (leg 3) + 1 practice category
 │  ├─ pixel.js           sprite kit (window.DA_PIXEL): dither, selout, blob, text signs, climber, yaks (`buildAlpaca`, historical name), scenery
 │  ├─ app.js             everything with a DOM: Store, Sound, Scene (canvas), Judge, game flow, results, dialogs, boot
 │  ├─ dev-lock.js        GENERATED, COMMITTED: dev mode salt + PBKDF2 hash
@@ -251,7 +251,7 @@ DA_CATS.push(
 );
 ```
 
-**Inventory:** 49 dealt categories (14 broad, 21 mid, 7 wild, 7 hard) plus practice (Ice cream flavors), about 28,000 answers. Closed sets (US states, African/European/Asian countries, elements, IAU constellations) are complete and grow only by aliases; tests check their counts.
+**Inventory:** 60 dealt categories (17 broad, 24 mid, 10 wild, 9 hard) plus practice (Ice cream flavors), about 39,000 answers. Closed sets (US states, African/European/Asian countries, elements, IAU constellations) are complete and grow only by aliases; tests check their counts.
 
 **Qualifiers:** use them where a leading word makes a listed answer a genuinely different thing ("women's soccer", "dark purple", "smoked gouda"). Explicit list entries always win; exactly one qualifier; dedupe on (entry, qualifier); scored at the base tier; at most 3 per leg. Pick words that read naturally with almost every answer ("indoor" was left out of Sports: "indoor sailing").
 
